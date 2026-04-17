@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"name": "TimbreOS",
+			"path": "../TimbreOS"
+		},
+		{
+			"name": "Nano",
+			"path": "."
+		}
+	],
+	"settings": {
+		"stm32cube-ide-clangd.path": "cube"
+	}
+}

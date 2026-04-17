@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<azone>
+    <rzone name="R7FA4M1AB3CFM.rzone"/>
+    <partition>
+        <peripheral name="PORT1.CM4" group="PORT">
+            <slot name="P108.CM4" secure="false"/>
+            <slot name="P109.CM4" secure="false"/>
+            <slot name="P110.CM4" secure="false"/>
+        </peripheral>
+        <peripheral name="PORT2.CM4" group="PORT">
+            <slot name="P204.CM4" secure="false"/>
+            <slot name="P212.CM4" secure="false"/>
+            <slot name="P213.CM4" secure="false"/>
+        </peripheral>
+        <peripheral name="PORT3.CM4" group="PORT">
+            <slot name="P300.CM4" secure="false"/>
+            <slot name="P301.CM4" secure="false"/>
+            <slot name="P302.CM4" secure="false"/>
+        </peripheral>
+        <peripheral name="PORT4.CM4" group="PORT">
+            <slot name="P409.CM4" secure="false"/>
+            <slot name="P410.CM4" secure="false"/>
+            <slot name="P411.CM4" secure="false"/>
+        </peripheral>
+        <peripheral name="SCI2.CM4" group="SCI" security=""/>
+        <peripheral name="DMA_DMAC0.CM4" group="DMA_DMAC" security=""/>
+        <peripheral name="ICU.CM4">
+            <slot name="IRQ0.CM4" secure="false"/>
+            <slot name="IRQ1.CM4" secure="false"/>
+            <slot name="IRQ2.CM4" secure="false"/>
+            <slot name="IRQ3.CM4" secure="false"/>
+        </peripheral>
+    </partition>
+</azone>
