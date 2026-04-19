@@ -1,5 +1,14 @@
 #include "hal_data.h"
 
+#include "tea.h"
+#include "cli.h"
+#include "clocks.h"
+#include "cli_transport_usart.h"
+
+// init_cli is defined in TimbreOS/cli.c but not declared in cli.h —
+// follow the convention used by the other board ports.
+void init_cli(void);
+
 #if (1 == BSP_MULTICORE_PROJECT) && BSP_TZ_SECURE_BUILD
 bsp_ipc_semaphore_handle_t g_core_start_semaphore =
 {
@@ -13,7 +22,11 @@ bsp_ipc_semaphore_handle_t g_core_start_semaphore =
  **********************************************************************************************************************/
 void hal_entry(void)
 {
-    /* TODO: add your own code here */
+    /* Enable the DWT cycle counter for hi-res timing (sysTicks()).
+     * Required by project_defs.h: #define sysTicks() (Long)(DWT->CYCCNT) */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL   |= DWT_CTRL_CYCCNTENA_Msk;
 
     /* Wake up 2nd core if this is first core and we are inside a multicore project. */
 #if (0 == _RA_CORE) && (1 == BSP_MULTICORE_PROJECT) && !BSP_TZ_NONSECURE_BUILD
@@ -44,6 +57,25 @@ void hal_entry(void)
     /* Enter non-secure code */
     R_BSP_NonSecureEnter();
 #endif
+
+    /* ── TimbreOS bring-up ────────────────────────────────────────────────
+     * Order matters:
+     *   init_tea()              — scheduler, action queue, time-event pool
+     *   init_clocks()           — GPT prescalar + tick_timer + delta_timer
+     *   usart_transport_init()  — SCI2 RX/TX, registers EmitEvent target
+     *   init_cli()              — parser, wordlist, prompt
+     * Then drop into the cooperative run loop. run() drains actionq once;
+     * wrapping it in while(1) keeps the scheduler pumping forever.
+     */
+    init_tea();
+    init_clocks();
+    usart_transport_init();
+    init_cli();
+
+    while (1) {
+        run();
+        micro_sleep();   // __WFI — wake on any interrupt (timer, UART RX/TX)
+    }
 }
 
 #if BSP_TZ_SECURE_BUILD

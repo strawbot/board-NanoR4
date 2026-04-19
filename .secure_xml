@@ -30,11 +30,11 @@
     <node id="board.clock.pclka.display" option="board.clock.pclka.display.value"/>
     <node id="board.clock.pclkb.div" option="board.clock.pclkb.div.2"/>
     <node id="board.clock.pclkb.display" option="board.clock.pclkb.display.value"/>
-    <node id="board.clock.pclkc.div" option="board.clock.pclkc.div.1"/>
+    <node id="board.clock.pclkc.div" option="board.clock.pclkc.div.2"/>
     <node id="board.clock.pclkc.display" option="board.clock.pclkc.display.value"/>
-    <node id="board.clock.pclkd.div" option="board.clock.pclkd.div.1"/>
+    <node id="board.clock.pclkd.div" option="board.clock.pclkd.div.2"/>
     <node id="board.clock.pclkd.display" option="board.clock.pclkd.display.value"/>
-    <node id="board.clock.fclk.div" option="board.clock.fclk.div.2"/>
+    <node id="board.clock.fclk.div" option="board.clock.fclk.div.16"/>
     <node id="board.clock.fclk.display" option="board.clock.fclk.display.value"/>
     <node id="board.clock.clkout.source" option="board.clock.clkout.source.disabled"/>
     <node id="board.clock.clkout.div" option="board.clock.clkout.div.1"/>
@@ -44,16 +44,16 @@
   </raClockConfiguration>
   <raPinConfiguration>
     <pincfg active="true" name="" symbol="">
-      <configSetting altId="cgc0.extal.p212" configurationId="cgc0.extal" peripheral="CGC0"/>
-      <configSetting altId="cgc0.xtal.p213" configurationId="cgc0.xtal" peripheral="CGC0"/>
-      <configSetting altId="debug0.tck.p300" configurationId="debug0.tck" peripheral="DEBUG0"/>
-      <configSetting altId="debug0.tdi.p110" configurationId="debug0.tdi" peripheral="DEBUG0"/>
-      <configSetting altId="debug0.tdo.p109" configurationId="debug0.tdo" peripheral="DEBUG0"/>
-      <configSetting altId="debug0.tms.p108" configurationId="debug0.tms" peripheral="DEBUG0"/>
-      <configSetting altId="gpt4.gtiocb.p204" configurationId="gpt4.gtiocb" peripheral="GPT4"/>
+      <configSetting altId="cgc0.extal.p212" configurationId="cgc0.extal" isUsedByDriver="true" peripheral="CGC0"/>
+      <configSetting altId="cgc0.xtal.p213" configurationId="cgc0.xtal" isUsedByDriver="true" peripheral="CGC0"/>
+      <configSetting altId="debug0.tck.p300" configurationId="debug0.tck" isUsedByDriver="true" peripheral="DEBUG0"/>
+      <configSetting altId="debug0.tdi.p110" configurationId="debug0.tdi" isUsedByDriver="true" peripheral="DEBUG0"/>
+      <configSetting altId="debug0.tdo.p109" configurationId="debug0.tdo" isUsedByDriver="true" peripheral="DEBUG0"/>
+      <configSetting altId="debug0.tms.p108" configurationId="debug0.tms" isUsedByDriver="true" peripheral="DEBUG0"/>
       <configSetting altId="gpt5.gtioca.p409" configurationId="gpt5.gtioca" peripheral="GPT5"/>
       <configSetting altId="gpt6.gtioca.p411" configurationId="gpt6.gtioca" peripheral="GPT6"/>
       <configSetting altId="gpt6.gtiocb.p410" configurationId="gpt6.gtiocb" peripheral="GPT6"/>
+      <configSetting altId="p204.output.low" configurationId="p204"/>
       <configSetting altId="sci2.rxd.p301" configurationId="sci2.rxd" isUsedByDriver="true" peripheral="SCI2"/>
       <configSetting altId="sci2.txd.p302" configurationId="sci2.txd" isUsedByDriver="true" peripheral="SCI2"/>
     </pincfg>

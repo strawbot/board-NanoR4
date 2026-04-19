@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include "bsp_api.h"
 #include "common_data.h"
+#include "r_gpt.h"
+#include "r_timer_api.h"
+#include "r_rtc.h"
+#include "r_rtc_api.h"
 #include "r_dmac.h"
 #include "r_transfer_api.h"
 #include "r_dtc.h"
@@ -11,6 +15,46 @@
 #include "r_sci_uart.h"
             #include "r_uart_api.h"
 FSP_HEADER
+/** Timer on GPT Instance. */
+extern const timer_instance_t prescalar;
+
+/** Access the GPT instance using these structures when calling API functions directly (::p_api is not used). */
+extern gpt_instance_ctrl_t prescalar_ctrl;
+extern const timer_cfg_t prescalar_cfg;
+
+#ifndef NULL
+void NULL(timer_callback_args_t * p_args);
+#endif
+/** Timer on GPT Instance. */
+extern const timer_instance_t delta_timer;
+
+/** Access the GPT instance using these structures when calling API functions directly (::p_api is not used). */
+extern gpt_instance_ctrl_t delta_timer_ctrl;
+extern const timer_cfg_t delta_timer_cfg;
+
+#ifndef delta_timer_cb
+void delta_timer_cb(timer_callback_args_t * p_args);
+#endif
+/** Timer on GPT Instance. */
+extern const timer_instance_t tick_timer;
+
+/** Access the GPT instance using these structures when calling API functions directly (::p_api is not used). */
+extern gpt_instance_ctrl_t tick_timer_ctrl;
+extern const timer_cfg_t tick_timer_cfg;
+
+#ifndef NULL
+void NULL(timer_callback_args_t * p_args);
+#endif
+/* RTC Instance. */
+extern const rtc_instance_t g_rtc0;
+
+/** Access the RTC instance using these structures when calling API functions directly (::p_api is not used). */
+extern rtc_instance_ctrl_t g_rtc0_ctrl;
+extern const rtc_cfg_t g_rtc0_cfg;
+
+#ifndef NULL
+void NULL(rtc_callback_args_t * p_args);
+#endif
 /* Transfer on DMAC Instance. */
 extern const transfer_instance_t g_transfer0;
 
