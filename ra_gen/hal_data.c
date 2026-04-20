@@ -145,7 +145,7 @@ const gpt_extended_cfg_t delta_timer_extend =
     .start_source        = (gpt_source_t) ( GPT_SOURCE_NONE),
     .stop_source         = (gpt_source_t) ( GPT_SOURCE_NONE),
     .clear_source        = (gpt_source_t) ( GPT_SOURCE_NONE),
-    .count_up_source     = (gpt_source_t) (GPT_SOURCE_GPT_A |  GPT_SOURCE_NONE),
+    .count_up_source     = (gpt_source_t) ( GPT_SOURCE_NONE),  /* HAND-EDIT: was GPT_SOURCE_GPT_A; cascade dead — run on PCLKD */
     .count_down_source   = (gpt_source_t) ( GPT_SOURCE_NONE),
     .capture_a_source    = (gpt_source_t) ( GPT_SOURCE_NONE),
     .capture_b_source    = (gpt_source_t) ( GPT_SOURCE_NONE),
@@ -194,8 +194,8 @@ const gpt_extended_cfg_t delta_timer_extend =
 
 const timer_cfg_t delta_timer_cfg =
 {
-    .mode                = TIMER_MODE_ONE_SHOT,
-    /* Actual period: 0.00204796875 seconds. Actual duty: 49.999237048905165%. */ .period_counts = (uint32_t) 0xffff, .duty_cycle_counts = 0x7fff, .source_div = (timer_source_div_t)0,
+    .mode                = TIMER_MODE_PERIODIC,  /* HAND-EDIT (TEST): was ONE_SHOT — if PERIODIC fires ISR, ONE_SHOT is the issue */
+    /* HAND-EDIT: source_div was 0 (/1, cascaded); now 10 (/1024) — PCLKD/1024 @ 32 MHz = 31.25 kHz (32 µs/tick), 16-bit max = 2.097 s. */ .period_counts = (uint32_t) 0xffff, .duty_cycle_counts = 0x7fff, .source_div = (timer_source_div_t)10,
     .channel             = 2,
     .p_callback          = delta_timer_cb,
     /** If NULL then do not add & */
@@ -205,7 +205,7 @@ const timer_cfg_t delta_timer_cfg =
     .p_context           = (void *) &NULL,
 #endif
     .p_extend            = &delta_timer_extend,
-    .cycle_end_ipl       = (0),
+    .cycle_end_ipl       = (12),  /* HAND-EDIT (TEST): was (0) — try mid-priority in case 0 is reserved */
 #if defined(VECTOR_NUMBER_GPT2_COUNTER_OVERFLOW)
     .cycle_end_irq       = VECTOR_NUMBER_GPT2_COUNTER_OVERFLOW,
 #else
@@ -253,8 +253,8 @@ const gpt_extended_cfg_t tick_timer_extend =
               },
     .start_source        = (gpt_source_t) ( GPT_SOURCE_NONE),
     .stop_source         = (gpt_source_t) ( GPT_SOURCE_NONE),
-    .clear_source        = (gpt_source_t) (GPT_SOURCE_GPT_A |  GPT_SOURCE_NONE),
-    .count_up_source     = (gpt_source_t) (GPT_SOURCE_GPT_A |  GPT_SOURCE_NONE),
+    .clear_source        = (gpt_source_t) ( GPT_SOURCE_NONE),  /* HAND-EDIT: was GPT_SOURCE_GPT_A; cascade dead */
+    .count_up_source     = (gpt_source_t) ( GPT_SOURCE_NONE),  /* HAND-EDIT: was GPT_SOURCE_GPT_A; now PCLKD */
     .count_down_source   = (gpt_source_t) ( GPT_SOURCE_NONE),
     .capture_a_source    = (gpt_source_t) ( GPT_SOURCE_NONE),
     .capture_b_source    = (gpt_source_t) ( GPT_SOURCE_NONE),
@@ -304,7 +304,7 @@ const gpt_extended_cfg_t tick_timer_extend =
 const timer_cfg_t tick_timer_cfg =
 {
     .mode                = TIMER_MODE_PERIODIC,
-    /* Actual period: 4294.967294 seconds. Actual duty: 49.999999976716936%. */ .period_counts = (uint32_t) 0x7fffffff, .duty_cycle_counts = 0x3fffffff, .source_div = (timer_source_div_t)6,
+    /* HAND-EDIT: source_div was 6 (/64, cascaded); now 10 (/1024) — PCLKD/1024 = 31.25 kHz = 32 µs/tick; 32-bit rollover ≈ 38 h. */ .period_counts = (uint32_t) 0x7fffffff, .duty_cycle_counts = 0x3fffffff, .source_div = (timer_source_div_t)10,
     .channel             = 0,
     .p_callback          = NULL,
     /** If NULL then do not add & */

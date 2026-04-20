@@ -7,7 +7,9 @@
    * so VTOR lines up when the bootloader jumps to us.
    *
    * WARNING: RASC will overwrite this file if you re-run "Generate Project
-   * Content". Either keep a patch note, or add a post-generation hook.
+   * Content". After every RASC regenerate, check this file — if FLASH_START
+   * is back to 0x440 / FLASH_GAP_START is 0, restore this hand-edited copy
+   * (git checkout Nano/memory_regions.ld), then `pio run -t clean && pio run`.
    *
    * Original RASC defaults (no-bootloader, raw-chip layout):
    *   FLASH_START = 0x00000440   FLASH_LENGTH = 0x0003FBC0

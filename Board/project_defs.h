@@ -40,7 +40,7 @@ void output();
 // UTC and time event clocks
 // RA4M1 ICLK = 32 MHz (XTAL 16 MHz × 8 / 2 / 2 via PLL; see bsp_clock_cfg.h).
 #define CLOCK_MHZ 32u
-#define ONE_SECOND (10000)	// for UTC 100us res
+#define ONE_SECOND (31250)	// PCLKD/1024 @ 32 MHz = 31.25 kHz → 32 µs/tick
 #define TE_SECOND ONE_SECOND    // for Delta timer
 #define get_utc() 0  // utc in seconds
 
