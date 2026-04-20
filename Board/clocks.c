@@ -55,8 +55,10 @@
 #include "tea.h"
 #include "printers.h"
 #include "cli.h"
+#include "clocks.h"
 #include "project_defs.h"
-#include <time.h>
+// Intentionally NOT including <time.h>: newlib's mktime/tzset can hang on
+// bare-metal. See timestamp_to_utc() below for the hand-rolled replacement.
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -77,36 +79,118 @@ void delta_timer_cb(timer_callback_args_t * p_args);
 #define DELTA_MAX_TICKS  0xFFFFu
 
 // ── UTC time-of-build helper ───────────────────────────────────────────────
-// Parse __TIMESTAMP__ string ("Www Mmm DD HH:MM:SS YYYY") into a UTC Unix timestamp.
+//
+// DO NOT call newlib's mktime(), tzset(), or sscanf() here. On bare-metal
+// newlib:
+//   · mktime()/tzset() pull in lock retargeting and sometimes _sbrk /
+//     _gettimeofday. If those aren't fully satisfied at link time the call
+//     spins forever.
+//   · sscanf() drags in the full stdio FILE machinery, locale init, and in
+//     some builds _malloc_r / _sbrk_r. If the heap isn't wired up the
+//     malloc retry path can also spin forever.
+// Observed symptom of both: init_clocks() never returns, firmware hangs
+// silently between boot_alive_blink and usart_transport_init — no output,
+// no heartbeat, no hint that the hang is inside a time-conversion call.
+//
+// __TIMESTAMP__ has a rigid fixed-width format — "Www Mmm DD HH:MM:SS YYYY"
+// — so a fixed-offset positional parser does the job with zero libc.
 static Long timestamp_to_utc(const char *ts) {
-    static const char * const mon_names[] = {
-        "Jan","Feb","Mar","Apr","May","Jun",
-        "Jul","Aug","Sep","Oct","Nov","Dec"
+    static const char mon_names[12][3] = {
+        {'J','a','n'},{'F','e','b'},{'M','a','r'},{'A','p','r'},
+        {'M','a','y'},{'J','u','n'},{'J','u','l'},{'A','u','g'},
+        {'S','e','p'},{'O','c','t'},{'N','o','v'},{'D','e','c'}
     };
-    struct tm t = {0};
-    char wday[4], mon[4];
-    int day, hour, min, sec, year;
+    // Tiny positional decimal reader: skips any non-digit (covers the
+    // space-padded single-digit day that some compilers emit).
+    #define DIG(c) ((c) >= '0' && (c) <= '9' ? (c) - '0' : 0)
 
-    sscanf(ts, "%3s %3s %d %d:%d:%d %d",
-           wday, mon, &day, &hour, &min, &sec, &year);
+    // Offsets:  "Www Mmm DD HH:MM:SS YYYY"
+    //            0   4   8  11 14 17 20
+    int day   = DIG(ts[8])  * 10 + DIG(ts[9]);
+    int hour  = DIG(ts[11]) * 10 + DIG(ts[12]);
+    int min   = DIG(ts[14]) * 10 + DIG(ts[15]);
+    int sec   = DIG(ts[17]) * 10 + DIG(ts[18]);
+    int year  = DIG(ts[20]) * 1000 + DIG(ts[21]) * 100
+              + DIG(ts[22]) * 10   + DIG(ts[23]);
+    #undef DIG
 
-    t.tm_mday  = day;
-    t.tm_hour  = hour;
-    t.tm_min   = min;
-    t.tm_sec   = sec;
-    t.tm_year  = year - 1900;
-    t.tm_isdst = 0;
+    int month = 1;
     for (int i = 0; i < 12; i++) {
-        if (strncmp(mon, mon_names[i], 3) == 0) { t.tm_mon = i; break; }
+        if (ts[4] == mon_names[i][0] &&
+            ts[5] == mon_names[i][1] &&
+            ts[6] == mon_names[i][2]) {
+            month = i + 1;
+            break;
+        }
     }
-    // mktime() on newlib bare-metal treats struct tm as UTC (no tz offset)
-    return (Long)mktime(&t);
+
+    // Howard Hinnant's days_from_civil — returns days since 1970-01-01,
+    // correct for the full proleptic Gregorian range, no libc calls.
+    int y   = (month <= 2) ? (year - 1) : year;
+    int era = (y >= 0 ? y : y - 399) / 400;
+    unsigned yoe = (unsigned)(y - era * 400);                          // [0, 399]
+    unsigned doy = (153u * (unsigned)(month + (month > 2 ? -3 : 9)) + 2u) / 5u
+                 + (unsigned)(day - 1);                                // [0, 365]
+    unsigned doe = yoe * 365u + yoe / 4u - yoe / 100u + doy;           // [0, 146096]
+    long days = (long)era * 146097L + (long)doe - 719468L;             // epoch 1970-01-01
+
+    return (Long)(days * 86400L + (long)hour * 3600L + (long)min * 60L + (long)sec);
 }
 
-// STUB: RTC integration deferred. Replace with R_RTC_CalendarTimeSet(&g_rtc0_ctrl, ...)
-// once the r_rtc stack is opened and we have a Unix-epoch → struct tm helper.
+// ── Software-maintained UTC ────────────────────────────────────────────────
+//
+// No hardware RTC is open yet (deferred until the r_rtc stack is wired up).
+// Instead we maintain UTC in software, seeded from the build timestamp in
+// init_clocks() via set_utc(timestamp_to_utc(__TIMESTAMP__)).
+//
+// State model:
+//   boot_utc = UTC epoch value that corresponds to tick-counter == 0.
+//   current  = boot_utc + (accumulated_ticks / ONE_SECOND).
+//
+// The tick counter (GPT0) is 32-bit and rolls over every ~38 hours at
+// 32 µs/tick. We extend it to 64 bits in software by detecting wrap on each
+// call to extended_ticks(). That requires extended_ticks() to be called at
+// least once per rollover period — init_clocks() schedules a periodic tick
+// (utc_heartbeat) every few minutes so the wrap never slips past us even
+// when no CLI user is prodding show-time.
+//
+// When the RTC stack is opened, replace the body of tick_get_utc() with
+// R_RTC_CalendarTimeGet() and the civil-to-epoch conversion, and drop the
+// extended_ticks() machinery.
+static Long boot_utc = 0;
+
+static uint64_t extended_ticks(void) {
+    static uint32_t last_low = 0;
+    static uint64_t high     = 0;
+    uint64_t result;
+    // ENTER_REGION / LEAVE_REGION expand to a compound { ... } block, so any
+    // variable we want to read AFTER the region must be declared before it.
+    ENTER_REGION()
+    uint32_t now = (uint32_t)get_ticks();
+    if (now < last_low) {
+        high += 0x100000000ULL;   // tick_timer wrapped
+    }
+    last_low = now;
+    result = high + now;
+    LEAVE_REGION()
+    return result;
+}
+
 void set_utc(Long utc) {
-    (void)utc;
+    uint64_t t = extended_ticks();
+    boot_utc = utc - (Long)(t / (uint64_t)ONE_SECOND);
+}
+
+Long tick_get_utc(void) {
+    uint64_t t = extended_ticks();
+    return boot_utc + (Long)(t / (uint64_t)ONE_SECOND);
+}
+
+// Periodic poke so extended_ticks() never goes more than a few minutes
+// between observations — guarantees we never miss a 32-bit rollover.
+static void utc_heartbeat(void) {
+    (void)extended_ticks();
+    in(secs(600), utc_heartbeat);   // every 10 minutes
 }
 
 void over_due() { /* incCtr(overDueTea); */ }
@@ -154,7 +238,10 @@ void show_timer() {
     printDec(ONE_SECOND);
     print("  ticks:");
     printDec(get_ticks());
-    print("  "), print_RTC();
+    print("  UTC:");
+    printDec(get_utc());
+    print("  ");
+    print_RTC();
 }
 
 // WFI is portable across Cortex-M — sleeps until any interrupt wakes the core.
@@ -180,7 +267,6 @@ static void blink_leds() {
     in(msec(t), blink_leds);
 }
 
-void blink();
 // ── init ───────────────────────────────────────────────────────────────────
 void init_clocks() {
     // IOPORT was opened by R_BSP_WarmStart() during BSP bring-up, before main().
@@ -201,7 +287,15 @@ void init_clocks() {
     // usart_transport_init(), so emitq has no drain path and output() will
     // spin forever if we enqueue anything. The build banner is printed from
     // hal_entry() after the transport is up.
-//    set_utc(timestamp_to_utc(__TIMESTAMP__));
+    //
+    // timestamp_to_utc() is safe to call here — it's pure arithmetic. It
+    // does NOT call newlib's mktime() or sscanf(), which hang on bare-metal
+    // (see the comment block above the function definition).
+    set_utc(timestamp_to_utc(__TIMESTAMP__));
+
+    // Arm the periodic 32→64-bit rollover tracker; see extended_ticks().
+    later(utc_heartbeat);
+    namedAction(utc_heartbeat);
 }
 
 // Print the build timestamp banner. Safe to call ONLY after

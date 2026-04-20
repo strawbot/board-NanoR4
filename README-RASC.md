@@ -116,6 +116,22 @@ markers are still present, or diff against the last-known-good version.
    SysTick). The application vector table (`g_vector_table`) is placed
    immediately after, so IRQ 0 is at VTOR+0x40, IRQ N at VTOR+0x40+4N.
 
+6. **Don't call newlib `mktime()`, `tzset()`, or `sscanf()` on bare-metal.**
+   Observed symptom: `init_clocks()` never returns, firmware hangs silently
+   between `boot_alive_blink()` and `usart_transport_init()` — no output,
+   no heartbeat, no hint that the hang is inside the time helper.
+   Root causes:
+   - `mktime()` pulls in `tzset()` (which may read a `TZ` env var),
+     retargetable locks, and in some link configurations `_sbrk` /
+     `_gettimeofday`.
+   - `sscanf()` drags in the full stdio FILE machinery, locale init, and
+     in some builds `_malloc_r` / `_sbrk_r`.
+   If any of those dependencies aren't fully satisfied at link time, the
+   call spins forever. Use hand-rolled arithmetic instead: a fixed-offset
+   positional parser for `__TIMESTAMP__` and Howard Hinnant's closed-form
+   `days_from_civil` for the civil-to-epoch conversion. See
+   `timestamp_to_utc()` in `Board/clocks.c`.
+
 ## Build / flash
 
 ```sh

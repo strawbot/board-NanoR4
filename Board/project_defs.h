@@ -42,7 +42,10 @@ void output();
 #define CLOCK_MHZ 32u
 #define ONE_SECOND (31250)	// PCLKD/1024 @ 32 MHz = 31.25 kHz → 32 µs/tick
 #define TE_SECOND ONE_SECOND    // for Delta timer
-#define get_utc() 0  // utc in seconds
+// Software-maintained UTC — seeded from __TIMESTAMP__ at boot (see clocks.c).
+// Hardware RTC integration is deferred; implementation lives in Board/clocks.c.
+Long tick_get_utc(void);
+#define get_utc() tick_get_utc()
 
 // Hi res time measurements
 // 32 MHz DWT cycle counter ticks; 31.25 ns resolution
@@ -96,5 +99,7 @@ void user_return();
  * \return the converted number of micro-second.
  */
 #define cpu_cy_2_us(cy, fcpu_hz) (((Octet)(cy) * 1000000 + (fcpu_hz)-1) / (fcpu_hz))
+
+void blink(); // for debugging; insert to create a single LED blink
 
 #endif
