@@ -194,8 +194,8 @@ const gpt_extended_cfg_t delta_timer_extend =
 
 const timer_cfg_t delta_timer_cfg =
 {
-    .mode                = TIMER_MODE_PERIODIC,  /* HAND-EDIT (TEST): was ONE_SHOT — if PERIODIC fires ISR, ONE_SHOT is the issue */
-    /* HAND-EDIT: source_div was 0 (/1, cascaded); now 10 (/1024) — PCLKD/1024 @ 32 MHz = 31.25 kHz (32 µs/tick), 16-bit max = 2.097 s. */ .period_counts = (uint32_t) 0xffff, .duty_cycle_counts = 0x7fff, .source_div = (timer_source_div_t)10,
+    .mode                = TIMER_MODE_ONE_SHOT,  /* HAND-EDIT: TEA scheduler needs one-shot semantics; set_delta_alarm re-arms each time. */
+    /* HAND-EDIT: source_div = 10 (/1024) — PCLKD/1024 @ 32 MHz = 31.25 kHz (32 µs/tick), 16-bit max = 2.097 s. */ .period_counts = (uint32_t) 0xffff, .duty_cycle_counts = 0x7fff, .source_div = (timer_source_div_t)10,
     .channel             = 2,
     .p_callback          = delta_timer_cb,
     /** If NULL then do not add & */
@@ -205,7 +205,7 @@ const timer_cfg_t delta_timer_cfg =
     .p_context           = (void *) &NULL,
 #endif
     .p_extend            = &delta_timer_extend,
-    .cycle_end_ipl       = (12),  /* HAND-EDIT (TEST): was (0) — try mid-priority in case 0 is reserved */
+    .cycle_end_ipl       = (12),  /* HAND-EDIT: IPL 0 is treated as "disabled" by the NVIC/BSP — use a mid priority. */
 #if defined(VECTOR_NUMBER_GPT2_COUNTER_OVERFLOW)
     .cycle_end_irq       = VECTOR_NUMBER_GPT2_COUNTER_OVERFLOW,
 #else

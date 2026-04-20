@@ -12,6 +12,7 @@
 Long get_ticks();
 void show_timer();
 void init_clocks(void);
+void print_build_banner(void);
 void set_delta_alarm(Long t);
 void over_due();
 void micro_sleep();
