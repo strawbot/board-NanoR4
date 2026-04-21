@@ -3,18 +3,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CLOCK ARCHITECTURE
 // ─────────────────────────────────────────────────────────────────────────────
-// Two GPT channels, both running directly off PCLKD/1024.
+// Two GPT channels plus the on-chip RTC:
 //
 //   tick_timer  — GPT0, 32-bit free-running uptime counter.
 //                 PCLKD/1024 @ 32 MHz → 31.25 kHz → 32 µs/tick.
 //                 Period = 0x7FFFFFFF (rollover ≈ 38 hours).
+//                 Feeds sysTicks() / get_ticks() for the TEA scheduler.
 //   delta_timer — GPT2, 16-bit one-shot alarm used by set_delta_alarm().
 //                 PCLKD/1024 @ 32 MHz, same 32 µs tick units.
 //                 Max one-shot period ≈ 2.097 s (0xFFFF ticks);
 //                 longer alarms re-arm via the scheduler.
-//
-// RTC integration is stubbed (set_utc / print_RTC) until the r_rtc stack is
-// brought online.
+//   g_rtc0      — IRTC running off LOCO (internal ~32 kHz RC oscillator).
+//                 Nano R4 has NO 32.768 kHz sub-clock crystal — schematic
+//                 only populates the 16 MHz main XO — so LOCO is the only
+//                 option for the RTC count source. Drifts ±15% per
+//                 datasheet, so wall-clock UTC needs external correction
+//                 over long intervals. Holds time across warm resets as
+//                 long as MCU power is maintained. Exposed via get_utc()
+//                 (see project_defs.h → tick_get_utc below).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTES ACCUMULATED DURING BRING-UP (read before touching GPT/ELC config)
@@ -57,11 +63,14 @@
 #include "cli.h"
 #include "clocks.h"
 #include "project_defs.h"
-// Intentionally NOT including <time.h>: newlib's mktime/tzset can hang on
-// bare-metal. See timestamp_to_utc() below for the hand-rolled replacement.
+// <time.h> is included ONLY for the `struct tm` typedef — the FSP RTC API
+// uses it (rtc_time_t is a typedef for struct tm). We never call mktime,
+// gmtime, tzset, strftime, etc., which hang on bare-metal; see the comment
+// block above timestamp_to_utc().
+#include <time.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
 // IOPORT is opened by RASC's hal_warmstart.c before main() runs — we just
 // reach into the generated g_ioport_ctrl for PinWrite calls. No R_IOPORT_Open
@@ -137,60 +146,97 @@ static Long timestamp_to_utc(const char *ts) {
     return (Long)(days * 86400L + (long)hour * 3600L + (long)min * 60L + (long)sec);
 }
 
-// ── Software-maintained UTC ────────────────────────────────────────────────
+// ── Hardware RTC (IRTC on LOCO — internal ~32 kHz RC oscillator) ──────────
 //
-// No hardware RTC is open yet (deferred until the r_rtc stack is wired up).
-// Instead we maintain UTC in software, seeded from the build timestamp in
-// init_clocks() via set_utc(timestamp_to_utc(__TIMESTAMP__)).
+// The RA4M1 IRTC runs off LOCO on this board. The Nano R4 schematic does
+// NOT populate a 32.768 kHz sub-clock crystal — only the 16 MHz main XO —
+// so SOSC is dead and LOCO is the only viable count source. LOCO has
+// ±15% accuracy per datasheet, which is poor for wall time, but it keeps
+// counting across warm resets and the RTC is self-correcting once a
+// trusted time source (NTP, GPS, CLI set-utc) is applied.
 //
-// State model:
-//   boot_utc = UTC epoch value that corresponds to tick-counter == 0.
-//   current  = boot_utc + (accumulated_ticks / ONE_SECOND).
+// Configuration lives in ra_gen/hal_data.c (.clock_source = LOCO), and
+// bsp_cfg.h is patched to BSP_CLOCK_CFG_SUBCLOCK_POPULATED=0 so BSP does
+// not try to start SOSC (which would hang or burn a full second waiting
+// for an oscillator that can never come up).
 //
-// The tick counter (GPT0) is 32-bit and rolls over every ~38 hours at
-// 32 µs/tick. We extend it to 64 bits in software by detecting wrap on each
-// call to extended_ticks(). That requires extended_ticks() to be called at
-// least once per rollover period — init_clocks() schedules a periodic tick
-// (utc_heartbeat) every few minutes so the wrap never slips past us even
-// when no CLI user is prodding show-time.
+// FSP's rtc_time_t is typedef'd to struct tm. Standard C semantics apply:
+// tm_year = years since 1900, tm_mon = 0..11.
 //
-// When the RTC stack is opened, replace the body of tick_get_utc() with
-// R_RTC_CalendarTimeGet() and the civil-to-epoch conversion, and drop the
-// extended_ticks() machinery.
-static Long boot_utc = 0;
+// set_utc(utc):           epoch → struct tm → R_RTC_CalendarTimeSet
+// tick_get_utc():         R_RTC_CalendarTimeGet → struct tm → epoch
+//
+// On boot the RTC is seeded from __TIMESTAMP__, but only if the hardware
+// holds a time earlier than the build timestamp (or obvious garbage). That
+// preserves RTC progress across warm resets while still initializing a
+// cold-boot RTC that holds nonsense.
 
-static uint64_t extended_ticks(void) {
-    static uint32_t last_low = 0;
-    static uint64_t high     = 0;
-    uint64_t result;
-    // ENTER_REGION / LEAVE_REGION expand to a compound { ... } block, so any
-    // variable we want to read AFTER the region must be declared before it.
-    ENTER_REGION()
-    uint32_t now = (uint32_t)get_ticks();
-    if (now < last_low) {
-        high += 0x100000000ULL;   // tick_timer wrapped
-    }
-    last_low = now;
-    result = high + now;
-    LEAVE_REGION()
-    return result;
+// Epoch → struct tm using Hinnant's civil_from_days. No libc time calls.
+static void epoch_to_tm(Long utc, struct tm *t) {
+    long days = (long)utc / 86400L;
+    long sod  = (long)utc - days * 86400L;
+    if (sod < 0) { sod += 86400L; days -= 1L; }
+
+    t->tm_hour = (int)(sod / 3600L);
+    t->tm_min  = (int)((sod % 3600L) / 60L);
+    t->tm_sec  = (int)(sod % 60L);
+
+    // Day of week: 1970-01-01 was Thursday → wday 4 at days 0.
+    long wd = ((days % 7L) + 4L) % 7L;
+    if (wd < 0) wd += 7L;
+    t->tm_wday = (int)wd;
+
+    // civil_from_days (epoch shifted to 0000-03-01 internally).
+    days += 719468L;
+    long era = (days >= 0 ? days : days - 146096L) / 146097L;
+    unsigned doe = (unsigned)(days - era * 146097L);                    // [0, 146096]
+    unsigned yoe = (doe - doe / 1460u + doe / 36524u - doe / 146096u) / 365u;
+    long y       = (long)yoe + era * 400L;
+    unsigned doy = doe - (365u * yoe + yoe / 4u - yoe / 100u);
+    unsigned mp  = (5u * doy + 2u) / 153u;                              // [0, 11]
+    unsigned d   = doy - (153u * mp + 2u) / 5u + 1u;                    // [1, 31]
+    unsigned m   = mp < 10u ? mp + 3u : mp - 9u;                        // [1, 12]
+    int year     = (int)(y + (m <= 2 ? 1 : 0));
+
+    t->tm_year  = year - 1900;
+    t->tm_mon   = (int)m - 1;
+    t->tm_mday  = (int)d;
+    t->tm_yday  = 0;                     // FSP doesn't use; 0 is fine
+    t->tm_isdst = 0;
+}
+
+// struct tm → epoch using Hinnant's days_from_civil. No libc time calls.
+static Long tm_to_epoch(const struct tm *t) {
+    int year  = t->tm_year + 1900;
+    int month = t->tm_mon + 1;
+    int day   = t->tm_mday;
+    int hour  = t->tm_hour;
+    int min   = t->tm_min;
+    int sec   = t->tm_sec;
+
+    int y   = (month <= 2) ? (year - 1) : year;
+    int era = (y >= 0 ? y : y - 399) / 400;
+    unsigned yoe = (unsigned)(y - era * 400);
+    unsigned doy = (153u * (unsigned)(month + (month > 2 ? -3 : 9)) + 2u) / 5u
+                 + (unsigned)(day - 1);
+    unsigned doe = yoe * 365u + yoe / 4u - yoe / 100u + doy;
+    long days    = (long)era * 146097L + (long)doe - 719468L;
+
+    return (Long)(days * 86400L + (long)hour * 3600L + (long)min * 60L + (long)sec);
 }
 
 void set_utc(Long utc) {
-    uint64_t t = extended_ticks();
-    boot_utc = utc - (Long)(t / (uint64_t)ONE_SECOND);
+    struct tm t;
+    epoch_to_tm(utc, &t);
+    R_RTC_CalendarTimeSet(&g_rtc0_ctrl, &t);
 }
 
 Long tick_get_utc(void) {
-    uint64_t t = extended_ticks();
-    return boot_utc + (Long)(t / (uint64_t)ONE_SECOND);
-}
-
-// Periodic poke so extended_ticks() never goes more than a few minutes
-// between observations — guarantees we never miss a 32-bit rollover.
-static void utc_heartbeat(void) {
-    (void)extended_ticks();
-    in(secs(600), utc_heartbeat);   // every 10 minutes
+    struct tm t;
+    if (R_RTC_CalendarTimeGet(&g_rtc0_ctrl, &t) != FSP_SUCCESS) {
+        return 0;
+    }
+    return tm_to_epoch(&t);
 }
 
 void over_due() { /* incCtr(overDueTea); */ }
@@ -268,6 +314,23 @@ static void blink_leds() {
 }
 
 // ── init ───────────────────────────────────────────────────────────────────
+//
+// RTC_BRINGUP_STAGE lets us bisect the hang in the RTC init path without
+// losing the CLI. Each stage is strictly additive: if stage N boots to a
+// live heartbeat+CLI but stage N+1 hangs, the offending call is the one
+// added between them.
+//
+//   0 — no RTC init at all (last known-good if RTC is the culprit)
+//   1 — un-MSTP the RTC only
+//   2 — add R_RTC_Open()
+//   3 — add R_RTC_CalendarTimeGet()
+//   4 — add R_RTC_CalendarTimeSet() (full bring-up)
+//
+// Test one step at a time, then ratchet back to 4 once all steps pass.
+#ifndef RTC_BRINGUP_STAGE
+#define RTC_BRINGUP_STAGE 4
+#endif
+
 void init_clocks() {
     // IOPORT was opened by R_BSP_WarmStart() during BSP bring-up, before main().
     // DWT cycle counter was enabled in hal_entry.c.
@@ -283,19 +346,49 @@ void init_clocks() {
     later(blink_leds);
     namedAction(blink_leds);
 
+    // ── Hardware RTC bring-up (staged — see RTC_BRINGUP_STAGE above) ───────
+    // LOCO is always running after reset (no external crystal required),
+    // so no BSP-side stabilization wait is needed.
+    //
+    // *** FSP QUIRK (verified against r_rtc.c in FSP 6.2.0): ***
+    // Unlike every other FSP driver (r_gpt, r_sci_uart, r_elc, r_dtc, …) the
+    // RTC driver's R_RTC_Open() does NOT call R_BSP_MODULE_START(FSP_IP_RTC,
+    // 0). On RA4M1 the RTC's MSTPCRD[23] bit is 1 after reset (module
+    // stopped), so writes to R_RTC->RCRn are silently dropped and the
+    // FSP_HARDWARE_REGISTER_WAIT calls inside r_rtc_set_clock_source() spin
+    // forever. Un-MSTP the RTC ourselves first.
+#if RTC_BRINGUP_STAGE >= 1
+    R_BSP_MODULE_START(FSP_IP_RTC, 0);
+#endif
+
+#if RTC_BRINGUP_STAGE >= 2
+    (void)R_RTC_Open(&g_rtc0_ctrl, &g_rtc0_cfg);
+#endif
+
+#if RTC_BRINGUP_STAGE >= 3
+    // Seeding policy: if the RTC already holds a sane, recent time, keep it.
+    // Otherwise fall through to stage 4 and seed from __TIMESTAMP__.
+    Long build_utc = timestamp_to_utc(__TIMESTAMP__);
+    bool seed = true;
+    struct tm rtc_now;
+    if (R_RTC_CalendarTimeGet(&g_rtc0_ctrl, &rtc_now) == FSP_SUCCESS) {
+        // Year 2020 threshold rejects an uninitialised/garbage RTC.
+        if (rtc_now.tm_year >= 120 && tm_to_epoch(&rtc_now) >= build_utc) {
+            seed = false;
+        }
+    }
+#endif
+
+#if RTC_BRINGUP_STAGE >= 4
+    if (seed) {
+        set_utc(build_utc);
+    }
+#endif
+
     // NOTE: do not print() here — init_clocks runs before
     // usart_transport_init(), so emitq has no drain path and output() will
     // spin forever if we enqueue anything. The build banner is printed from
     // hal_entry() after the transport is up.
-    //
-    // timestamp_to_utc() is safe to call here — it's pure arithmetic. It
-    // does NOT call newlib's mktime() or sscanf(), which hang on bare-metal
-    // (see the comment block above the function definition).
-    set_utc(timestamp_to_utc(__TIMESTAMP__));
-
-    // Arm the periodic 32→64-bit rollover tracker; see extended_ticks().
-    later(utc_heartbeat);
-    namedAction(utc_heartbeat);
 }
 
 // Print the build timestamp banner. Safe to call ONLY after

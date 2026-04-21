@@ -28,15 +28,12 @@ void show_sys(void) {
 }
 
 // ── timer survey ───────────────────────────────────────────────────────────
-// STUB: real GPT survey deferred. The RASC-opened timers are:
-//   prescalar   — GPT3  100 us periodic (count source for the others)
-//   tick_timer  — GPT0  32-bit free-running uptime
-//   delta_timer — GPT2  one-shot alarm (16-bit)
+// One-line summary of each clock source wired up by the port.
 void show_timers(void) {
     print("timers:"); printCr();
-    print("  prescalar   GPT3  periodic  (100 us tick)"); printCr();
-    print("  tick_timer  GPT0  up counter "); printDec(get_ticks()); printCr();
-    print("  delta_timer GPT2  one-shot alarm"); printCr();
+    print("  tick_timer  GPT0   32-bit free-running  count="); printDec(get_ticks()); printCr();
+    print("  delta_timer GPT2   16-bit one-shot alarm"); printCr();
+    print("  rtc         IRTC   sub-clock 32.768 kHz  ");
     print_RTC();
     printCr();
 }
@@ -49,10 +46,11 @@ void do_reboot(void) {
 
 // ── RTC ────────────────────────────────────────────────────────────────────
 //
-// Software-maintained UTC: seeded from __TIMESTAMP__ at boot (see
-// Board/clocks.c) and advanced by the tick timer. When the r_rtc stack is
-// opened, swap get_utc() / set_utc() to hit the hardware calendar; the
-// formatting here is agnostic.
+// get_utc() is backed by the hardware IRTC running off the 32.768 kHz
+// sub-clock XTAL; Board/clocks.c seeds it from __TIMESTAMP__ at boot if the
+// RTC doesn't already hold a later valid time (preserves progress across
+// warm resets). The formatting below is epoch-agnostic — works for either
+// software or hardware time sources.
 //
 // Epoch → YYYY-MM-DD HH:MM:SS using Howard Hinnant's closed-form
 // civil_from_days. Zero libc calls (no gmtime_r, no strftime) — avoids the
@@ -94,6 +92,16 @@ void print_RTC(void) {
     printDec0(y); print("-"); print2d(mo); print("-"); print2d(d);
     print(" ");
     print2d(hh); print(":"); print2d(mm); print(":"); print2d(ss);
+}
+
+// ── CLI wrapper: set RTC from a Unix epoch on the data stack ──────────────
+// Usage: `<epoch> set-utc`  — e.g. `1745000000 set-utc`
+// The bound CLI contract is `void f(void)`, so we pop the argument off the
+// TEA data stack with ret() and hand it to the typed setter in clocks.c.
+void cli_set_utc(void) {
+    Long utc = (Long)ret();
+    set_utc(utc);
+    print("set: "); print_RTC(); printCr();
 }
 
 // ── gpio_dump_all stub ─────────────────────────────────────────────────────

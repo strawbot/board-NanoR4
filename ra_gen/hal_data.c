@@ -338,7 +338,12 @@ const rtc_error_adjustment_cfg_t g_rtc0_err_cfg =
 };
 const rtc_cfg_t g_rtc0_cfg =
 {
-    .clock_source            = RTC_CLOCK_SOURCE_SUBCLK,
+    /* HAND-EDIT: Nano R4 has NO 32.768 kHz sub-clock crystal (verified from
+     * the Arduino schematic — only the 16 MHz main XO is populated). Use
+     * LOCO (internal ~32 kHz RC). Drifts ±15% so wall time needs external
+     * correction, but R_RTC_Open() hangs forever on SUBCLK here because
+     * r_rtc_set_clock_source() spins on RCR2.START sync to a dead source. */
+    .clock_source            = RTC_CLOCK_SOURCE_LOCO,
     .freq_compare_value = 255,
     .p_err_cfg               = &g_rtc0_err_cfg,
     .p_callback              = NULL,

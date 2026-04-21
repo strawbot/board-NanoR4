@@ -64,6 +64,11 @@ fix). The critical settings:
 | `tick_timer` | `source_div`       | `10` (i.e. /1024)               | 32 µs/tick matches `ONE_SECOND = 31250` in `Board/project_defs.h`.                                     |
 | `tick_timer` | `count_up_source`  | `GPT_SOURCE_NONE`               | See above.                                                                                             |
 | `tick_timer` | `clear_source`     | `GPT_SOURCE_NONE`               | See above.                                                                                             |
+| `g_rtc0`     | `clock_source`     | `RTC_CLOCK_SOURCE_LOCO`         | Nano R4 has NO 32.768 kHz sub-clock crystal (schematic only populates the 16 MHz main XO). LOCO is the only viable count source; drifts ±15% so wall time needs external correction. |
+| `g_rtc0`     | `carry_ipl`        | `12` (or any 1..14, not 0)      | **IPL 0 is treated as "disabled"**; matches the GPT gotcha.                                            |
+| bsp_cfg.h    | `BSP_CFG_RTC_USED` | `1`                             | Keep at 1 so FSP's RTC driver links; LOCO works without a sub-clock.                                   |
+| bsp_cfg.h    | `BSP_CLOCK_CFG_SUBCLOCK_POPULATED` | `0`             | No 32.768 kHz XTAL on board. Leaving this at 1 makes BSP try to start SOSC (silently fails) and burns a pointless 1 s wait.                       |
+| bsp_cfg.h    | `BSP_CLOCK_CFG_SUBCLOCK_STABILIZATION_MS` | `0`      | Irrelevant once POPULATED=0; zeroed for clarity.                                                       |
 
 After regenerating, `grep '/\* HAND-EDIT' ra_gen/hal_data.c` to confirm the
 markers are still present, or diff against the last-known-good version.
@@ -131,6 +136,40 @@ markers are still present, or diff against the last-known-good version.
    positional parser for `__TIMESTAMP__` and Howard Hinnant's closed-form
    `days_from_civil` for the civil-to-epoch conversion. See
    `timestamp_to_utc()` in `Board/clocks.c`.
+
+7. **`R_RTC_Open()` does NOT start the RTC module (MSTP) — unlike every
+   other FSP driver.** Verified against FSP 6.2.0 `ra/fsp/src/r_rtc/r_rtc.c`:
+   zero `R_BSP_MODULE_START` references. Meanwhile `r_gpt.c`, `r_sci_uart.c`,
+   `r_elc.c`, `r_dtc.c`, `r_dmac.c` all call `R_BSP_MODULE_START(FSP_IP_xxx,
+   channel)` at the top of their `_Open()`.
+   On RA4M1, `MSTPCRD[23]` (RTC) defaults to 1 (module stopped) after reset.
+   While stopped, writes to `R_RTC->RCRn` are silently dropped and reads
+   return 0, which makes every `FSP_HARDWARE_REGISTER_WAIT` inside
+   `r_rtc_set_clock_source()` → `r_rtc_start_bit_update()` spin forever.
+   Symptom: `init_clocks()` never returns, no serial, no heartbeat.
+   Fix: call `R_BSP_MODULE_START(FSP_IP_RTC, 0);` yourself before
+   `R_RTC_Open(&g_rtc0_ctrl, &g_rtc0_cfg)`. See `init_clocks()` in
+   `Board/clocks.c`.
+
+8. **Nano R4 has NO 32.768 kHz sub-clock crystal.** The Arduino schematic
+   only populates the 16 MHz main XO. Do not trust RASC's default
+   `RTC_CLOCK_SOURCE_SUBCLK` or `BSP_CLOCK_CFG_SUBCLOCK_POPULATED=1`.
+   Selecting SUBCLK makes `R_RTC_Open()` hang forever in FSP's
+   `r_rtc_set_clock_source()` — specifically at
+   `FSP_HARDWARE_REGISTER_WAIT(R_RTC->RCR2_b.START, 0)`, which synchronizes
+   to a tick of the selected count source. With no crystal, SOSC never
+   ticks, the wait is infinite, and the firmware hangs silently after the
+   MSTP un-stop (gotcha #7) succeeds.
+   Fix: use LOCO as the RTC count source instead (`.clock_source =
+   RTC_CLOCK_SOURCE_LOCO` in `g_rtc0_cfg`) and set
+   `BSP_CLOCK_CFG_SUBCLOCK_POPULATED = 0` so BSP doesn't waste a second
+   trying to start a phantom oscillator. LOCO drifts ±15% per datasheet,
+   so wall-clock UTC needs periodic correction from an external source
+   (NTP, GPS, CLI `set-utc`).
+   Bisection pattern that caught this: `RTC_BRINGUP_STAGE` in
+   `Board/clocks.c` (stages 0–4 add MSTP, Open, CalendarTimeGet,
+   CalendarTimeSet incrementally). Stage 1 passed, stage 2 hung → the bad
+   call was `R_RTC_Open()` itself, which pointed to the count source.
 
 ## Build / flash
 

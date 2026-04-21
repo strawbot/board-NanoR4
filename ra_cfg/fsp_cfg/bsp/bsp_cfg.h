@@ -50,11 +50,17 @@
             #ifndef BSP_CLOCK_CFG_SUBCLOCK_DRIVE
             #define BSP_CLOCK_CFG_SUBCLOCK_DRIVE (0)
             #endif
+            /* HAND-EDIT: Nano R4 has no 32.768 kHz sub-clock crystal
+             * populated (schematic has only the 16 MHz main XO). Declaring
+             * SUBCLOCK_POPULATED=0 skips BSP's SOSC start and stabilization
+             * wait — otherwise BSP_CFG_RTC_USED=1 would burn a full second
+             * waiting for an oscillator that can never start. RTC count
+             * source is LOCO; see ra_gen/hal_data.c g_rtc0_cfg. */
             #ifndef BSP_CLOCK_CFG_SUBCLOCK_POPULATED
-            #define BSP_CLOCK_CFG_SUBCLOCK_POPULATED (1)
+            #define BSP_CLOCK_CFG_SUBCLOCK_POPULATED (0)
             #endif
             #ifndef BSP_CLOCK_CFG_SUBCLOCK_STABILIZATION_MS
-            #define BSP_CLOCK_CFG_SUBCLOCK_STABILIZATION_MS 1000
+            #define BSP_CLOCK_CFG_SUBCLOCK_STABILIZATION_MS 0
             #endif
 
             #ifdef __cplusplus
