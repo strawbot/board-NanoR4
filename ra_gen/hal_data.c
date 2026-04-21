@@ -85,8 +85,8 @@ const gpt_extended_cfg_t delta_timer_extend =
 
 const timer_cfg_t delta_timer_cfg =
 {
-    .mode                = TIMER_MODE_ONE_SHOT,  /* HAND-EDIT: TEA scheduler needs one-shot semantics; set_delta_alarm re-arms each time. */
-    /* HAND-EDIT: source_div = 10 (/1024) — PCLKD/1024 @ 32 MHz = 31.25 kHz (32 µs/tick), 16-bit max = 2.097 s. */ .period_counts = (uint32_t) 0xffff, .duty_cycle_counts = 0x7fff, .source_div = (timer_source_div_t)10,
+    .mode                = TIMER_MODE_ONE_SHOT,
+    /* Actual period: 2.096992 seconds. Actual duty: 49.99923700233477%. */ .period_counts = (uint32_t) 0xfffb, .duty_cycle_counts = 0x7ffd, .source_div = (timer_source_div_t)10,
     .channel             = 2,
     .p_callback          = delta_timer_cb,
     /** If NULL then do not add & */
@@ -195,7 +195,7 @@ const gpt_extended_cfg_t tick_timer_extend =
 const timer_cfg_t tick_timer_cfg =
 {
     .mode                = TIMER_MODE_PERIODIC,
-    /* HAND-EDIT: source_div was 6 (/64, cascaded); now 10 (/1024) — PCLKD/1024 = 31.25 kHz = 32 µs/tick; 32-bit rollover ≈ 38 h. */ .period_counts = (uint32_t) 0x7fffffff, .duty_cycle_counts = 0x3fffffff, .source_div = (timer_source_div_t)10,
+    /* Actual period: 137.438 seconds. Actual duty: 50%. */ .period_counts = (uint32_t) 0x41891980, .duty_cycle_counts = 0x20c48cc0, .source_div = (timer_source_div_t)2,
     .channel             = 0,
     .p_callback          = NULL,
     /** If NULL then do not add & */

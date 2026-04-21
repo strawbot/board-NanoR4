@@ -50,18 +50,19 @@ See the live file for the full comment block.
 
 ### `Nano/ra_gen/hal_data.c`
 
-RASC regenerates this from the RASC configurator. Several values must be
-hand-patched (or set correctly in RASC itself — which is the better long-term
-fix). The critical settings:
+No hand-edits required. Everything that used to be a post-regen patch now
+lives in one of three places:
+
+1. **RASC configurator** — settings that RASC can express directly. Keep
+   these set in the GUI (or equivalently in `configuration.xml`) so every
+   regeneration comes out right:
 
 | Module       | Field              | Required value                  | Why                                                                                                   |
 |--------------|--------------------|---------------------------------|-------------------------------------------------------------------------------------------------------|
 | `delta_timer`| `mode`             | `TIMER_MODE_ONE_SHOT`           | TEA scheduler arms the next alarm each time via `set_delta_alarm`.                                    |
-| `delta_timer`| `source_div`       | `10` (i.e. /1024)               | PCLKD/1024 @ 32 MHz → 31.25 kHz tick, same unit as `tick_timer`.                                      |
 | `delta_timer`| `cycle_end_ipl`    | `12` (or any 1..14, not 0)      | **IPL 0 is treated as "disabled" by the NVIC/BSP** — the ISR will never dispatch if left at 0.         |
 | `delta_timer`| `count_up_source`  | `GPT_SOURCE_NONE`               | The `GPT_SOURCE_GPT_A/B/...` enums are *fixed hardware ELC slots*, NOT "pick channel A/B/...".         |
 | `delta_timer`| `clear_source`     | `GPT_SOURCE_NONE`               | Same.                                                                                                  |
-| `tick_timer` | `source_div`       | `10` (i.e. /1024)               | 32 µs/tick matches `ONE_SECOND = 31250` in `Board/project_defs.h`.                                     |
 | `tick_timer` | `count_up_source`  | `GPT_SOURCE_NONE`               | See above.                                                                                             |
 | `tick_timer` | `clear_source`     | `GPT_SOURCE_NONE`               | See above.                                                                                             |
 | `g_rtc0`     | `clock_source`     | `RTC_CLOCK_SOURCE_LOCO`         | Nano R4 has NO 32.768 kHz sub-clock crystal (schematic only populates the 16 MHz main XO). LOCO is the only viable count source; drifts ±15% so wall time needs external correction. |
@@ -70,8 +71,17 @@ fix). The critical settings:
 | bsp_cfg.h    | `BSP_CLOCK_CFG_SUBCLOCK_POPULATED` | `0`             | No 32.768 kHz XTAL on board. Leaving this at 1 makes BSP try to start SOSC (silently fails) and burns a pointless 1 s wait.                       |
 | bsp_cfg.h    | `BSP_CLOCK_CFG_SUBCLOCK_STABILIZATION_MS` | `0`      | Irrelevant once POPULATED=0; zeroed for clarity.                                                       |
 
-After regenerating, `grep '/\* HAND-EDIT' ra_gen/hal_data.c` to confirm the
-markers are still present, or diff against the last-known-good version.
+2. **`Board/clocks.c` → `init_clocks()`** — settings RASC can't pin down
+   reliably. Currently this is the GPT prescaler (`source_div`) for both
+   `tick_timer` and `delta_timer`: RASC picks the smallest divider that
+   fits Period × Unit into the counter, which means changing the Period
+   can silently shift the tick rate. `init_clocks()` takes a RAM-resident
+   copy of each `timer_cfg_t` and overrides `source_div = 10` (/1024) plus
+   `period_counts` / `duty_cycle_counts`. Nothing to restore after regen.
+
+3. **`Board/init_clocks()` again — MSTP un-stop for the RTC.** Gotcha #7
+   below: FSP's `R_RTC_Open()` does not call `R_BSP_MODULE_START`, so we
+   do it ourselves right before `R_RTC_Open()`.
 
 ### `Nano/Board/project_defs.h`
 
@@ -83,13 +93,21 @@ markers are still present, or diff against the last-known-good version.
 
 ## Recovery procedure after `RASC → Generate Project Content`
 
-1. `git diff` to see what was clobbered.
-2. Restore `Nano/memory_regions.ld` from git (`git checkout Nano/memory_regions.ld`).
-3. Re-apply the hal_data.c hand-edits in the table above — easiest with
-   `git checkout Nano/ra_gen/hal_data.c` if your copy is committed.
-4. `pio run -t clean && pio run && pio run -t upload`.
-5. Confirm the yellow LED (P204) heartbeat (two quick flashes + long pause)
+With the current setup this is almost a no-op — regeneration no longer
+clobbers anything we rely on.
+
+1. `git diff` to sanity-check that only RASC-generated files changed
+   (`ra_gen/*`, `ra_cfg/*`, `memory_regions.ld`, `fsp_gen.ld`).
+2. The linker reads `memory_regions_custom.ld` (ours, in git) instead of the
+   regenerated `memory_regions.ld` (which is gitignored). Nothing to restore.
+3. `pio run -t clean && pio run && pio run -t upload`.
+4. Confirm the yellow LED (P204) heartbeat (two quick flashes + long pause)
    within ~1 s of reset and verify the CLI prompt over SCI2 (P301/P302).
+
+If you add a new peripheral (ADC, DAC, more GPTs, AGT, comparators, …) in
+RASC, remember gotcha #2: every newly-enabled interrupt defaults to IPL 0 in
+the configurator, which is treated as "disabled". Bump it to a non-zero
+priority before regenerating.
 
 ## Cortex-M4 / RA4M1 gotchas
 
