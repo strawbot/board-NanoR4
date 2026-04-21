@@ -8,3 +8,4 @@
 Board/wordlist.c
 Board/wordlist.txt
 Board/help.c
+memory_regions.ld
