@@ -5,6 +5,7 @@
 #include "cli.h"
 #include "clocks.h"
 #include "cli_transport_usart.h"
+#include "canary.h"
 
 // init_cli is defined in TimbreOS/cli.c but not declared in cli.h —
 // follow the convention used by the other board ports.
@@ -83,6 +84,8 @@ void hal_entry(void)
     /* Enter non-secure code */
     R_BSP_NonSecureEnter();
 #endif
+
+    stack_canary_init();   /* fill stack with 0xDEADBEEF before any deep calls */
 
     /* TimbreOS bring-up. init_tea() calls init_clocks() internally
      * (see TimbreOS/tea.c:init_tea) so we do NOT call init_clocks() again.

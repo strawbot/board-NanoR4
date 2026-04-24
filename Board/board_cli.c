@@ -15,6 +15,10 @@
 #include "clocks.h"
 #include "board_cli.h"
 
+// Stack overflow detection is provided by Robot/diagnostics/canary.
+// See Robot/README.md for the linker-symbol contract.
+#include "canary.h"
+
 // ── clocks & uptime ────────────────────────────────────────────────────────
 void show_sys(void) {
     // Clock tree is pinned down in ra_gen/bsp_clock_cfg.h.
@@ -24,6 +28,9 @@ void show_sys(void) {
     print("PCLKD:   "); printDec(CLOCK_MHZ);   print(" MHz"); printCr();
     print("uptime:  "); printDec(get_ticks()); print(" ticks (100 us)"); printCr();
     show_timer();
+
+    print("\nstack:   ");
+    stack_render(stack_check());
     printCr();
 }
 

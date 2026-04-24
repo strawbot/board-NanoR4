@@ -7,6 +7,9 @@
 		{
 			"name": "Nano",
 			"path": "."
+		},
+		{
+			"path": "../Robot/diagnostics/canary"
 		}
 	],
 	"settings": {

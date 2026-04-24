@@ -25,3 +25,18 @@ SECTIONS
 }
 
 INCLUDE fsp_gen.ld
+
+/* Canary linker symbols — Robot/diagnostics/canary/canary.h contract.
+ *
+ * On Renesas RA4M1 the main stack lives in the noinit section as g_main_stack
+ * (section .bss.g_main_stack), placed immediately before any .ram_noinit/.noinit
+ * content.  The Cortex-M SP is initialised to __ram_noinit$$Limit, which is
+ * therefore a correct _estack.  _sstack is set _Min_Stack_Size bytes below that,
+ * which must be <= BSP_CFG_STACK_MAIN_BYTES (configured in bsp_cfg.h).
+ *
+ * These symbols are defined here (after INCLUDE fsp_gen.ld) so that
+ * __ram_noinit$$Limit is already resolved by the time they are evaluated.
+ * See Robot/README.md for the full adoption checklist. */
+_estack        = __ram_noinit$$Limit;
+_Min_Stack_Size = 0x800;              /* 2 KB — must be <= BSP_CFG_STACK_MAIN_BYTES */
+_sstack        = _estack - _Min_Stack_Size;
