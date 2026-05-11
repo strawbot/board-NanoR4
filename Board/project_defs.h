@@ -42,10 +42,19 @@ void output();
 #define CLOCK_MHZ 32u
 #define ONE_SECOND (31250)	// PCLKD/1024 @ 32 MHz = 31.25 kHz → 32 µs/tick
 #define TE_SECOND ONE_SECOND    // for Delta timer
-// Software-maintained UTC — seeded from __TIMESTAMP__ at boot (see clocks.c).
-// Hardware RTC integration is deferred; implementation lives in Board/clocks.c.
+// Hardware RTC via FSP; implementation in Board/clocks.c.
 Long tick_get_utc(void);
 #define get_utc() tick_get_utc()
+
+// ── Clocks hardware wiring (consumed by TimbreOS/clocks.c) ────────────────
+// Nano uses FSP GPT/RTC APIs — all hardware clock functions live in
+// Board/clocks.c.  TimbreOS/clocks.c supplies only the board-agnostic
+// utilities (timestamp_to_utc, epoch_to_tm, tm_to_epoch, over_due,
+// micro_sleep, print_build_banner, show_timer).
+#define CLOCK_HAS_BLINK   // Board/clocks.c provides blink_leds() via FSP IOPORT
+#define CLOCK_HAS_INIT    // Board/clocks.c provides init_clocks() via FSP GPT
+#define CLOCK_HAS_TICKS   // Board/clocks.c provides get_ticks() via FSP GPT
+#define CLOCK_HAS_DELTA   // Board/clocks.c provides set_delta_alarm() / delta_alarm()
 
 // Hi res time measurements
 // 32 MHz DWT cycle counter ticks; 31.25 ns resolution
