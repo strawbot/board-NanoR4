@@ -14,6 +14,8 @@
 #include "r_transfer_api.h"
 #include "r_sci_uart.h"
             #include "r_uart_api.h"
+#include "r_dac.h"
+#include "r_dac_api.h"
 FSP_HEADER
 /** Timer on GPT Instance. */
 extern const timer_instance_t delta_timer;
@@ -72,6 +74,10 @@ extern const transfer_cfg_t g_transfer1_cfg;
             #ifndef cli_rxtx
             void cli_rxtx(uart_callback_args_t * p_args);
             #endif
+/** DAC0 on P014 (AN0). */
+extern dac_instance_ctrl_t  g_dac0_ctrl;
+extern const dac_cfg_t      g_dac0_cfg;
+extern const dac_instance_t g_dac0;
 void hal_entry(void);
 void g_hal_init(void);
 FSP_FOOTER

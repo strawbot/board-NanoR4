@@ -445,6 +445,27 @@ const uart_instance_t g_uart2 =
     .p_cfg         = &g_uart2_cfg,
     .p_api         = &g_uart_on_sci
 };
+dac_instance_ctrl_t g_dac0_ctrl;
+const dac_extended_cfg_t g_dac0_cfg_extend =
+{
+    .enable_charge_pump      = false,
+    .output_amplifier_enabled = false,
+    .internal_output_enabled  = false,
+    .data_format              = DAC_DATA_FORMAT_FLUSH_RIGHT,
+};
+const dac_cfg_t g_dac0_cfg =
+{
+    .channel          = 0,
+    .ad_da_synchronized = false,
+    .p_extend         = &g_dac0_cfg_extend,
+};
+const dac_instance_t g_dac0 =
+{
+    .p_ctrl = &g_dac0_ctrl,
+    .p_cfg  = &g_dac0_cfg,
+    .p_api  = &g_dac_on_dac,
+};
+
 void g_hal_init(void) {
 g_common_init();
 }

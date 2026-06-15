@@ -5,7 +5,9 @@
 #include "cli.h"
 #include "clocks.h"
 #include "cli_transport_usart.h"
+#include "usb_init.h"
 #include "canary.h"
+#include "board_cli.h"
 
 // init_cli is defined in TimbreOS/cli.c but not declared in cli.h —
 // follow the convention used by the other board ports.
@@ -92,8 +94,10 @@ void hal_entry(void)
      * The build banner is printed *after* usart_transport_init() because
      * init_clocks runs before the transport is up, and output() will spin
      * forever if emitq has no drain path. */
+    dac_init();
     init_tea();
     usart_transport_init();
+    usb_transport_init();
     print_build_banner();
     init_cli();
     __enable_irq();

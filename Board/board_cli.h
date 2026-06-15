@@ -17,4 +17,8 @@ void cli_set_utc(void);     // CLI wrapper for set_utc(): pops Unix epoch off da
 // gpio
 void gpio_dump_all(void);   // Pin/state dump (currently a stub on Nano)
 
+// dac
+void dac_init(void);        // Open DAC0, zero output, start (call once at boot)
+void dac_set(void);         // CLI word: pops 0-4095 off stack, writes to DAC0/P014
+
 #endif // BOARD_CLI_H

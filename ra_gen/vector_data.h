@@ -1,4 +1,5 @@
 /* generated vector header file - do not edit */
+/* IRQ 6 (USBFS_INT) added manually — would normally be regenerated via RASC.  */
         #ifndef VECTOR_DATA_H
         #define VECTOR_DATA_H
         #ifdef __cplusplus
@@ -6,7 +7,7 @@
         #endif
                 /* Number of interrupts allocated */
         #ifndef VECTOR_DATA_IRQ_COUNT
-        #define VECTOR_DATA_IRQ_COUNT    (6)
+        #define VECTOR_DATA_IRQ_COUNT    (7)
         #endif
         /* ISR prototypes */
         void sci_uart_rxi_isr(void);
@@ -15,6 +16,7 @@
         void sci_uart_eri_isr(void);
         void rtc_carry_isr(void);
         void gpt_counter_overflow_isr(void);
+        void usbfs_int_isr(void);
 
         /* Vector table allocations */
         #define VECTOR_NUMBER_SCI2_RXI ((IRQn_Type) 0) /* SCI2 RXI (Receive data full) */
@@ -29,8 +31,10 @@
         #define RTC_CARRY_IRQn          ((IRQn_Type) 4) /* RTC CARRY (Carry interrupt) */
         #define VECTOR_NUMBER_GPT2_COUNTER_OVERFLOW ((IRQn_Type) 5) /* GPT2 COUNTER OVERFLOW (Overflow) */
         #define GPT2_COUNTER_OVERFLOW_IRQn          ((IRQn_Type) 5) /* GPT2 COUNTER OVERFLOW (Overflow) */
+        #define VECTOR_NUMBER_USBFS_INT ((IRQn_Type) 6) /* USBFS INT */
+        #define USBFS_INT_IRQn          ((IRQn_Type) 6) /* USBFS INT */
         /* The number of entries required for the ICU vector table. */
-        #define BSP_ICU_VECTOR_NUM_ENTRIES (6)
+        #define BSP_ICU_VECTOR_NUM_ENTRIES (7)
 
         #ifdef __cplusplus
         }

@@ -118,5 +118,25 @@ void gpio_dump_all(void) {
     print("pins: gpio_dump not ported yet"); printCr();
 }
 
+// ── DAC output on P014 ────────────────────────────────────────────────────
+// Usage: `<value> dac!`  — writes a 12-bit value (0–4095) to DAC0/P014.
+
+void dac_init(void) {
+    R_DAC_Open(&g_dac0_ctrl, &g_dac0_cfg);
+    R_DAC_Write(&g_dac0_ctrl, 0);
+    R_DAC_Start(&g_dac0_ctrl);
+}
+
+void dac_set(void) {
+    Cell v = ret();
+    if (v < 0)    v = 0;
+    if (v > 4095) v = 4095;
+    R_DAC_Write(&g_dac0_ctrl, (uint16_t)v);
+    // print("dac: "); printDec(v); printCr();
+}
+
+void ramp_up() { static Cell v = 0; R_DAC_Write(&g_dac0_ctrl, v); v = (v + 1) & 0xFFF;  if (v) later(ramp_up); }
+void ramp_down() { static Cell v = 0xFFF; R_DAC_Write(&g_dac0_ctrl, v); v = (v - 1) & 0xFFF; if (v != 0xFFF) later(ramp_down); }
+
 // ── word filter ───────────────────────────────────────────────────────────
 bool visible_word(char *s) { (void)s; return true; }
