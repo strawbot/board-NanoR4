@@ -2,9 +2,16 @@
 """
 report_memory.py — PlatformIO post-build hook
 
-Replaces PlatformIO's built-in CheckUploadSize (which shows 0% because it uses
-board-JSON memory sizes that don't match our bootloader-offset linker script)
-with a correct report derived from the actual ELF sections.
+Replaces PlatformIO's built-in CheckUploadSize (which shows 0% because its
+SIZECHECKCMD doesn't work with our pinned toolchain) with a correct report
+derived from the ELF sections.
+
+Why .method mutation instead of env.AddMethod():
+  PlatformIO's VerboseAction captures a reference to the MethodWrapper object
+  at configure time (env.VerboseAction(env.CheckUploadSize, ...)).  Calling
+  env.AddMethod() later creates a NEW MethodWrapper that the already-captured
+  reference never sees.  Mutating wrapper.method in place redirects the
+  captured reference to our function.
 
 Flash available = FLASH_GAP (0x400) + FLASH (0x3BC00) = 0x3C000 = 245,760 B
 RAM available   = RAM (0x8000) = 32,768 B
@@ -17,10 +24,14 @@ Import("env")  # noqa: F821 — injected by PlatformIO/SCons
 FLASH_TOTAL = 0x3C000   # 240 KB (above bootloader)
 RAM_TOTAL   = 0x8000    # 32 KB
 
-def report_memory(env, source=None, target=None):
-    elf = env.subst("$BUILD_DIR/${PROGNAME}.elf")
 
+def report_memory(bound_env, **kwargs):
+    # bound_env is the MethodWrapper's captured env object.
+    # SCons also passes env= as a keyword arg; **kwargs absorbs it safely.
+    env = bound_env
+    elf = env.subst("$BUILD_DIR/${PROGNAME}.elf")
     size_tool = env.subst("$SIZETOOL") or env.subst("$CC").replace("gcc", "size")
+
     try:
         result = subprocess.run(
             [size_tool, "--format=sysv", elf],
@@ -58,6 +69,11 @@ def report_memory(env, source=None, target=None):
     print("  Flash: {:7,} / {:,} bytes  ({:.1f}%)".format(flash_used, FLASH_TOTAL, flash_pct))
     print("  RAM:   {:7,} / {:,} bytes  ({:.1f}%)".format(ram_used,   RAM_TOTAL,   ram_pct))
 
-# AddMethod overwrites the existing CheckUploadSize method so PlatformIO's
-# VerboseAction wrapper calls ours instead (env.Replace writes to the wrong dict).
-env.AddMethod(report_memory, "CheckUploadSize")
+
+# Mutate the existing MethodWrapper in place — the VerboseAction holds a
+# reference to this same object, so it will call our function instead.
+wrapper = env.__dict__.get("CheckUploadSize")
+if wrapper is not None and hasattr(wrapper, "method"):
+    wrapper.method = report_memory
+else:
+    env.AddMethod(report_memory, "CheckUploadSize")
