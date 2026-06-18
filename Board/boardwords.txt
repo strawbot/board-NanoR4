@@ -43,4 +43,5 @@ Words // system
 	dac! dac_set // (n) write 12-bit value n (0-4095) to DAC0 output pin P014
 	up ramp_up // create a ramp up on DAC output
 	down ramp_down // create a ramp down on DAC output
+	dfu tud_dfu_runtime_reboot_to_dfu_cb // go into DFU mode for dfu-util on host to download
 End

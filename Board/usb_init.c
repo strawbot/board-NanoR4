@@ -83,7 +83,7 @@ void usb_transport_init(void) {
     tusb_init();
     later(usb_action);
     namedAction(usb_action);
-    print("USB: DFU Runtime init\r\n");
+    // print("USB: DFU Runtime init\r\n");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
