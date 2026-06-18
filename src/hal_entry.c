@@ -23,8 +23,6 @@ void blink() {
     for (volatile uint32_t w = 0; w < 400000; w++) { __asm volatile ("nop"); }
 }
 
-static void blinks(int n) { while (n--)  blink(); }
-
 #if (1 == BSP_MULTICORE_PROJECT) && BSP_TZ_SECURE_BUILD
 bsp_ipc_semaphore_handle_t g_core_start_semaphore =
 {
@@ -95,6 +93,7 @@ void hal_entry(void)
      * init_clocks runs before the transport is up, and output() will spin
      * forever if emitq has no drain path. */
     dac_init();
+    adc_init();
     init_tea();
     usart_transport_init();
     usb_transport_init();

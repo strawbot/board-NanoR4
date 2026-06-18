@@ -1,4 +1,4 @@
-#ifndef CLOCKS_H_
+#ifndef NANO_CLOCKS_H_
 #define CLOCKS_H_
 
 #include "ttypes.h"

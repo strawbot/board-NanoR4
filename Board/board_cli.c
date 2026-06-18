@@ -10,7 +10,9 @@
 
 #include "hal_data.h"
 #include "tea.h"
+#include "cli.h"
 #include "printers.h"
+#include "clocks.h"
 #include "project_defs.h"
 #include "clocks.h"
 #include "board_cli.h"
@@ -135,8 +137,29 @@ void dac_set(void) {
     // print("dac: "); printDec(v); printCr();
 }
 
-void ramp_up() { static Cell v = 0; R_DAC_Write(&g_dac0_ctrl, v); v = (v + 1) & 0xFFF;  if (v) later(ramp_up); }
-void ramp_down() { static Cell v = 0xFFF; R_DAC_Write(&g_dac0_ctrl, v); v = (v - 1) & 0xFFF; if (v != 0xFFF) later(ramp_down); }
+Short dac_get () {
+    dac_ctrl_t * p_api_ctrl = &g_dac0_ctrl;
+    dac_instance_ctrl_t * p_ctrl = (dac_instance_ctrl_t *) p_api_ctrl;
+
+    /* Read the value from the D/A converter. */
+    return p_ctrl->p_reg->DADR[p_ctrl->channel_index];
+}
+
+void ramp_up() {
+    Cell v = 0;
+    do {
+        R_DAC_Write(&g_dac0_ctrl, v);
+        v = (v + 1) & 0xFFF;
+    } while(v);
+}
+
+void ramp_down() {
+    Cell v = 0xFFF;
+    do {
+        R_DAC_Write(&g_dac0_ctrl, v);
+        v = (v - 1) & 0xFFF;
+    } while (v != 0xFFF);
+}
 
 // ── word filter ───────────────────────────────────────────────────────────
 bool visible_word(char *s) { (void)s; return true; }

@@ -466,6 +466,52 @@ const dac_instance_t g_dac0 =
     .p_api  = &g_dac_on_dac,
 };
 
+adc_instance_ctrl_t g_adc0_ctrl;
+const adc_extended_cfg_t g_adc0_cfg_extend =
+{
+    .add_average_count   = ADC_ADD_OFF,
+    .clearing            = ADC_CLEAR_AFTER_READ_OFF,
+    .trigger_group_b     = ADC_TRIGGER_SOFTWARE,
+    .double_trigger_mode = ADC_DOUBLE_TRIGGER_DISABLED,
+    .adc_vref_control    = ADC_VREF_CONTROL_VREFH,
+    .enable_adbuf        = 0,
+    .window_a_irq        = FSP_INVALID_VECTOR,
+    .window_b_irq        = FSP_INVALID_VECTOR,
+    .window_a_ipl        = BSP_IRQ_DISABLED,
+    .window_b_ipl        = BSP_IRQ_DISABLED,
+};
+const adc_cfg_t g_adc0_cfg =
+{
+    .unit                = 0,
+    .mode                = ADC_MODE_CONTINUOUS_SCAN,
+    .resolution          = ADC_RESOLUTION_14_BIT,
+    .alignment           = ADC_ALIGNMENT_RIGHT,
+    .trigger             = ADC_TRIGGER_SOFTWARE,
+    .p_callback          = NULL,
+    .p_context           = NULL,
+    .p_extend            = &g_adc0_cfg_extend,
+    .scan_end_ipl        = BSP_IRQ_DISABLED,
+    .scan_end_b_ipl      = BSP_IRQ_DISABLED,
+#if defined(VECTOR_NUMBER_ADC0_SCAN_END)
+    .scan_end_irq        = VECTOR_NUMBER_ADC0_SCAN_END,
+#else
+    .scan_end_irq        = FSP_INVALID_VECTOR,
+#endif
+#if defined(VECTOR_NUMBER_ADC0_SCAN_END_B)
+    .scan_end_b_irq      = VECTOR_NUMBER_ADC0_SCAN_END_B,
+#else
+    .scan_end_b_irq      = FSP_INVALID_VECTOR,
+#endif
+};
+const adc_channel_cfg_t g_adc0_channel_cfg =
+{
+    .scan_mask           = (1U << 0),   /* AN000 = P000 */
+    .scan_mask_group_b   = 0,
+    .add_mask            = 0,
+    .sample_hold_mask    = 0,
+    .sample_hold_states  = 24,
+};
+
 void g_hal_init(void) {
 g_common_init();
 }

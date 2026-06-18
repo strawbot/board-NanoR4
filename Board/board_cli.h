@@ -21,4 +21,9 @@ void gpio_dump_all(void);   // Pin/state dump (currently a stub on Nano)
 void dac_init(void);        // Open DAC0, zero output, start (call once at boot)
 void dac_set(void);         // CLI word: pops 0-4095 off stack, writes to DAC0/P014
 
+// adc
+void adc_init(void);        // Open ADC0 unit 0, configure AN00, start continuous scan (call once at boot)
+uint32_t adc_read_mv(void); // Read AN00 (P000) and return millivolts (0–5000), callable any time
+void cli_adc_read(void);    // CLI word: pushes AN00 reading in mV onto the data stack
+
 #endif // BOARD_CLI_H

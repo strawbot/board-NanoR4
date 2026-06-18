@@ -16,6 +16,8 @@
             #include "r_uart_api.h"
 #include "r_dac.h"
 #include "r_dac_api.h"
+#include "r_adc.h"
+#include "r_adc_api.h"
 FSP_HEADER
 /** Timer on GPT Instance. */
 extern const timer_instance_t delta_timer;
@@ -78,6 +80,10 @@ extern const transfer_cfg_t g_transfer1_cfg;
 extern dac_instance_ctrl_t  g_dac0_ctrl;
 extern const dac_cfg_t      g_dac0_cfg;
 extern const dac_instance_t g_dac0;
+/** ADC0 unit 0 — AN00 on P000, 14-bit continuous scan. */
+extern adc_instance_ctrl_t       g_adc0_ctrl;
+extern const adc_cfg_t           g_adc0_cfg;
+extern const adc_channel_cfg_t   g_adc0_channel_cfg;
 void hal_entry(void);
 void g_hal_init(void);
 FSP_FOOTER
