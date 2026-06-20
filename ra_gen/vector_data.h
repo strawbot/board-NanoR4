@@ -1,5 +1,4 @@
 /* generated vector header file - do not edit */
-/* IRQ 6 (USBFS_INT) added manually — would normally be regenerated via RASC.  */
         #ifndef VECTOR_DATA_H
         #define VECTOR_DATA_H
         #ifdef __cplusplus
@@ -31,8 +30,8 @@
         #define RTC_CARRY_IRQn          ((IRQn_Type) 4) /* RTC CARRY (Carry interrupt) */
         #define VECTOR_NUMBER_GPT2_COUNTER_OVERFLOW ((IRQn_Type) 5) /* GPT2 COUNTER OVERFLOW (Overflow) */
         #define GPT2_COUNTER_OVERFLOW_IRQn          ((IRQn_Type) 5) /* GPT2 COUNTER OVERFLOW (Overflow) */
-        #define VECTOR_NUMBER_USBFS_INT ((IRQn_Type) 6) /* USBFS INT */
-        #define USBFS_INT_IRQn          ((IRQn_Type) 6) /* USBFS INT */
+        #define VECTOR_NUMBER_USBFS_INT ((IRQn_Type) 6) /* USBFS INT (USBFS interrupt) */
+        #define USBFS_INT_IRQn          ((IRQn_Type) 6) /* USBFS INT (USBFS interrupt) */
         /* The number of entries required for the ICU vector table. */
         #define BSP_ICU_VECTOR_NUM_ENTRIES (7)
 

@@ -9,6 +9,8 @@
 #include "canary.h"
 #include "board_cli.h"
 
+void muscle_wire_init(void);
+
 // init_cli is defined in TimbreOS/cli.c but not declared in cli.h —
 // follow the convention used by the other board ports.
 void init_cli(void);
@@ -94,6 +96,7 @@ void hal_entry(void)
      * forever if emitq has no drain path. */
     dac_init();
     adc_init();
+    muscle_wire_init();   // open GPT3 PWM on P003 before scheduler starts
     init_tea();
     usart_transport_init();
     usb_transport_init();

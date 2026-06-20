@@ -50,6 +50,7 @@
       <configSetting altId="debug0.tdi.p110" configurationId="debug0.tdi" isUsedByDriver="true" peripheral="DEBUG0"/>
       <configSetting altId="debug0.tdo.p109" configurationId="debug0.tdo" isUsedByDriver="true" peripheral="DEBUG0"/>
       <configSetting altId="debug0.tms.p108" configurationId="debug0.tms" isUsedByDriver="true" peripheral="DEBUG0"/>
+      <configSetting altId="gpt3.gtiocb.p112" configurationId="gpt3.gtiocb" isUsedByDriver="true" peripheral="GPT3"/>
       <configSetting altId="gpt5.gtioca.p409" configurationId="gpt5.gtioca" peripheral="GPT5"/>
       <configSetting altId="gpt6.gtioca.p411" configurationId="gpt6.gtioca" peripheral="GPT6"/>
       <configSetting altId="gpt6.gtiocb.p410" configurationId="gpt6.gtiocb" peripheral="GPT6"/>
