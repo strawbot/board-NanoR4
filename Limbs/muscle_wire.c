@@ -39,8 +39,17 @@ float adc_read_sense_ma(void);
 #define MW_I_THRESHOLD      5.0f        // mA — onset of conduction
 #define MW_I_MAX            550.0f      // mA — hard ceiling / plateau trigger
 #define MW_PLATEAU_STEPS    5           // consecutive low-slope steps → plateau
-#define MW_TAU_S            0.010f      // RC filter τ (1 kΩ × 10 µF)
+
+// Electrical time constants (RC filter on sense node: 1kΩ × 10µF)
+#define MW_TAU_S            0.010f      // RC filter τ — used for PI gain calculation
 #define MW_LAMBDA_S         0.010f      // initial closed-loop τ
+
+// Thermal settle time: nitinol wire needs ~2s to reach thermal equilibrium
+// after a duty change before a current reading is stable and representative.
+// MW_TAU_S and MW_THERMAL_MS are independent: the PI controller bandwidth
+// is set by MW_TAU_S (fast, electrical); calibration settle uses MW_THERMAL_MS.
+#define MW_THERMAL_MS       2000        // ms — thermal settle after duty change
+
 #define MW_OVERSHOOT_LIMIT  10.0f       // % overshoot before re-tune
 #define MW_MAX_RETRY        3
 
@@ -178,10 +187,10 @@ void pi_update(void) {
     after(msec(1), pi_update);
 }
 
-// ── calibrate_muscle_wire — TEA state machine ─────────────────
-// Call to start (or restart) calibration.
-// Runs entirely via after(); never blocks.
-void calibrate_muscle_wire(void) {
+// ── cal_step — internal state machine callback ────────────────
+// Never call directly. Scheduled via after()/later(); use
+// calibrate_muscle_wire() as the safe public entry point.
+static void cal_step(void) {
     float I = adc_read_sense_ma();
 
     switch (cal_state) {
@@ -189,7 +198,6 @@ void calibrate_muscle_wire(void) {
     // ── Reset everything and begin ramp ──────────────────────
     case MW_IDLE:
         calibrated = false;
-        stop(pi_update);
         dc_low = dc_high = 0;
         I_low_ma = I_high_ma = 0.0f;
         K = 0.001f;  Kp = 0.0f;  Ki = 0.0f;
@@ -198,7 +206,7 @@ void calibrate_muscle_wire(void) {
         pwm_set(0);
         print("\ncal: ramp");
         cal_state = MW_RAMP;
-        after(msec(10), calibrate_muscle_wire);
+        after(msec(10), cal_step);
         return;
 
     // ── Ramp: step duty every 10 ms, watch for onset + plateau ──
@@ -224,14 +232,15 @@ void calibrate_muscle_wire(void) {
                 cal_state = MW_IDLE;
                 return;
             }
-            // Settle at mid-range before step test
+            // Settle at mid-range before step test — wait for thermal equilibrium
             pwm_set(k_base());
+            print("\ncal: settling...");
             cal_state = MW_K_SETTLE;
-            after(msec(80), calibrate_muscle_wire);   // > 5τ
+            after(msec(MW_THERMAL_MS), cal_step);
             return;
         }
         pwm_set(++cal_duty);
-        after(msec(10), calibrate_muscle_wire);
+        after(msec(10), cal_step);
         return;
 
     // ── K settle: record I_before, fire the step ─────────────
@@ -241,14 +250,14 @@ void calibrate_muscle_wire(void) {
         k_samples = 0;
         pwm_set(k_base() + k_step());
         cal_state = MW_K_MEASURE;
-        after(msec(1), calibrate_muscle_wire);
+        after(msec(1), cal_step);
         return;
 
     // ── K measure: sample 60 ms, find I_final, compute gains ─
     case MW_K_MEASURE:
         if (I > K_peak) K_peak = I;
         if (++k_samples < 60) {
-            after(msec(1), calibrate_muscle_wire);
+            after(msec(1), cal_step);
             return;
         }
         {
@@ -262,14 +271,14 @@ void calibrate_muscle_wire(void) {
         integral    = 0.0f;
         val_samples = 0;
         cal_state   = MW_VAL_SETTLE;
-        after(msec(1), calibrate_muscle_wire);
+        after(msec(1), cal_step);
         return;
 
-    // ── Val settle: run PI for 150 ms at 25 % ────────────────
+    // ── Val settle: run PI for MW_THERMAL_MS at 25 % ────────
     case MW_VAL_SETTLE:
         pi_step(I);
-        if (++val_samples < 150) {
-            after(msec(1), calibrate_muscle_wire);
+        if (++val_samples < MW_THERMAL_MS) {
+            after(msec(1), cal_step);
             return;
         }
         // Step to 75 % and start measuring
@@ -277,21 +286,22 @@ void calibrate_muscle_wire(void) {
         val_peak    = 0.0f;
         val_samples = 0;
         cal_state   = MW_VAL_MEASURE;
-        after(msec(1), calibrate_muscle_wire);
+        print("\ncal: step 75%");
+        after(msec(1), cal_step);
         return;
 
-    // ── Val measure: run PI for 250 ms, track peak ───────────
+    // ── Val measure: run PI for MW_THERMAL_MS, track peak ───
     case MW_VAL_MEASURE:
         pi_step(I);
         if (I > val_peak) val_peak = I;
-        if (++val_samples < 250) {
-            after(msec(1), calibrate_muscle_wire);
+        if (++val_samples < MW_THERMAL_MS) {
+            after(msec(1), cal_step);
             return;
         }
         // Check overshoot; retune lambda if needed
         {
-            float I_75     = I_low_ma + 0.75f * (I_high_ma - I_low_ma);
-            float span     = I_high_ma - I_low_ma;
+            float I_75      = I_low_ma + 0.75f * (I_high_ma - I_low_ma);
+            float span      = I_high_ma - I_low_ma;
             float overshoot = (span > 0.0f) ? 100.0f * (val_peak - I_75) / span : 0.0f;
             if (overshoot > MW_OVERSHOOT_LIMIT && tune_retry < MW_MAX_RETRY) {
                 tune_retry++;
@@ -304,7 +314,7 @@ void calibrate_muscle_wire(void) {
                 val_samples = 0;
                 val_peak    = 0.0f;
                 cal_state   = MW_VAL_SETTLE;
-                after(msec(1), calibrate_muscle_wire);
+                after(msec(1), cal_step);
                 return;
             }
         }
@@ -313,7 +323,7 @@ void calibrate_muscle_wire(void) {
         I_target_ma = 0.0f;
         integral    = 0.0f;
         calibrated  = true;
-        cal_state   = MW_IDLE;     // next call restarts from scratch
+        cal_state   = MW_IDLE;
         print("\ncal ok");
         print("  dc_low=");   printDec(dc_low);
         print("  dc_high=");  printDec(dc_high);
@@ -322,9 +332,20 @@ void calibrate_muscle_wire(void) {
         print("  Ki=");       printFloat0(Ki, 2);
         print("  lam_ms=");   printDec((Short)(lambda_s * 1000.0f));
         printCr();
-        after(msec(1), pi_update);   // hand off to runtime PI loop
+        after(msec(1), pi_update);
         return;
     }
+}
+
+// ── calibrate_muscle_wire — safe public entry point ───────────
+// Always safe to call, even while a calibration is running.
+// Cancels any in-progress run and restarts cleanly from the top.
+void calibrate_muscle_wire(void) {
+    stop(cal_step);     // cancel any pending internal step
+    stop(pi_update);    // stop runtime PI loop
+    pwm_set(0);
+    cal_state = MW_IDLE;
+    later(cal_step);    // MW_IDLE case does the full variable reset
 }
 
 // ── Public API ────────────────────────────────────────────────
@@ -354,3 +375,16 @@ void muscle_wire_init(void) {
 // ── CLI words ─────────────────────────────────────────────────
 void cli_calibrate_muscle_wire(void) { calibrate_muscle_wire(); }
 void cli_set_muscle_wire(void)        { set_muscle_wire((Short)ret()); }
+
+// pwm ( n -- )  Set PWM duty directly to n% (0–100), bypassing the PI
+// controller.  Stops pi_update so the manual setting holds.  Useful for
+// hardware testing without running calibration first.
+void cli_pwm_pct(void) {
+    Short p = (Short)ret();
+    if (p < 0)   p = 0;
+    if (p > 100) p = 100;
+    stop(pi_update);                         // prevent PI from overriding
+    I_target_ma = 0.0f;                      // keep target clear
+    integral    = 0.0f;
+    pwm_set((Short)((Long)p * MW_PWM_PERIOD / 100));
+}

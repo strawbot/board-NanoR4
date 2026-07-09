@@ -6,7 +6,7 @@
 Words // system
 	show-sys		show_sys		// show system info: clock frequencies and uptime
 	show-time		show_timer		// show delta timer state, UTC tick counter, and hardware RTC
-	show-timers		show_timers		// one-line summary of tick_timer, delta_timer, and RTC
+	show-timers		show_timers		// show live counter/duty for GPT0 tick, GPT2 delta, GPT3 mw-pwm, and RTC
 	set-utc			cli_set_utc		// (utc) seed the RTC with a Unix epoch from the data stack
 	reboot			do_reboot		// reboot the device via NVIC system reset
 	show-cli		show_cli		// display cli status
@@ -48,4 +48,5 @@ Words // system
 //	dac@ cli_dac_read // ( - n ) current dac value
 	calibrate calibrate_muscle_wire // calibrate the muscle wire should take about 4s
 	mw cli_set_muscle_wire // ( n ) set muscle wire to n% of its maximum
+	pwm cli_pwm_pct // ( n ) set PWM duty to n% (0-100) directly, bypassing PI
 End

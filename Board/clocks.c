@@ -54,6 +54,8 @@
 #include <time.h>
 #include <stdbool.h>
 
+extern const char build_timestamp[];
+
 // Nano R4 user LED — yellow, on port 2 pin 4 (P204), configured in RASC.
 #define LED_PIN  BSP_IO_PORT_02_PIN_04
 
@@ -179,7 +181,7 @@ void init_clocks(void) {
     (void)R_RTC_Open(&g_rtc0_ctrl, &g_rtc0_cfg);
 #endif
 #if RTC_BRINGUP_STAGE >= 3
-    Long build_utc = timestamp_to_utc(__TIMESTAMP__);
+    Long build_utc = timestamp_to_utc(build_timestamp);
     bool seed = true;
     struct tm rtc_now;
     if (R_RTC_CalendarTimeGet(&g_rtc0_ctrl, &rtc_now) == FSP_SUCCESS) {

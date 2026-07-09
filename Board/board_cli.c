@@ -38,12 +38,35 @@ void show_sys(void) {
 }
 
 // ── timer survey ───────────────────────────────────────────────────────────
-// One-line summary of each clock source wired up by the port.
+// Shows live GTCNT (and duty for PWM) from each GPT channel's registers.
+// R_GPT0/2/3 are register-map pointers from the CMSIS device header;
+// GTCNT is the counter, GTPR is the period, GTCCR[1] is GTCCRB (duty).
 void show_timers(void) {
     print("timers:"); printCr();
-    print("  tick_timer  GPT0   32-bit free-running  count="); printDec(get_ticks()); printCr();
-    print("  delta_timer GPT2   16-bit one-shot alarm"); printCr();
-    print("  rtc         IRTC   sub-clock 32.768 kHz  ");
+
+    // GPT0 — tick_timer, free-running 32-bit up-counter (PCLKD/4 = 8 MHz)
+    print("  GPT0 tick     free-run  cnt=");
+    printDec(R_GPT0->GTCNT);
+    printCr();
+
+    // GPT2 — delta_timer, one-shot alarm for TEA scheduler (PCLKD/1024 = 31.25 kHz)
+    print("  GPT2 delta    one-shot  cnt=");
+    printDec(R_GPT2->GTCNT);
+    print("  pr=");
+    printDec(R_GPT2->GTPR);
+    printCr();
+
+    // GPT3 — muscle-wire PWM, 10 kHz saw-wave (PCLKD/8 = 4 MHz, period=400)
+    print("  GPT3 mw-pwm   10kHz     cnt=");
+    printDec(R_GPT3->GTCNT);
+    print("  duty=");
+    printDec(R_GPT3->GTCCR[1]);   // GTCCRB controls GTIOC3B output
+    print("/");
+    printDec(R_GPT3->GTPR);
+    printCr();
+
+    // RTC — hardware IRTC on 32.768 kHz sub-clock
+    print("  RTC  irtc     32kHz     ");
     print_RTC();
     printCr();
 }
