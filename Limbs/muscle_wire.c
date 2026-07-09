@@ -177,12 +177,14 @@ static Short pi_step(float I) {
 
 // ── pi_update — 1 ms recurring TEA action ────────────────────
 // Started by calibration on completion; self-rescheduling.
+static void measure_pi(void) { pi_step(adc_read_sense_ma()); }
+
 void pi_update(void) {
     if (I_target_ma <= 0.0f) {
         pwm_set(0);
         integral = 0.0f;
     } else {
-        pi_step(adc_read_sense_ma());
+        now(measure_pi);
     }
     after(msec(1), pi_update);
 }
@@ -341,6 +343,11 @@ static void cal_step(void) {
 // Always safe to call, even while a calibration is running.
 // Cancels any in-progress run and restarts cleanly from the top.
 void calibrate_muscle_wire(void) {
+    static bool once = false;
+    if (!once) {
+        once = true;
+        namedAction(measure_pi);
+    }
     stop(cal_step);     // cancel any pending internal step
     stop(pi_update);    // stop runtime PI loop
     pwm_set(0);

@@ -22,6 +22,10 @@
 // See Robot/README.md for the linker-symbol contract.
 #include "canary.h"
 
+// AD5593R ADC/DAC expander driver lives in Robot/io/ad5593r (board-agnostic
+// protocol; see Board/i2c0.c for the IIC0 peripheral it rides on).
+#include "ad5593r.h"
+
 // ── clocks & uptime ────────────────────────────────────────────────────────
 void show_sys(void) {
     // Clock tree is pinned down in ra_gen/bsp_clock_cfg.h.
@@ -201,6 +205,45 @@ void ramp_down() {
         R_DAC_Write(&g_dac0_ctrl, v);
         v = (v - 1) & 0xFFF;
     } while (v != 0xFFF);
+}
+
+// ── AD5593R (IIC0: SCL=P400, SDA=P401) ──────────────────────────────────────
+// Chip-level protocol lives in Robot/io/ad5593r.c; these are just the CLI
+// stack-word wrappers. Channel numbering: dac 0-3 = I/O0-I/O3, adc 0-3 =
+// I/O4-I/O7 (see ad5593r.h).
+
+void ad5593r_show_status(void) {
+    ad5593r_status_t st;
+    if (!ad5593r_read_status(&st)) {
+        print("ad5593r: read failed"); printCr();
+        return;
+    }
+    print("ad5593r: dac_cfg=0x"); printHex(st.dac_config);
+    print(" adc_cfg=0x");         printHex(st.adc_config);
+    print(" ref=");               print(st.ref_enabled ? "on" : "off");
+    printCr();
+}
+
+void ad5593r_cli_dac_set(void) { // ( v ch -- )
+    Cell ch = ret();
+    Cell v  = ret();
+    if (v < 0)    v = 0;
+    if (v > 4095) v = 4095;
+    if (!ad5593r_set_dac((uint8_t)ch, (uint16_t)v)) {
+        print("ad5593r: dac write failed"); printCr();
+    }
+}
+
+void ad5593r_cli_adc_read(void) { // ( ch -- mv )
+    Cell ch = ret();
+    uint16_t code;
+    if (!ad5593r_read_adc((uint8_t)ch, &code)) {
+        print("ad5593r: adc read failed"); printCr();
+        lit(-1);
+        return;
+    }
+    // Internal 2.5V reference, 0-VREF range (see ad5593r_init()).
+    lit((Cell)((uint32_t)code * 2500U / 4095U));
 }
 
 // ── word filter ───────────────────────────────────────────────────────────

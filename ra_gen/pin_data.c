@@ -58,6 +58,20 @@ const ioport_pin_cfg_t g_bsp_pin_cfg_data[] = {
     },
     
     {
+        // SCL0 — fixed by silicon to P400 (see PinCfgR7FA4M1AxxxFM: iic0.scl.p400).
+        .pin = BSP_IO_PORT_04_PIN_00,
+        .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN | (uint32_t) IOPORT_CFG_PULLUP_ENABLE
+                    | (uint32_t) IOPORT_CFG_DRIVE_MID | (uint32_t) IOPORT_PERIPHERAL_IIC)
+    },
+
+    {
+        // SDA0 — fixed by silicon to P401 (see PinCfgR7FA4M1AxxxFM: iic0.sda.p401).
+        .pin = BSP_IO_PORT_04_PIN_01,
+        .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN | (uint32_t) IOPORT_CFG_PULLUP_ENABLE
+                    | (uint32_t) IOPORT_CFG_DRIVE_MID | (uint32_t) IOPORT_PERIPHERAL_IIC)
+    },
+
+    {
         .pin = BSP_IO_PORT_04_PIN_09,
         .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN | (uint32_t) IOPORT_PERIPHERAL_GPT1)
     },

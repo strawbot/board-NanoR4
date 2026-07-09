@@ -8,8 +8,18 @@
 #include "usb_init.h"
 #include "canary.h"
 #include "board_cli.h"
+#include "i2c0.h"
+#include "ad5593r.h"
+#include "printers.h"
 
 void muscle_wire_init(void);
+
+static const ad5593r_hw_t g_ad5593r_hw = {
+    .i2c_write = i2c0_write,
+    .i2c_read  = i2c0_read,
+};
+
+static bool g_ad5593r_ok;
 
 // init_cli is defined in TimbreOS/cli.c but not declared in cli.h —
 // follow the convention used by the other board ports.
@@ -38,13 +48,13 @@ bsp_ipc_semaphore_handle_t g_core_start_semaphore =
  **********************************************************************************************************************/
 void hal_entry(void)
 {
-    /* Arduino Nano R4 quirk: the factory DFU bootloader hands off to user
-     * code with PRIMASK = 1 (IRQs globally masked), and FSP's SystemInit()
-     * does not clear it. Without this call the scheduler's GPT2 alarm ISR
-     * never dispatches — the first heartbeat runs, then silence. Clearing
-     * PRIMASK once here is the fix; nested ENTER/LEAVE_SAFE_REGION blocks
-     * work correctly from this point on. */
-    // __enable_irq();
+    /* Arduino Nano R4 quirk: the DFU bootloader jumps to user code via direct
+     * register manipulation (not NVIC_SystemReset), leaving PRIMASK=1 and VTOR
+     * still at 0x0 (bootloader vectors). Fix both before anything else runs:
+     *   - VTOR: user vectors live at 0x4000 (bootloader owns 0x0–0x3FFF)
+     *   - PRIMASK: clear so FSP init, USB, and the scheduler work correctly */
+    SCB->VTOR = 0x00004000UL;
+    __enable_irq();
 
     /* Visible "firmware alive" marker — three short LED pulses before we
      * touch the scheduler or transport. If you don't see this after reset,
@@ -97,12 +107,17 @@ void hal_entry(void)
     dac_init();
     adc_init();
     muscle_wire_init();   // open GPT3 PWM on P003 before scheduler starts
+    i2c0_init();          // IIC0: SCL=P400, SDA=P401, 400 kHz
+    ad5593r_bind_hw(&g_ad5593r_hw);
+    g_ad5593r_ok = ad5593r_init();
     init_tea();
     usart_transport_init();
     usb_transport_init();
     print_build_banner();
+    print(" [diag:usb-ok]");
+    print(g_ad5593r_ok ? " [diag:ad5593-ok]" : " [diag:ad5593-FAIL]");
     init_cli();
-    __enable_irq();
+    print(" [diag:cli-ok]");
 
     while (1) {
         run();

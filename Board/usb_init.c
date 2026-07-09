@@ -29,6 +29,8 @@
 
 #include "tea.h"
 #include "printers.h"
+#include "clocks.h"
+#include "project_defs.h"
 
 #include "tusb.h"
 #include "usb_init.h"
@@ -62,11 +64,19 @@ static void usb_action(void) {
 // is checked by the Arduino UNO R4 Minima bootloader on startup: if it matches,
 // the bootloader enters DFU mode instead of launching user code.
 //
-// *** Verify this address/value against the actual installed bootloader if
-//     the device does not re-enumerate as a DFU device after DETACH. ***
-//     The bootloader source is at: https://github.com/arduino/ArduinoCore-renesas
+// Guard: dfu-util sends DFU_DETACH at the end of every upload while it is
+// still running, which races with our firmware boot.  We capture the tick
+// count at USB init time and refuse any DETACH that arrives within
+// DFU_MIN_ELAPSED ticks of that baseline.  Using elapsed time (not absolute
+// get_ticks()) is necessary because the DFU bootloader may leave GPT0 running
+// with an already-large counter, making an absolute threshold fire immediately.
+
+#define DFU_MIN_ELAPSED (3L * ONE_SECOND)   // 3 s — dfu-util exits well inside this
+
+static Long usb_init_tick;
 
 static void reboot_to_dfu_action(void) {
+    if ((get_ticks() - usb_init_tick) < DFU_MIN_ELAPSED) return;
     *((volatile uint32_t *)0x20003FFCUL) = 0x07738135UL;
     NVIC_SystemReset();
 }
@@ -80,10 +90,10 @@ void tud_dfu_runtime_reboot_to_dfu_cb(void) {
 // ── usb_transport_init — call once from hal_entry() ──────────────────────────
 
 void usb_transport_init(void) {
+    usb_init_tick = get_ticks();   // baseline for DFU_MIN_ELAPSED guard
     tusb_init();
     later(usb_action);
     namedAction(usb_action);
-    // print("USB: DFU Runtime init\r\n");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -45,6 +45,9 @@ Words // system
 	down ramp_down // create a ramp down on DAC output
 	dfu tud_dfu_runtime_reboot_to_dfu_cb // go into DFU mode for dfu-util on host to download
 	adc@ cli_adc_read // ( - mv ) read AN00 (P000) and push millivolts (0-5000) onto stack
+	ad5593 ad5593r_show_status // show AD5593R dac/adc pin config and reference state
+	ad5593dac! ad5593r_cli_dac_set // (v ch) write 12-bit value v to AD5593R DAC channel ch (0-3)
+	ad5593adc@ ad5593r_cli_adc_read // (ch - mv) read AD5593R ADC channel ch (0-3), push millivolts
 //	dac@ cli_dac_read // ( - n ) current dac value
 	calibrate calibrate_muscle_wire // calibrate the muscle wire should take about 4s
 	mw cli_set_muscle_wire // ( n ) set muscle wire to n% of its maximum

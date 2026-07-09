@@ -21,6 +21,11 @@ void R_BSP_WarmStart (bsp_warm_start_event_t event)
 {
     if (BSP_WARM_START_RESET == event)
     {
+        /* Clear DFU boot magic so a subsequent soft-reset (NVIC_SystemReset) does
+         * not re-enter the bootloader. The bootloader has already consumed it by
+         * the time we reach this hook, so clearing it here is always safe. */
+        *((volatile uint32_t *)0x20003FFCUL) = 0x00000000UL;
+
 #if BSP_FEATURE_FLASH_LP_VERSION != 0
 
         /* Enable reading from data flash. */
