@@ -255,6 +255,15 @@ void ad5593r_show_status(void) {
         }
         printCr();
     }
+
+    float temp_c;
+    print("  temp  ");
+    if (ad5593r_read_temp(&temp_c)) {
+        printFloat0(temp_c, 1); print(" C");
+    } else {
+        print("read failed");
+    }
+    printCr();
 }
 
 void ad5593r_cli_reset(void) {

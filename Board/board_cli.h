@@ -27,7 +27,7 @@ uint32_t adc_read_mv(void); // Read AN00 (P000) and return millivolts (0–5000)
 void cli_adc_read(void);    // CLI word: pushes AN00 reading in mV onto the data stack
 
 // ad5593r (IIC0: SCL=P400, SDA=P401) — chip driver in Robot/io/ad5593r
-void ad5593r_show_status(void);  // print pin config, reference state, and each I/O port's value
+void ad5593r_show_status(void);  // print pin config, reference state, each I/O port's value, and die temp
 void ad5593r_cli_dac_set(void);  // (mv ch) write mv millivolts (0-2500) to DAC channel ch (0-3)
 void ad5593r_cli_adc_read(void); // (ch -- mv) read ADC channel ch (0-3), push millivolts
 void ad5593r_cli_reset(void);    // reset the chip and reconfigure DAC/ADC/reference
