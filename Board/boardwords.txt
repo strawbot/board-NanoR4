@@ -45,11 +45,12 @@ Words // system
 	down ramp_down // create a ramp down on DAC output
 	dfu tud_dfu_runtime_reboot_to_dfu_cb // go into DFU mode for dfu-util on host to download
 	adc@ cli_adc_read // ( - mv ) read AN00 (P000) and push millivolts (0-5000) onto stack
-	ad5593 ad5593r_show_status // show AD5593R dac/adc pin config and reference state
-	ad5593dac! ad5593r_cli_dac_set // (v ch) write 12-bit value v to AD5593R DAC channel ch (0-3)
-	ad5593adc@ ad5593r_cli_adc_read // (ch - mv) read AD5593R ADC channel ch (0-3), push millivolts
+	limb ad5593r_show_status // show AD5593R pin config, reference state, and each I/O port's value
+	mw! ad5593r_cli_dac_set // (mv ch) write mv millivolts (0-2500) to AD5593R DAC channel ch (0-3)
+	mw@ ad5593r_cli_adc_read // (ch - mv) read AD5593R ADC channel ch (0-3), push millivolts
+	limbreset ad5593r_cli_reset // reset the AD5593R and reconfigure DAC/ADC/reference
 //	dac@ cli_dac_read // ( - n ) current dac value
-	calibrate calibrate_muscle_wire // calibrate the muscle wire should take about 4s
-	mw cli_set_muscle_wire // ( n ) set muscle wire to n% of its maximum
-	pwm cli_pwm_pct // ( n ) set PWM duty to n% (0-100) directly, bypassing PI
+//	calibrate calibrate_muscle_wire // calibrate the muscle wire should take about 4s
+//	mw cli_set_muscle_wire // ( n ) set muscle wire to n% of its maximum
+//	pwm cli_pwm_pct // ( n ) set PWM duty to n% (0-100) directly, bypassing PI
 End

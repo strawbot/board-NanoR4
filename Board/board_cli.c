@@ -212,6 +212,18 @@ void ramp_down() {
 // stack-word wrappers. Channel numbering: dac 0-3 = I/O0-I/O3, adc 0-3 =
 // I/O4-I/O7 (see ad5593r.h).
 
+// Internal 2.5V reference, 0-VREF range (see ad5593r_init()). Both
+// directions live here so ad5593dac! and ad5593adc@ agree on units —
+// millivolts in, millivolts out.
+static uint32_t ad5593r_code_to_mv(uint16_t code12) {
+    return (uint32_t)code12 * 2500U / 4095U;
+}
+
+static uint16_t ad5593r_mv_to_code(uint32_t mv) {
+    if (mv > 2500U) mv = 2500U;
+    return (uint16_t)(mv * 4095U / 2500U);
+}
+
 void ad5593r_show_status(void) {
     ad5593r_status_t st;
     if (!ad5593r_read_status(&st)) {
@@ -222,14 +234,38 @@ void ad5593r_show_status(void) {
     print(" adc_cfg=0x");         printHex(st.adc_config);
     print(" ref=");               print(st.ref_enabled ? "on" : "off");
     printCr();
+
+    for (uint8_t ch = 0; ch < 4; ch++) {
+        uint16_t code;
+        print("  I/O"); printDec(ch); print(" DAC  ");
+        if (ad5593r_read_dac(ch, &code)) {
+            printDec(code); print(" ("); printDec(ad5593r_code_to_mv(code)); print(" mV)");
+        } else {
+            print("read failed");
+        }
+        printCr();
+    }
+    for (uint8_t ch = 0; ch < 4; ch++) {
+        uint16_t code;
+        print("  I/O"); printDec(4 + ch); print(" ADC  ");
+        if (ad5593r_read_adc(ch, &code)) {
+            printDec(code); print(" ("); printDec(ad5593r_code_to_mv(code)); print(" mV)");
+        } else {
+            print("read failed");
+        }
+        printCr();
+    }
 }
 
-void ad5593r_cli_dac_set(void) { // ( v ch -- )
+void ad5593r_cli_reset(void) {
+    print("ad5593r: reset "); print(ad5593r_reset() ? "ok" : "FAILED"); printCr();
+}
+
+void ad5593r_cli_dac_set(void) { // ( mv ch -- )
     Cell ch = ret();
-    Cell v  = ret();
-    if (v < 0)    v = 0;
-    if (v > 4095) v = 4095;
-    if (!ad5593r_set_dac((uint8_t)ch, (uint16_t)v)) {
+    Cell mv = ret();
+    if (mv < 0) mv = 0;
+    if (!ad5593r_set_dac((uint8_t)ch, ad5593r_mv_to_code((uint32_t)mv))) {
         print("ad5593r: dac write failed"); printCr();
     }
 }
@@ -242,8 +278,7 @@ void ad5593r_cli_adc_read(void) { // ( ch -- mv )
         lit(-1);
         return;
     }
-    // Internal 2.5V reference, 0-VREF range (see ad5593r_init()).
-    lit((Cell)((uint32_t)code * 2500U / 4095U));
+    lit((Cell)ad5593r_code_to_mv(code));
 }
 
 // ── word filter ───────────────────────────────────────────────────────────
