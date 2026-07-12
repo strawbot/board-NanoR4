@@ -49,6 +49,8 @@ Words // system
 	mw! ad5593r_cli_dac_set // (mv ch) write mv millivolts (0-2500) to AD5593R DAC channel ch (0-3)
 	mw@ ad5593r_cli_adc_read // (ch - mv) read AD5593R ADC channel ch (0-3), push millivolts
 	limbreset ad5593r_cli_reset // reset the AD5593R and reconfigure DAC/ADC/reference
+	limbcal ad5593r_cli_limb_calibrate // ramp each limb's DAC 0-3 until ADC saturates, score its linear region (blocks, worst case ~164s)
+	limb! ad5593r_cli_limb_set // (pct limb) drive limb (0-3) to pct% (0-100) of its calibrated range
 //	dac@ cli_dac_read // ( - n ) current dac value
 //	calibrate calibrate_muscle_wire // calibrate the muscle wire should take about 4s
 //	mw cli_set_muscle_wire // ( n ) set muscle wire to n% of its maximum

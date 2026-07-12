@@ -25,6 +25,7 @@
 // AD5593R ADC/DAC expander driver lives in Robot/io/ad5593r (board-agnostic
 // protocol; see Board/i2c0.c for the IIC0 peripheral it rides on).
 #include "ad5593r.h"
+#include "ad5593r_limb.h"
 
 // ── clocks & uptime ────────────────────────────────────────────────────────
 void show_sys(void) {
@@ -243,6 +244,12 @@ void ad5593r_show_status(void) {
         } else {
             print("read failed");
         }
+        ad5593r_limb_cal_t cal;
+        if (ad5593r_limb_get_cal(ch, &cal) && cal.calibrated) {
+            print("  cal=["); printDec(cal.dac_lo_mv); print("-"); printDec(cal.dac_hi_mv); print("mV]");
+        } else {
+            print("  cal=none");
+        }
         printCr();
     }
     for (uint8_t ch = 0; ch < 4; ch++) {
@@ -268,6 +275,34 @@ void ad5593r_show_status(void) {
 
 void ad5593r_cli_reset(void) {
     print("ad5593r: reset "); print(ad5593r_reset() ? "ok" : "FAILED"); printCr();
+}
+
+// Ramps each limb's DAC 0->4095 one code at a time (10ms settle) until
+// the ADC saturates, and scores the linear region of that response — see
+// Robot/io/ad5593r/ad5593r_limb.c for the algorithm and its
+// blocking-duration tradeoff (worst case ~41s per limb).
+void ad5593r_cli_limb_calibrate(void) {
+    for (uint8_t limb = 0; limb < AD5593R_LIMB_COUNT; limb++) {
+        print("limb "); printDec(limb); print(": ");
+        if (ad5593r_limb_calibrate(limb)) {
+            ad5593r_limb_cal_t cal;
+            ad5593r_limb_get_cal(limb, &cal);
+            print("lo="); printDec(cal.dac_lo_mv); print("mV hi="); printDec(cal.dac_hi_mv); print("mV");
+        } else {
+            print("calibration FAILED");
+        }
+        printCr();
+    }
+}
+
+void ad5593r_cli_limb_set(void) { // ( pct limb -- )
+    Cell limb = ret();
+    Cell pct  = ret();
+    if (pct < 0)   pct = 0;
+    if (pct > 100) pct = 100;
+    if (!ad5593r_limb_set((uint8_t)limb, (uint8_t)pct)) {
+        print("limb: set failed (not calibrated, bad limb, or I2C error)"); printCr();
+    }
 }
 
 void ad5593r_cli_dac_set(void) { // ( mv ch -- )

@@ -32,4 +32,9 @@ void ad5593r_cli_dac_set(void);  // (mv ch) write mv millivolts (0-2500) to DAC 
 void ad5593r_cli_adc_read(void); // (ch -- mv) read ADC channel ch (0-3), push millivolts
 void ad5593r_cli_reset(void);    // reset the chip and reconfigure DAC/ADC/reference
 
+// limb calibration (Robot/io/ad5593r/ad5593r_limb) — each DAC/ADC channel
+// pair (0-3) drives one muscle-wire limb.
+void ad5593r_cli_limb_calibrate(void); // ramp DAC 0-3 until ADC saturates, score each limb's linear region (blocks, worst case ~164s)
+void ad5593r_cli_limb_set(void);       // (pct limb) drive limb (0-3) to pct% (0-100) of its calibrated range
+
 #endif // BOARD_CLI_H
