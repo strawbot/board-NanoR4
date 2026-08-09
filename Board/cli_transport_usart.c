@@ -64,11 +64,44 @@ void cli_rxtx(uart_callback_args_t * p_args) {
 }
 
 // ── EmitEvent target — kicks off one byte of interrupt-driven TX ────────────
+//
+// RACE: this runs in BOTH contexts — thread context via the EmitEvent hook, and
+// ISR context via cli_rxtx() on UART_EVENT_TX_COMPLETE. The old code did
+//
+//     if (tx_busy) return;  ...  tx_busy = true;
+//
+// with the test and the set separated by a queue pull. If TX_COMPLETE lands in
+// that window both paths claim the shuttle, both call R_SCI_UART_Write, and the
+// second one fails. The failure path then cleared tx_busy while a write was
+// genuinely in flight — or, in the other interleaving, tx_busy was left true
+// with no write pending at all.
+//
+// The second case is unrecoverable: the TX chain only re-arms from
+// TX_COMPLETE, so once it stops with tx_busy stuck true, emitq never drains
+// again and the next print() spins forever. That is a stall part-way through a
+// string, not at a message boundary — which is exactly the observed symptom.
+//
+// Fix: claim the shuttle atomically. Everything else is unchanged.
+//
+// Remaining (much narrower) failure mode: if R_SCI_UART_Write succeeds but
+// TX_COMPLETE never arrives, tx_busy stays true forever. If that ever shows up,
+// add a timeout in the scheduler that re-arms when emitq is non-empty and the
+// SCI has been idle.
 static void usart_emit(void) {
-    if (tx_busy)     return;
-    if (!qbq(emitq)) return;
-    tx_byte = (uint8_t)pullbq(emitq);
-    tx_busy = true;
+    FSP_CRITICAL_SECTION_DEFINE;
+
+    bool claimed = false;
+
+    FSP_CRITICAL_SECTION_ENTER;
+    if (!tx_busy && qbq(emitq)) {
+        tx_byte = (uint8_t) pullbq(emitq);
+        tx_busy = true;
+        claimed = true;
+    }
+    FSP_CRITICAL_SECTION_EXIT;
+
+    if (!claimed) return;
+
     if (R_SCI_UART_Write(&g_uart2_ctrl, &tx_byte, 1) != FSP_SUCCESS) {
         // Write kickoff failed — release the shuttle so a later emit can retry.
         tx_busy = false;

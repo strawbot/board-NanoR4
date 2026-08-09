@@ -207,6 +207,30 @@
       <description>Real Time Clock</description>
       <originalPack>Renesas.RA.6.2.0.pack</originalPack>
     </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_adc" variant="" vendor="Renesas" version="6.2.0">
+      <description>A/D Converter</description>
+      <originalPack>Renesas.RA.6.2.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_dac" variant="" vendor="Renesas" version="6.2.0">
+      <description>12-bit D/A Converter</description>
+      <originalPack>Renesas.RA.6.2.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_iic_master" variant="" vendor="Renesas" version="6.2.0">
+      <description>I2C Master Interface</description>
+      <originalPack>Renesas.RA.6.2.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_usb_basic" variant="" vendor="Renesas" version="6.2.0">
+      <description>USB Basic</description>
+      <originalPack>Renesas.RA.6.2.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_usb_pcdc" variant="" vendor="Renesas" version="6.2.0">
+      <description>USB Peripheral Communications Device Class</description>
+      <originalPack>Renesas.RA.6.2.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_usb_composite" variant="" vendor="Renesas" version="6.2.0">
+      <description>USB Composite</description>
+      <originalPack>Renesas.RA.6.2.0.pack</originalPack>
+    </component>
   </raComponentSelection>
   <raElcConfiguration/>
   <raIcuConfiguration/>
@@ -456,6 +480,93 @@
       <property id="module.driver.timer.gtioca_disable_setting" value="module.driver.timer.gtioca_disable_setting.gtioc_disable_prohibited"/>
       <property id="module.driver.timer.gtiocb_disable_setting" value="module.driver.timer.gtiocb_disable_setting.gtioc_disable_prohibited"/>
     </module>
+    <module id="module.driver.adc_on_adc.242951543">
+      <property id="module.driver.adc.name" value="g_adc0"/>
+      <property id="module.driver.adc.unit" value="0"/>
+      <property id="module.driver.adc.resolution" value="module.driver.adc.resolution.resolution_14_bit"/>
+      <property id="module.driver.adc.alignment" value="module.driver.adc.alignment.alignment_right"/>
+      <property id="module.driver.adc.clearing" value="module.driver.adc.clearing.clear_after_read_on"/>
+      <property id="module.driver.adc.mode" value="module.driver.adc.mode.mode_single_scan"/>
+      <property id="module.driver.adc.mode.dt" value="module.driver.adc.mode.dt.disabled"/>
+      <property id="module.driver.adc.scan_mask" value=""/>
+      <property id="module.driver.adc.scan_mask_group_b" value=""/>
+      <property id="module.driver.adc.trigger" value="enum.driver.adc.trigger.trigger_software"/>
+      <property id="module.driver.adc.trigger_group_b" value="_disabled"/>
+      <property id="module.driver.adc.priority_group_a" value="module.driver.adc.priority_group_a.group_a_priority_off"/>
+      <property id="module.driver.adc.add_average_count" value="module.driver.adc.add_average_count.add_off"/>
+      <property id="module.driver.adc.adc_vref_control" value="module.driver.adc.adc_vref_control.avcc0_avss0"/>
+      <property id="module.driver.adc.add_mask" value=""/>
+      <property id="module.driver.adc.sample_hold_mask" value=""/>
+      <property id="module.driver.adc.sample_hold_states" value="24"/>
+      <property id="module.driver.adc.compare.window_mode" value="module.driver.adc.compare.window_mode.disabled"/>
+      <property id="module.driver.adc.compare.event_mode" value="module.driver.adc.compare.event_mode.or"/>
+      <property id="module.driver.adc.compare.window_a.enable" value="module.driver.adc.compare.window_a.enable.disabled"/>
+      <property id="module.driver.adc.compare.window_a.channels" value=""/>
+      <property id="module.driver.adc.compare.window_a.channel_mode" value=""/>
+      <property id="module.driver.adc.compare.window_a.ref_lower" value="0"/>
+      <property id="module.driver.adc.compare.window_a.ref_upper" value="0"/>
+      <property id="module.driver.adc.compare.window_b.enable" value="module.driver.adc.compare.window_b.enable.disabled"/>
+      <property id="module.driver.adc.compare.window_b.channel" value="module.driver.adc.compare.window_b.channel.channel_0"/>
+      <property id="module.driver.adc.compare.window_b.mode" value="module.driver.adc.compare.window_b.mode.less_outside"/>
+      <property id="module.driver.adc.compare.window_b.ref_lower" value="0"/>
+      <property id="module.driver.adc.compare.window_b.ref_upper" value="0"/>
+      <property id="module.driver.adc.p_callback" value="NULL"/>
+      <property id="module.driver.adc.scan_end_ipl" value="_disabled"/>
+      <property id="module.driver.adc.scan_end_b_ipl" value="_disabled"/>
+      <property id="module.driver.adc.window_a_ipl" value="_disabled"/>
+      <property id="module.driver.adc.window_b_ipl" value="_disabled"/>
+      <property id="module.driver.adc.adbuf" value="module.driver.adc.adbuf.disabled"/>
+    </module>
+    <module id="module.driver.dac_on_dac.1146942893">
+      <property id="module.driver.dac.name" value="g_dac0"/>
+      <property id="module.driver.dac.channel_id" value="0"/>
+      <property id="module.driver.dac.ad_da_synchronized" value="module.driver.dac.ad_da_synchronized.disabled"/>
+      <property id="module.driver.dac.data_format" value="module.driver.dac.data_format.data_format_flush_right"/>
+      <property id="module.driver.dac.output_amplifier_enabled" value="module.driver.dac.output_amplifier.disabled"/>
+      <property id="module.driver.dac.charge_pump_enabled" value="enum.mcu.dac.charge_pump.disabled"/>
+      <property id="module.driver.dac.internal_output" value="enum.mcu.dac.internal_output.disabled"/>
+      <property id="module.driver.dac.elc_trigger" value="_disabled"/>
+      <property id="module.driver.dac.ref_volt_sel" value="module.driver.dac.ref_volt_sel.avcc0_avss0"/>
+    </module>
+    <module id="module.driver.usb_composite.157692837">
+      <property id="module.driver.r_usb_composite.name" value="g_r_usb_composite0"/>
+    </module>
+    <module id="module.driver.pcdc_on_usb.1500893942">
+      <property id="module.driver.pcdc.name" value="g_pcdc0"/>
+    </module>
+    <module id="module.driver.basic_on_usb.144588747">
+      <property id="module.driver.basic.name" value="g_basic0"/>
+      <property id="module.driver.usb_basic.usb_mode" value="module.driver.usb_basic.usb_mode.host"/>
+      <property id="module.driver.usb_basic.usb_speed" value="module.driver.usb_basic.usb_speed.fs"/>
+      <property id="module.driver.usb_basic.usb_modulenumber" value="module.driver.usb_basic.usb_modulenumber.0"/>
+      <property id="module.driver.usb_basic.usb_classtype" value="module.driver.usb_basic.usb_classtype.pcdc"/>
+      <property id="module.driver.usb_basic.p_usb_reg" value="g_usb_descriptor"/>
+      <property id="module.driver.usb_basic.complience_cb" value="NULL"/>
+      <property id="module.driver.usb_basic.ipl" value="board.icu.common.irq.priority12"/>
+      <property id="module.driver.usb_basic.ipl_r" value="board.icu.common.irq.priority12"/>
+      <property id="module.driver.usb_basic.ipl_d0" value="board.icu.common.irq.priority12"/>
+      <property id="module.driver.usb_basic.ipl_d1" value="board.icu.common.irq.priority12"/>
+      <property id="module.driver.usb_basic.hsipl" value="_disabled"/>
+      <property id="module.driver.usb_basic.hsipl_d0" value="_disabled"/>
+      <property id="module.driver.usb_basic.hsipl_d1" value="_disabled"/>
+      <property id="module.driver.usb_basic.rtos_callback" value="NULL"/>
+      <property id="module.driver.usb_basic.other_context" value="NULL"/>
+    </module>
+    <module id="module.driver.i2c_on_iic_master.487834719">
+      <property id="module.driver.i2c_master.name" value="g_i2c_master0"/>
+      <property id="module.driver.i2c_master.channel" value="0"/>
+      <property id="module.driver.i2c_master.rate" value="module.driver.i2c_master.rate.rate_standard"/>
+      <property id="module.driver.i2c_master.rate_value" value="0"/>
+      <property id="module.driver.i2c_master.rise_time_ns" value="120"/>
+      <property id="module.driver.i2c_master.fall_time_ns" value="120"/>
+      <property id="module.driver.i2c_master.duty" value="50"/>
+      <property id="module.driver.i2c_master.slave" value="0x10"/>
+      <property id="module.driver.i2c_master.addr_mode" value="module.driver.i2c_master.addr_mode.addr_mode_7bit"/>
+      <property id="module.driver.i2c_master.timeout_mode" value="module.driver.i2c_master.timeout_mode.short_mode"/>
+      <property id="module.driver.i2c_master.timeout_scl_low" value="module.driver.i2c_master.timeout_scl_low.enabled"/>
+      <property id="module.driver.i2c_master.p_callback" value="NULL"/>
+      <property id="module.driver.i2c_master.ipl" value="board.icu.common.irq.priority12"/>
+    </module>
     <context id="_hal.0">
       <stack module="module.driver.uart_on_sci_uart.674874090">
         <stack module="module.driver.transfer_on_dtc.1056166033" requires="module.driver.uart_on_sci_uart.requires.transfer_tx"/>
@@ -467,12 +578,48 @@
       <stack module="module.driver.elc_on_elc.1839054822"/>
       <stack module="module.driver.ioport_on_ioport.1777067794"/>
       <stack module="module.driver.timer_on_gpt.46607600"/>
+      <stack module="module.driver.adc_on_adc.242951543"/>
+      <stack module="module.driver.dac_on_dac.1146942893"/>
+      <stack module="module.driver.usb_composite.157692837">
+        <stack module="module.driver.pcdc_on_usb.1500893942" requires="module.driver.r_usb_composite_pmsc_phid.requires.class1">
+          <stack module="module.driver.basic_on_usb.144588747" requires="module.driver.basic_on_usb.requires.basic"/>
+        </stack>
+      </stack>
+      <stack module="module.driver.i2c_on_iic_master.487834719"/>
     </context>
+    <config id="config.driver.adc">
+      <property id="config.driver.adc.param_checking_enable" value="config.driver.adc.param_checking_enable.bsp"/>
+    </config>
+    <config id="config.driver.usb_basic">
+      <property id="config.driver.usb_basic.param_checking_enable" value="config.driver.usb_basic.param_checking_enable.bsp"/>
+      <property id="config.driver.usb_basic.pll_clock_frequency" value="config.driver.usb_basic.pll_clock_frequency.24mhz"/>
+      <property id="config.driver.usb_basic.buswait" value="config.driver.usb_basic.buswait.0"/>
+      <property id="config.driver.usb_basic.bc_function" value="config.driver.usb_basic.bc_function.disable"/>
+      <property id="config.driver.usb_basic.power_source" value="config.driver.usb_basic.power_source.high"/>
+      <property id="config.driver.usb_basic.dcp_function" value="config.driver.usb_basic.dcp_function.disable"/>
+      <property id="config.driver.usb_basic.request" value="config.driver.usb_basic.request.enable"/>
+      <property id="config.driver.usb_basic.dblb" value="config.driver.usb_basic.dblb.enable"/>
+      <property id="config.driver.usb_basic.cntmd" value="config.driver.usb_basic.cntmd.disable"/>
+      <property id="config.driver.usb_basic.ldo_regulator" value="config.driver.usb_basic.ldo_regulator.disable"/>
+      <property id="config.driver.usb_basic.dma" value="config.driver.usb_basic.dma.disable"/>
+      <property id="config.driver.usb_basic.source_address" value="config.driver.usb_basic.source_address.none"/>
+      <property id="config.driver.usb_basic.dest_address" value="config.driver.usb_basic.dest_address.none"/>
+      <property id="config.driver.usb_basic.compliance_mode" value="config.driver.usb_basic.compliance_mode.disable"/>
+      <property id="config.driver.usb_basic.tpl_table" value="NULL"/>
+    </config>
     <config id="config.driver.elc">
       <property id="config.driver.elc.checking" value="config.driver.elc.checking.system"/>
     </config>
     <config id="config.driver.dmac">
       <property id="config.driver.dmac.param_checking_enable" value="config.driver.dmac.param_checking_enable.bsp"/>
+    </config>
+    <config id="config.driver.dac">
+      <property id="config.driver.dac.param_checking_enable" value="config.driver.dac.param_checking_enable.bsp"/>
+    </config>
+    <config id="config.driver.iic_master">
+      <property id="config.driver.iic_master.param_checking_enable" value="config.driver.iic_master.param_checking_enable.bsp"/>
+      <property id="config.driver.iic_master.dtc_enable" value="config.driver.iic_master.dtc_enable.disabled"/>
+      <property id="config.driver.iic_master.addr_mode_10_bit_enable" value="config.driver.iic_master.addr_mode_10_bit_enable.disabled"/>
     </config>
     <config id="config.driver.sci_uart">
       <property id="config.driver.sci_uart.param_checking_enable" value="config.driver.sci_uart.param_checking_enable.bsp"/>
@@ -487,6 +634,8 @@
       <property id="config.driver.gpt.output_support_enable" value="config.driver.gpt.output_support_enable.enabled"/>
       <property id="config.driver.gpt.write_protect_enable" value="config.driver.gpt.write_protect_enable.disabled"/>
     </config>
+    <config id="config.driver.usb_pcdc"/>
+    <config id="config.driver.usb_pcdc_class"/>
     <config id="config.driver.ioport">
       <property id="config.driver.ioport.checking" value="config.driver.ioport.checking.system"/>
       <property id="config.driver.ioport.ccd_support_enable" value="config.driver.ioport.ccd_support_enable.disabled"/>
@@ -508,6 +657,9 @@
     <symbolicName propertyId="p410.symbolic_name" value="Green_LED"/>
     <symbolicName propertyId="p411.symbolic_name" value="Blue_LED"/>
     <pincfg active="true" name="R7FA4M1AB3CFM.pincfg" selected="true" symbol="g_bsp_pin_cfg">
+      <configSetting altId="adc0.an00.p000" configurationId="adc0.an00"/>
+      <configSetting altId="adc0.an01.p001" configurationId="adc0.an01"/>
+      <configSetting altId="adc0.mode.custom" configurationId="adc0.mode"/>
       <configSetting altId="cgc0.extal.p212" configurationId="cgc0.extal"/>
       <configSetting altId="cgc0.mode.custom" configurationId="cgc0.mode"/>
       <configSetting altId="cgc0.xtal.p213" configurationId="cgc0.xtal"/>
@@ -525,6 +677,16 @@
       <configSetting altId="gpt6.gtioca.p411" configurationId="gpt6.gtioca"/>
       <configSetting altId="gpt6.gtiocb.p410" configurationId="gpt6.gtiocb"/>
       <configSetting altId="gpt6.mode.gtiocaorgtiocb.free" configurationId="gpt6.mode"/>
+      <configSetting altId="iic0.mode.enabled.free" configurationId="iic0.mode"/>
+      <configSetting altId="iic0.pairing.free" configurationId="iic0.pairing"/>
+      <configSetting altId="iic0.scl.p400" configurationId="iic0.scl"/>
+      <configSetting altId="iic0.sda.p401" configurationId="iic0.sda"/>
+      <configSetting altId="p000.adc0.an00" configurationId="p000"/>
+      <configSetting altId="p000.gpio_mode.gpio_mode_an" configurationId="p000.gpio_mode"/>
+      <configSetting altId="p001.adc0.an01" configurationId="p001"/>
+      <configSetting altId="p001.gpio_mode.gpio_mode_an" configurationId="p001.gpio_mode"/>
+      <configSetting altId="p014.input" configurationId="p014"/>
+      <configSetting altId="p014.gpio_mode.gpio_mode_in" configurationId="p014.gpio_mode"/>
       <configSetting altId="p108.debug0.tms" configurationId="p108"/>
       <configSetting altId="p108.gpio_mode.gpio_mode_peripheral" configurationId="p108.gpio_mode"/>
       <configSetting altId="p109.debug0.tdo" configurationId="p109"/>
@@ -545,6 +707,12 @@
       <configSetting altId="p301.gpio_mode.gpio_mode_peripheral" configurationId="p301.gpio_mode"/>
       <configSetting altId="p302.sci2.txd" configurationId="p302"/>
       <configSetting altId="p302.gpio_mode.gpio_mode_peripheral" configurationId="p302.gpio_mode"/>
+      <configSetting altId="p400.iic0.scl" configurationId="p400"/>
+      <configSetting altId="p400.gpio_speed.gpio_speed_medium" configurationId="p400.gpio_drivecapacity"/>
+      <configSetting altId="p400.gpio_mode.gpio_mode_peripheral" configurationId="p400.gpio_mode"/>
+      <configSetting altId="p401.iic0.sda" configurationId="p401"/>
+      <configSetting altId="p401.gpio_speed.gpio_speed_medium" configurationId="p401.gpio_drivecapacity"/>
+      <configSetting altId="p401.gpio_mode.gpio_mode_peripheral" configurationId="p401.gpio_mode"/>
       <configSetting altId="p409.gpt5.gtioca" configurationId="p409"/>
       <configSetting altId="p409.gpio_mode.gpio_mode_peripheral" configurationId="p409.gpio_mode"/>
       <configSetting altId="p410.gpt6.gtiocb" configurationId="p410"/>

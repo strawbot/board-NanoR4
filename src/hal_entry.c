@@ -35,6 +35,24 @@ void blink() {
     for (volatile uint32_t w = 0; w < 400000; w++) { __asm volatile ("nop"); }
 }
 
+// mark(n) — boot-progress beacon: (n+1) pulses, then a long pause.
+//
+// Uses nothing but GPIO and busy loops, so it is valid anywhere in the boot
+// path — before the scheduler, before any transport, before interrupts matter.
+// Each init step is preceded by its own count, so **the last count you see is
+// the step that hung**. This exists because the console does not come up until
+// usart_transport_init(), which is late: anything that blocks before it is
+// otherwise completely silent.
+//
+// Remove or #if 0 these once the hang is located.
+void boot_progress(uint32_t step);   // Board/fault.c - breadcrumb in VBTBKR
+
+static void mark(int n) {
+    boot_progress((uint32_t) n);   // survives the reset: hex 4001E51C 1 dump
+    for (int i = 0; i <= n; i++) blink();
+    for (volatile uint32_t w = 0; w < 3000000; w++) { __asm volatile ("nop"); }
+}
+
 #if (1 == BSP_MULTICORE_PROJECT) && BSP_TZ_SECURE_BUILD
 bsp_ipc_semaphore_handle_t g_core_start_semaphore =
 {
@@ -97,6 +115,8 @@ void hal_entry(void)
     R_BSP_NonSecureEnter();
 #endif
 
+    mark(0);               /* one pulse: we reached hal_entry at all */
+
     stack_canary_init();   /* fill stack with 0xDEADBEEF before any deep calls */
 
     /* TimbreOS bring-up. init_tea() calls init_clocks() internally
@@ -104,20 +124,35 @@ void hal_entry(void)
      * The build banner is printed *after* usart_transport_init() because
      * init_clocks runs before the transport is up, and output() will spin
      * forever if emitq has no drain path. */
-    dac_init();
-    adc_init();
-    muscle_wire_init();   // open GPT3 PWM on P003 before scheduler starts
-    i2c0_init();          // IIC0: SCL=P400, SDA=P401, 400 kHz
-    ad5593r_bind_hw(&g_ad5593r_hw);
-    g_ad5593r_ok = ad5593r_init();
-    init_tea();
-    usart_transport_init();
+    mark(1); dac_init();
+    mark(2); adc_init();
+    mark(3); muscle_wire_init();   // open GPT3 PWM on P003 before scheduler starts
+    mark(4); i2c0_init();          // IIC0: SCL=P400, SDA=P401, 400 kHz
+    mark(5); ad5593r_bind_hw(&g_ad5593r_hw);
+             g_ad5593r_ok = ad5593r_init();
+    mark(6); init_tea();
+    mark(7); usart_transport_init();
+
+    /* mark(8) — nine pulses — proves usart_transport_init() RETURNED. From here
+     * the console should exist, so the rest of the boot reports itself in text.
+     * If you see nine pulses but no text at all, the transport came up and
+     * output() is spinning with no drain path: the hang is in print(), not in
+     * anything after it. */
+    mark(8);
+
+    print("boot: usart ok");   printCr();
     usb_transport_init();
+    print("boot: usb ok");     printCr();
+
     print_build_banner();
     print(" [diag:usb-ok]");
     print(g_ad5593r_ok ? " [diag:ad5593-ok]" : " [diag:ad5593-FAIL]");
+    printCr();
+    print("boot: banner ok");  printCr();
+
     init_cli();
-    print(" [diag:cli-ok]");
+    print(" [diag:cli-ok]");   printCr();
+    print("boot: entering run loop"); printCr();
 
     while (1) {
         run();

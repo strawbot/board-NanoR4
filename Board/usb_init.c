@@ -23,6 +23,7 @@
 //   serviced on every scheduler pass without blocking.
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "hal_data.h"
@@ -55,14 +56,76 @@ static void usb_action(void) {
     later(usb_action);
 }
 
+// ── Arduino DFU bootloader entry flag ────────────────────────────────────────
+//
+// The bootloader's double-tap flag is NOT in SRAM.  On Cortex-M4 RA parts the
+// Arduino Renesas bootloader keeps it in the VBATT backup registers:
+//
+//     R_SYSTEM->VBTBKR[0..3] == 0x07738135  →  enter DFU instead of the app
+//
+// Confirmed by disassembling the shipped 16 KB bootloader
+// (Docs/nano_r4_bootloader_16k.bin), first thing its main() does:
+//
+//     0020e2  ldr    r3, ← 4001E000        ( R_SYSTEM )
+//     0020e4  ldr    r2, ← 07738135        ( magic )
+//     0020e6  ldr.w  r1, [r3, #0x500]      ( VBTBKR[0] @ 0x4001E500 )
+//     0020ea  cmp    r1, r2
+//     0020ec  bne.w  #0x23be               ( no match → normal boot )
+//
+// Three things are required, and all three matter:
+//
+//   1. PRCR PRC1 unlocked (0xA502) around the writes, relocked (0xA500) after.
+//   2. VBTBER.VBAE (bit 3) set FIRST.  Without it the backup registers accept
+//      writes and read back correctly but do not RETAIN across the reset —
+//      which is exactly why the previous implementation silently failed: the
+//      magic looked fine on read-back and was gone by the time the bootloader
+//      looked at it.
+//   3. The VBATT domain sits behind a slow clock, so writes are not visible
+//      immediately.  Read back and confirm rather than assuming they landed.
+//
+// The old code wrote the magic to 0x20003FFC, which is unused SRAM and has
+// nothing to do with this bootloader.  It never worked.
+
+#define DFU_MAGIC         0x07738135UL
+#define PRCR_PRC1_UNLOCK  0xA502U
+#define PRCR_LOCK         0xA500U
+#define VBTBER_VBAE       (1U << 3)
+
+#define DFU_BOOT_FLAG     (*(volatile uint32_t *) &R_SYSTEM->VBTBKR[0])
+
+// Poll the VBATT domain until a write becomes visible.  10 ms total is far
+// more than the handful of slow-clock cycles this actually needs.
+#define VBATT_SETTLE_TRIES  100
+#define VBATT_SETTLE_US     100
+
+// Arm the bootloader's DFU flag.  Returns false if the flag could not be made
+// to stick, in which case the caller must NOT reset — a reset without the flag
+// just boots the application again and looks like the command did nothing.
+static bool dfu_arm_bootloader(void) {
+    R_SYSTEM->PRCR = PRCR_PRC1_UNLOCK;
+
+    R_SYSTEM->VBTBER = VBTBER_VBAE;
+    for (int i = 0; i < VBATT_SETTLE_TRIES; i++) {
+        if ((R_SYSTEM->VBTBER & VBTBER_VBAE) != 0U) break;
+        R_BSP_SoftwareDelay(VBATT_SETTLE_US, BSP_DELAY_UNITS_MICROSECONDS);
+    }
+
+    DFU_BOOT_FLAG = DFU_MAGIC;
+    for (int i = 0; i < VBATT_SETTLE_TRIES; i++) {
+        if (DFU_BOOT_FLAG == DFU_MAGIC) break;
+        R_BSP_SoftwareDelay(VBATT_SETTLE_US, BSP_DELAY_UNITS_MICROSECONDS);
+    }
+
+    bool ok = ((R_SYSTEM->VBTBER & VBTBER_VBAE) != 0U) && (DFU_BOOT_FLAG == DFU_MAGIC);
+
+    R_SYSTEM->PRCR = PRCR_LOCK;
+    return ok;
+}
+
 // ── reboot_to_dfu_action — deferred reset into Arduino DFU bootloader ─────────
 //
 // Runs one scheduler tick after tud_dfu_runtime_reboot_to_dfu_cb() so the
 // USB DETACH ACK leaves before we pull the rug out.
-//
-// The magic value 0x07738135 written to the last 4 bytes of SRAM (0x20003FFC)
-// is checked by the Arduino UNO R4 Minima bootloader on startup: if it matches,
-// the bootloader enters DFU mode instead of launching user code.
 //
 // Guard: dfu-util sends DFU_DETACH at the end of every upload while it is
 // still running, which races with our firmware boot.  We capture the tick
@@ -73,11 +136,36 @@ static void usb_action(void) {
 
 #define DFU_MIN_ELAPSED (3L * ONE_SECOND)   // 3 s — dfu-util exits well inside this
 
+// get_ticks() is GPT0's raw counter (clocks.c:110) and GPT0 is opened with
+// period_counts = 0x7FFFFFFF, so it wraps at 0x80000000 rather than 2^32.
+// A plain signed subtraction goes negative across that wrap and the guard then
+// rejects everything forever — which is very likely why `dfu` appeared to do
+// nothing for so long, on top of the wrong magic address. Do the subtraction
+// modulo the counter's actual range.
+#define TICK_MODULUS_MASK  0x7FFFFFFFUL
+
 static Long usb_init_tick;
 
+static uint32_t dfu_ticks_since_init(void) {
+    return ((uint32_t) get_ticks() - (uint32_t) usb_init_tick) & TICK_MODULUS_MASK;
+}
+
 static void reboot_to_dfu_action(void) {
-    if ((get_ticks() - usb_init_tick) < DFU_MIN_ELAPSED) return;
-    *((volatile uint32_t *)0x20003FFCUL) = 0x07738135UL;
+    uint32_t elapsed = dfu_ticks_since_init();
+    if (elapsed < (uint32_t) DFU_MIN_ELAPSED) {
+        print("dfu: ignored - only "); printDec((Long) elapsed);
+        print(" of ");                 printDec((Long) DFU_MIN_ELAPSED);
+        print(" ticks since usb init");
+        printCr();
+        return;
+    }
+
+    if (!dfu_arm_bootloader()) {
+        print("dfu: could not arm bootloader flag - not resetting"); printCr();
+        return;
+    }
+
+    print("dfu: entering bootloader..."); printCr();
     NVIC_SystemReset();
 }
 

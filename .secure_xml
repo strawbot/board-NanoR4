@@ -44,6 +44,8 @@
   </raClockConfiguration>
   <raPinConfiguration>
     <pincfg active="true" name="" symbol="">
+      <configSetting altId="adc0.an00.p000" configurationId="adc0.an00" isUsedByDriver="true" peripheral="ADC0"/>
+      <configSetting altId="adc0.an01.p001" configurationId="adc0.an01" isUsedByDriver="true" peripheral="ADC0"/>
       <configSetting altId="cgc0.extal.p212" configurationId="cgc0.extal" isUsedByDriver="true" peripheral="CGC0"/>
       <configSetting altId="cgc0.xtal.p213" configurationId="cgc0.xtal" isUsedByDriver="true" peripheral="CGC0"/>
       <configSetting altId="debug0.tck.p300" configurationId="debug0.tck" isUsedByDriver="true" peripheral="DEBUG0"/>
@@ -54,6 +56,9 @@
       <configSetting altId="gpt5.gtioca.p409" configurationId="gpt5.gtioca" peripheral="GPT5"/>
       <configSetting altId="gpt6.gtioca.p411" configurationId="gpt6.gtioca" peripheral="GPT6"/>
       <configSetting altId="gpt6.gtiocb.p410" configurationId="gpt6.gtiocb" peripheral="GPT6"/>
+      <configSetting altId="iic0.scl.p400" configurationId="iic0.scl" isUsedByDriver="true" peripheral="IIC0"/>
+      <configSetting altId="iic0.sda.p401" configurationId="iic0.sda" isUsedByDriver="true" peripheral="IIC0"/>
+      <configSetting altId="p014.input" configurationId="p014"/>
       <configSetting altId="p204.output.low" configurationId="p204"/>
       <configSetting altId="sci2.rxd.p301" configurationId="sci2.rxd" isUsedByDriver="true" peripheral="SCI2"/>
       <configSetting altId="sci2.txd.p302" configurationId="sci2.txd" isUsedByDriver="true" peripheral="SCI2"/>

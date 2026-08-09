@@ -21,10 +21,14 @@ void R_BSP_WarmStart (bsp_warm_start_event_t event)
 {
     if (BSP_WARM_START_RESET == event)
     {
-        /* Clear DFU boot magic so a subsequent soft-reset (NVIC_SystemReset) does
-         * not re-enter the bootloader. The bootloader has already consumed it by
-         * the time we reach this hook, so clearing it here is always safe. */
-        *((volatile uint32_t *)0x20003FFCUL) = 0x00000000UL;
+        /* NOTE: there used to be a write of 0 to 0x20003FFC here, meant to clear
+         * the "DFU boot magic". That address is unused SRAM and had nothing to
+         * do with the bootloader, so the write did nothing.
+         *
+         * The real flag lives in the VBATT backup registers at R_SYSTEM->VBTBKR[0]
+         * (0x4001E500) — see Board/usb_init.c. Nothing needs clearing here: the
+         * bootloader zeroes it itself on every boot before jumping to us
+         * (0x23F8 in Docs/nano_r4_bootloader_16k.bin). */
 
 #if BSP_FEATURE_FLASH_LP_VERSION != 0
 

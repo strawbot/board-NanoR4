@@ -100,8 +100,8 @@ FSP Configuration
     R7FA4M1AB3CFM.pincfg -> g_bsp_pin_cfg
       AVCC0 56 ADC_AVCC0 - - - - - - - - IO "Read only" - 
       AVSS0 57 ADC_AVSS0 - - - - - - - - IO "Read only" - 
-      P000 64 - - - - Disabled - - "ADC0: AN00; CTSU0: TS21; IRQ0: IRQ06; OPAMP0: AMP+" - None - - 
-      P001 63 - - - - Disabled - - "ADC0: AN01; CTSU0: TS22; IRQ0: IRQ07; OPAMP0: AMP-" - None - - 
+      P000 64 ADC0_AN00 - - - "Analog mode" - - "ADC0: AN00; CTSU0: TS21; IRQ0: IRQ06; OPAMP0: AMP+" - IO - - 
+      P001 63 ADC0_AN01 - - - "Analog mode" - - "ADC0: AN01; CTSU0: TS22; IRQ0: IRQ07; OPAMP0: AMP-" - IO - - 
       P002 62 - - - - Disabled - - "ADC0: AN02; IRQ0: IRQ02; OPAMP0: AMPO" - None - - 
       P003 61 - - - - Disabled - - "ADC0: AN03; OPAMP1: AMPO" - None - - 
       P004 60 - - - - Disabled - - "ADC0: AN04; IRQ0: IRQ03; OPAMP2: AMPO" - None - - 
@@ -109,7 +109,7 @@ FSP Configuration
       P011 58 - - - - Disabled - - "ADC: VREFL0; ADC0: AN06; CTSU0: TS31; IRQ0: IRQ15; OPAMP2: AMP+" - None - - 
       P012 55 - - - - Disabled - - "ADC: VREFH; ADC0: AN07; OPAMP1: AMP-" - None - - 
       P013 54 - - - - Disabled - - "ADC: VREFL; ADC0: AN08; OPAMP1: AMP+" - None - - 
-      P014 53 - - - - Disabled - - "ADC0: AN09; DAC120: DA" - None - - 
+      P014 53 GPIO - - - "Input mode" - None "ADC0: AN09; DAC120: DA" - IO - - 
       P015 52 - - - - Disabled - - "ADC0: AN10; CTSU0: TS28; IRQ0: IRQ07" - None - - 
       P100 48 - - - - Disabled - - "ADC0: AN22; AGT0: AGTIO; CMP0: CMPIN0; GPT5: GTIOCB; IIC1: SCL; IRQ0: IRQ02; KINT0: KRM0; POEG0: GTETRG; SCI0: RXD_MISO; SCI0: SCL; SCI1: SCK; SLCDC0: VL1; SPI0: MISO" - None - - 
       P101 47 - - - - Disabled - - "ADC0: AN21; AGT0: AGTEE; CMP0: CMPREF0; GPT5: GTIOCA; IIC1: SDA; IRQ0: IRQ01; KINT0: KRM1; POEG1: GTETRG; SCI0: SDA; SCI0: TXD_MOSI; SCI1: CTS_RTS_SS; SLCDC0: VL2; SPI0: MOSI" - None - - 
@@ -139,8 +139,8 @@ FSP Configuration
       P302 30 SCI2_TXD_MOSI2 CLI_OUT Low None "Peripheral mode" CMOS None "CTSU0: TS08; GPT4: GTIOCA; IRQ0: IRQ05; OPS0: GTOUUP; SCI2: SDA; SCI2: TXD_MOSI; SLCDC0: COM6; SLCDC0: SEG02; SPI1: SSL3" - IO - - 
       P303 29 - - - - Disabled - - "CTSU0: TS02; GPT7: GTIOCB; SLCDC0: COM7; SLCDC0: SEG03" - None - - 
       P304 28 - - - - Disabled - - "CTSU0: TS11; GPT7: GTIOCA; IRQ0: IRQ09; SLCDC0: SEG20" - None - - 
-      P400 1 - - - - Disabled - - "AGT1: AGTIO; CAC0: CACREF; CTSU0: TS20; GPT6: GTIOCA; IIC0: SCL; IRQ0: IRQ00; SCI0: SCK; SCI1: SCK; SLCDC0: SEG04; SSI: AUDIO_CLK" - None - - 
-      P401 2 - - - - Disabled - - "CAN0: CTX; CTSU0: TS19; GPT6: GTIOCB; IIC0: SDA; IRQ0: IRQ05; POEG0: GTETRG; SCI0: CTS_RTS_SS; SCI1: SDA; SCI1: TXD_MOSI; SLCDC0: SEG05" - None - - 
+      P400 1 IIC0_SCL0 - Medium None "Peripheral mode" CMOS None "AGT1: AGTIO; CAC0: CACREF; CTSU0: TS20; GPT6: GTIOCA; IIC0: SCL; IRQ0: IRQ00; SCI0: SCK; SCI1: SCK; SLCDC0: SEG04; SSI: AUDIO_CLK" - IO - - 
+      P401 2 IIC0_SDA0 - Medium None "Peripheral mode" CMOS None "CAN0: CTX; CTSU0: TS19; GPT6: GTIOCB; IIC0: SDA; IRQ0: IRQ05; POEG0: GTETRG; SCI0: CTS_RTS_SS; SCI1: SDA; SCI1: TXD_MOSI; SLCDC0: SEG05" - IO - - 
       P402 3 - - - - Disabled - - "AGT0: AGTIO; AGT1: AGTIO; CAN0: CRX; CTSU0: TS18; IRQ0: IRQ04; RTC0: RTCIC0; SCI1: RXD_MISO; SCI1: SCL; SLCDC0: SEG06" - None - - 
       P407 16 - - - - Disabled - - "ADC0: ADTRG; AGT0: AGTIO; CTSU0: TS03; IIC0: SDA; RTC0: RTCOUT; SCI0: CTS_RTS_SS; SLCDC0: SEG11; SPI1: SSL3; USBFS0: VBUS" - None - - 
       P408 15 - - - - Disabled - - "CTSU0: TS04; GPT5: GTIOCB; IIC0: SCL; IRQ0: IRQ07; OPS0: GTOWLO; SCI1: CTS_RTS_SS; SCI9: RXD_MISO; SCI9: SCL; SLCDC0: SEG10; USBFS0: ID" - None - - 
@@ -197,6 +197,36 @@ FSP Configuration
   Module "I/O Port (r_ioport)"
     Parameter Checking: Default (BSP)
     CCD Support: Not Supported
+    
+  Module "ADC (r_adc)"
+    Parameter Checking: Default (BSP)
+    
+  Module "DAC (r_dac)"
+    Parameter Checking: Default (BSP)
+    
+  Module "USB Composite (r_usb_composite)"
+  Module "USB PCDC (r_usb_pcdc)"
+  Module "USB (r_usb_basic)"
+    Parameter Checking: Default (BSP)
+    CL Only Mode: Disabled
+    CPU Bus Access Wait Cycles: Not Supported
+    Battery Charging: Not Supported
+    Power IC Shutdown Polarity: Active High
+    Dedicated Charging Port (DCP) Mode: Not Supported
+    Notifications for SET_INTERFACE/SET_FEATURE/CLEAR_FEATURE: Enabled
+    Double Buffering: Enabled
+    Continuous Transfer Mode: Not Supported
+    LDO Regulator: Disabled
+    DMA/DTC Support: DMA Disabled
+    DMA/DTC Source Address: DMA Disabled
+    DMA/DTC Destination Address: DMA Disabled
+    USB Compliance Test mode: Disabled
+    USB TPL table name: NULL
+    
+  Module "I2C Master (r_iic_master)"
+    Parameter Checking: Default (BSP)
+    DTC on Transmission and Reception: Disabled
+    10-bit slave addressing: Disabled
     
   HAL
     Instance "g_uart2 UART (r_sci_uart)"
@@ -443,4 +473,91 @@ FSP Configuration
       Extra Features: Interrupt Skipping (Channels with GTITC only): Skip ADC Events: None
       Extra Features: Output Disable: GTIOCA Disable Setting: Disable Prohibited
       Extra Features: Output Disable: GTIOCB Disable Setting: Disable Prohibited
+      
+    Instance "g_adc0 ADC (r_adc)"
+      General: Name: g_adc0
+      General: Unit: 0
+      General: Resolution: 14-Bit
+      General: Alignment: Right
+      General: Clear after read: On
+      General: Mode: Single Scan
+      General: Double-trigger: Disabled
+      Input: Channel Scan Mask (channel availability varies by MCU): 
+      Input: Group B Scan Mask (channel availability varies by MCU): 
+      Interrupts: Normal/Group A Trigger: Software
+      Interrupts: Group B Trigger: Disabled
+      Interrupts: Group Priority (Valid only in Group Scan Mode): Group A cannot interrupt Group B
+      Input: Add/Average Count: Disabled
+      Input: Reference Voltage control: AVCC0/AVSS0
+      Input: Addition/Averaging Mask (channel availability varies by MCU and unit): 
+      Input: Sample and Hold: Sample and Hold Channels (Available only on selected MCUs): 
+      Input: Sample and Hold: Sample Hold States (Applies only to channels 0, 1, 2): 24
+      Input: Window Compare: Window Mode: Disabled
+      Input: Window Compare: Event Output: OR
+      Input: Window Compare: Window A: Enable: Disabled
+      Input: Window Compare: Window A: Channels to compare (channel availability varies by MCU and unit): 
+      Input: Window Compare: Window A: Channel comparison mode (channel availability varies by MCU and unit): 
+      Input: Window Compare: Window A: Lower Reference: 0
+      Input: Window Compare: Window A: Upper Reference: 0
+      Input: Window Compare: Window B: Enable: Disabled
+      Input: Window Compare: Window B: Channel to compare (channel availability varies by MCU and unit): Channel 0
+      Input: Window Compare: Window B: Comparison mode: Less Than or Outside Window
+      Input: Window Compare: Window B: Lower Reference: 0
+      Input: Window Compare: Window B: Upper Reference: 0
+      Interrupts: Callback: NULL
+      Interrupts: Scan End Interrupt Priority: Disabled
+      Interrupts: Scan End Group B Interrupt Priority: Disabled
+      Interrupts: Window Compare A Interrupt Priority: Disabled
+      Interrupts: Window Compare B Interrupt Priority: Disabled
+      Extra: ADC Ring Buffer: Not Supported
+      
+    Instance "g_dac0 DAC (r_dac)"
+      Name: g_dac0
+      Channel: 0
+      Synchronize with ADC: Disabled
+      Data Format: Right Justified
+      Output Amplifier: Not Supported
+      Charge Pump (Requires MOCO active): Not Supported
+      Internal Output: Not Supported
+      ELC Trigger Source: Disabled
+      Reference Voltage: AVCC0/AVSS0
+      
+    Instance "g_r_usb_composite0 USB Composite (r_usb_composite)"
+      Name: g_r_usb_composite0
+      
+      Instance "g_pcdc0 USB PCDC (r_usb_pcdc)"
+        Name: g_pcdc0
+        
+        Instance "g_basic0 USB (r_usb_basic)"
+          Name: g_basic0
+          USB Mode: Peri mode
+          USB Speed: Full Speed
+          USB Module Number: USB_IP0 Port
+          USB Device Class: Peripheral Communications Device Class
+          USB Descriptor: g_usb_descriptor
+          USB Compliance Callback: NULL
+          USBFS Interrupt Priority: Priority 12
+          USBFS Resume Priority: Priority 12
+          USBFS D0FIFO Interrupt Priority: Priority 12
+          USBFS D1FIFO Interrupt Priority: Priority 12
+          USBHS Interrupt Priority: Not Supported
+          USBHS D0FIFO Interrupt Priority: Not Supported
+          USBHS D1FIFO Interrupt Priority: Not Supported
+          USB Callback: NULL
+          USB Callback Context: NULL
+          
+    Instance "g_i2c_master0 I2C Master (r_iic_master)"
+      Name: g_i2c_master0
+      Channel: 0
+      Rate: Standard
+      Custom Rate (bps): 0
+      Rise Time (ns): 120
+      Fall Time (ns): 120
+      Duty Cycle (%): 50
+      Slave Address: 0x10
+      Address Mode: 7-Bit
+      Timeout Mode: Short Mode
+      Timeout during SCL Low: Enabled
+      Callback: NULL
+      Interrupt Priority Level: Priority 12
       
