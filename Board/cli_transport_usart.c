@@ -78,8 +78,7 @@ void cli_rxtx(uart_callback_args_t * p_args) {
 //
 // The second case is unrecoverable: the TX chain only re-arms from
 // TX_COMPLETE, so once it stops with tx_busy stuck true, emitq never drains
-// again and the next print() spins forever. That is a stall part-way through a
-// string, not at a message boundary — which is exactly the observed symptom.
+// again and the next print() blocks forever.
 //
 // Fix: claim the shuttle atomically. Everything else is unchanged.
 //
@@ -105,6 +104,35 @@ static void usart_emit(void) {
     if (R_SCI_UART_Write(&g_uart2_ctrl, &tx_byte, 1) != FSP_SUCCESS) {
         // Write kickoff failed — release the shuttle so a later emit can retry.
         tx_busy = false;
+    }
+}
+
+// ── usart_drain — pace the producer so emitq never fills ────────────────────
+//
+// The TX chain is self-sustaining only while bytes keep completing: each
+// TX_COMPLETE calls usart_emit() for the next byte. When emitq runs empty the
+// chain stops, and restarting it needs an explicit usart_emit(), which normally
+// arrives via when(EmitEvent, usart_emit).
+//
+// output() blocks when emitq fills and runs actions while it waits — but
+// running actions does not signal EmitEvent. So if the chain went idle at the
+// wrong moment, nothing ever restarts it and the wait never ends. The board
+// stops part-way through a string with no fault and no console.
+//
+// Boot printing is where this bites: nothing calls run() yet, and the CPU
+// queues characters thousands of times faster than 115200 baud drains them.
+//
+// Calling this between boot prints keeps the queue shallow and, crucially,
+// calls usart_emit() directly so an idle chain is re-armed rather than waited
+// on. Interrupts stay enabled throughout.
+//
+// This is containment. The cure is for output() to kick the transport itself
+// while blocked — see Docs/output-backpressure-design.md — after which this
+// function can be deleted.
+void usart_drain(void) {
+    uint32_t guard = 4000000UL;   // bounded — never trade one hang for another
+    while (qbq(emitq) && guard--) {
+        usart_emit();
     }
 }
 

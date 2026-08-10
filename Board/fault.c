@@ -1,36 +1,38 @@
 // fault.c — make a crash distinguishable from a hang.
 //
 // FSP's default exception handlers are silent `while (1)` loops (startup.c:64),
-// so a HardFault looks exactly like a spin in print(): board stops, nothing on
-// the console, no LED. These two need very different fixes, so we have to be
+// so a HardFault is indistinguishable from a stall: the board stops, nothing on
+// the console, no LED. These need very different fixes, so it is worth being
 // able to tell them apart.
 //
-// This file overrides the weak HardFault_Handler and:
+// This overrides the weak fault handlers and:
 //
-//   1. Stashes the stacked PC/LR/PSR plus CFSR/HFSR into the VBATT backup
+//   1. Stashes the stacked PC/LR/xPSR plus CFSR/HFSR into the VBATT backup
 //      registers, which survive a reset. Read them out from the CLI after the
 //      board comes back up:
 //
 //          hex
 //          4001E504 2 dump
 //
-//      Layout (all 32-bit little-endian):
+//      Layout (all 32-bit):
 //          0x4001E504  marker 0xFA017ED0 - present only if we actually faulted
 //          0x4001E508  PC    - the faulting instruction
 //          0x4001E50C  LR
 //          0x4001E510  xPSR
 //          0x4001E514  CFSR  - Configurable Fault Status  (SCB 0xE000ED28)
 //          0x4001E518  HFSR  - HardFault Status           (SCB 0xE000ED2C)
-//          0x4001E51C  last boot_progress() step - see below
 //
 //      VBTBKR[0..3] is the bootloader's double-tap magic - do not use it.
-//      We start at byte offset 4, which the bootloader never touches.
+//      This starts at byte offset 4, which the bootloader never touches.
 //
-//   2. Blinks a distinctive burst forever: 20 fast pulses, pause, repeat.
-//      No mark() count comes close to 20, so the pattern is unambiguous.
+//   2. Blinks 20 fast pulses, pauses, repeats — so a crash announces itself
+//      even with no console attached.
 //
 // Setting VBTBER.VBAE first is what makes the stash survive; without it the
 // backup registers accept writes and read back correctly but retain nothing.
+//
+// Resolve a captured PC with:
+//     arm-none-eabi-addr2line -f -e .pio/build/nano_r4/firmware.elf <PC>
 
 #include <stdint.h>
 
@@ -72,23 +74,6 @@ void fault_report(uint32_t *frame) {
         for (int i = 0; i < 20; i++) blink();
         for (volatile uint32_t w = 0; w < 8000000; w++) { __asm volatile ("nop"); }
     }
-}
-
-// boot_progress(n) — leave a breadcrumb that survives the next reset.
-//
-// Better than counting LED pulses: after the board hangs, press reset again (it
-// boots fine the second time) and read the last step it reached:
-//
-//     hex
-//     4001E51C 1 dump
-//
-// Cheap enough to sprinkle anywhere, including inside print() if the hang turns
-// out to be in the output path.
-void boot_progress(uint32_t step) {
-    R_SYSTEM->PRCR   = PRCR_PRC1_UNLOCK;
-    R_SYSTEM->VBTBER = VBTBER_VBAE;
-    VBT_WORD(28)     = step;
-    R_SYSTEM->PRCR   = PRCR_LOCK;
 }
 
 // Naked stubs: pick the stack the frame was pushed onto (MSP or PSP, per bit 2

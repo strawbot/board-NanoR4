@@ -19,6 +19,8 @@ static const ad5593r_hw_t g_ad5593r_hw = {
     .i2c_read  = i2c0_read,
 };
 
+// Result of ad5593r_init(). No longer printed at boot — kept so a CLI word can
+// report it on demand.
 static bool g_ad5593r_ok;
 
 // init_cli is defined in TimbreOS/cli.c but not declared in cli.h —
@@ -35,23 +37,10 @@ void blink() {
     for (volatile uint32_t w = 0; w < 400000; w++) { __asm volatile ("nop"); }
 }
 
-// mark(n) — boot-progress beacon: (n+1) pulses, then a long pause.
-//
-// Uses nothing but GPIO and busy loops, so it is valid anywhere in the boot
-// path — before the scheduler, before any transport, before interrupts matter.
-// Each init step is preceded by its own count, so **the last count you see is
-// the step that hung**. This exists because the console does not come up until
-// usart_transport_init(), which is late: anything that blocks before it is
-// otherwise completely silent.
-//
-// Remove or #if 0 these once the hang is located.
-void boot_progress(uint32_t step);   // Board/fault.c - breadcrumb in VBTBKR
-
-static void mark(int n) {
-    boot_progress((uint32_t) n);   // survives the reset: hex 4001E51C 1 dump
-    for (int i = 0; i <= n; i++) blink();
-    for (volatile uint32_t w = 0; w < 3000000; w++) { __asm volatile ("nop"); }
-}
+// Wait for emitq to drain, interrupts enabled. Boot-time printing needs this:
+// output() busy-waits with interrupts masked when the queue fills, which
+// deadlocks the board. See Board/cli_transport_usart.c.
+void usart_drain(void);
 
 #if (1 == BSP_MULTICORE_PROJECT) && BSP_TZ_SECURE_BUILD
 bsp_ipc_semaphore_handle_t g_core_start_semaphore =
@@ -115,44 +104,46 @@ void hal_entry(void)
     R_BSP_NonSecureEnter();
 #endif
 
-    mark(0);               /* one pulse: we reached hal_entry at all */
-
     stack_canary_init();   /* fill stack with 0xDEADBEEF before any deep calls */
 
     /* TimbreOS bring-up. init_tea() calls init_clocks() internally
      * (see TimbreOS/tea.c:init_tea) so we do NOT call init_clocks() again.
      * The build banner is printed *after* usart_transport_init() because
      * init_clocks runs before the transport is up, and output() will spin
-     * forever if emitq has no drain path. */
-    mark(1); dac_init();
-    mark(2); adc_init();
-    mark(3); muscle_wire_init();   // open GPT3 PWM on P003 before scheduler starts
-    mark(4); i2c0_init();          // IIC0: SCL=P400, SDA=P401, 400 kHz
-    mark(5); ad5593r_bind_hw(&g_ad5593r_hw);
-             g_ad5593r_ok = ad5593r_init();
-    mark(6); init_tea();
-    mark(7); usart_transport_init();
-
-    /* mark(8) — nine pulses — proves usart_transport_init() RETURNED. From here
-     * the console should exist, so the rest of the boot reports itself in text.
-     * If you see nine pulses but no text at all, the transport came up and
-     * output() is spinning with no drain path: the hang is in print(), not in
-     * anything after it. */
-    mark(8);
-
-    print("boot: usart ok");   printCr();
-    usb_transport_init();
-    print("boot: usb ok");     printCr();
+     * forever if emitq has no drain path.
+     *
+     * usart_drain() after each print keeps emitq shallow. output() blocks when
+     * the queue fills and runs actions while it waits, but running actions does
+     * not signal EmitEvent — so if the TX chain has gone idle nothing restarts
+     * it and the wait never ends. usart_drain() calls usart_emit() directly,
+     * which re-arms it. See Docs/output-backpressure-design.md; the proper fix
+     * is for output() to kick the transport itself, after which this goes away. */
+    dac_init();
+    adc_init();
+    muscle_wire_init();   // open GPT3 PWM on P003 before scheduler starts
+    i2c0_init();          // IIC0: SCL=P400, SDA=P401, 400 kHz
+    ad5593r_bind_hw(&g_ad5593r_hw);
+    g_ad5593r_ok = ad5593r_init();
+    init_tea();
+    usart_transport_init();
 
     print_build_banner();
-    print(" [diag:usb-ok]");
-    print(g_ad5593r_ok ? " [diag:ad5593-ok]" : " [diag:ad5593-FAIL]");
-    printCr();
-    print("boot: banner ok");  printCr();
+    usart_drain();
 
     init_cli();
-    print(" [diag:cli-ok]");   printCr();
-    print("boot: entering run loop"); printCr();
+    usart_drain();         // init_cli() prints its own banner
+
+    /* USB comes up LAST, immediately before the run loop, so the first USB
+     * interrupt is serviced on the next scheduler pass rather than after a few
+     * hundred milliseconds of console traffic. Do not move this earlier: nothing
+     * can service USBFS_INT until run() is turning.
+     *
+     * The TinyUSB device stack itself is currently disabled — usb_transport_init()
+     * performs the USBFS hardware reset and returns. That reset is required: the
+     * bootloader hands over without detaching from the bus, so after a DFU
+     * download USBFS is still live and the host still attached.
+     * See Docs/usb-handoff.md. */
+    usb_transport_init();
 
     while (1) {
         run();

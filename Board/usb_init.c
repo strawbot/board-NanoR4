@@ -101,14 +101,15 @@ static void usb_action(void) {
 // Arm the bootloader's DFU flag.  Returns false if the flag could not be made
 // to stick, in which case the caller must NOT reset — a reset without the flag
 // just boots the application again and looks like the command did nothing.
+// Only VBTBKR[0] is verified. VBTBER is the enable, not the payload, and it
+// does not necessarily read back what was written — an earlier version checked
+// it too and reported failure on boards where the magic had in fact landed
+// correctly. If this ever fails, the reported values say which half went wrong.
 static bool dfu_arm_bootloader(void) {
     R_SYSTEM->PRCR = PRCR_PRC1_UNLOCK;
 
     R_SYSTEM->VBTBER = VBTBER_VBAE;
-    for (int i = 0; i < VBATT_SETTLE_TRIES; i++) {
-        if ((R_SYSTEM->VBTBER & VBTBER_VBAE) != 0U) break;
-        R_BSP_SoftwareDelay(VBATT_SETTLE_US, BSP_DELAY_UNITS_MICROSECONDS);
-    }
+    R_BSP_SoftwareDelay(1, BSP_DELAY_UNITS_MILLISECONDS);
 
     DFU_BOOT_FLAG = DFU_MAGIC;
     for (int i = 0; i < VBATT_SETTLE_TRIES; i++) {
@@ -116,10 +117,18 @@ static bool dfu_arm_bootloader(void) {
         R_BSP_SoftwareDelay(VBATT_SETTLE_US, BSP_DELAY_UNITS_MICROSECONDS);
     }
 
-    bool ok = ((R_SYSTEM->VBTBER & VBTBER_VBAE) != 0U) && (DFU_BOOT_FLAG == DFU_MAGIC);
+    uint32_t seen  = DFU_BOOT_FLAG;
+    uint32_t enable = R_SYSTEM->VBTBER;
 
     R_SYSTEM->PRCR = PRCR_LOCK;
-    return ok;
+
+    if (seen != DFU_MAGIC) {
+        print("dfu: VBTBKR[0] read back "); printDec((Long) seen);
+        print(" VBTBER ");                  printDec((Long) enable);
+        printCr();
+        return false;
+    }
+    return true;
 }
 
 // ── reboot_to_dfu_action — deferred reset into Arduino DFU bootloader ─────────
@@ -175,13 +184,79 @@ void tud_dfu_runtime_reboot_to_dfu_cb(void) {
     later(reboot_to_dfu_action);
 }
 
+// ── usb_hw_reset — put USBFS back to a known state before TinyUSB sees it ────
+//
+// Yes, USB can be reset in software, and it needs to be here.
+//
+// The Arduino bootloader's boot5() hands over after calling
+// R_BSP_MODULE_STOP(FSP_IP_USBFS) but without detaching from the bus first: it
+// never clears SYSCFG.DPRPU, so the D+ pull-up can still be asserted and the
+// host still believes the DFU device is present. Arriving from DFU mode is
+// therefore a genuinely different starting state than arriving from the
+// application, which is exactly the asymmetry we have been chasing.
+//
+// Sequence, in this order:
+//   1. START the module so its registers are writable at all.
+//   2. Drop DPRPU — the host sees a real detach and tears the old device down.
+//   3. Mask and clear every USB interrupt source, so nothing is left asserted
+//      to re-enter the ISR before tud_task() is running to service it.
+//   4. Clear USBE, then STOP the module — on RA this resets the block.
+//   5. START it again so TinyUSB inherits reset-default registers.
+//
+// The delay after the detach matters: hosts need ~10 ms of SE0 to register a
+// disconnect. 20 ms is cheap insurance at boot.
+#define USB_SYSCFG_USBE   (1U << 0)
+#define USB_SYSCFG_DPRPU  (1U << 4)
+
+static void usb_hw_reset(void) {
+    R_BSP_MODULE_START(FSP_IP_USBFS, 0);
+
+    R_USB_FS0->SYSCFG  &= (uint16_t) ~USB_SYSCFG_DPRPU;   // detach from the bus
+    R_USB_FS0->INTENB0  = 0;                              // mask all sources
+    R_USB_FS0->INTENB1  = 0;
+    R_USB_FS0->BRDYENB  = 0;
+    R_USB_FS0->INTSTS0  = 0;                              // write 0 to clear
+    R_USB_FS0->INTSTS1  = 0;
+    R_USB_FS0->SYSCFG  &= (uint16_t) ~USB_SYSCFG_USBE;
+
+    R_BSP_SoftwareDelay(20, BSP_DELAY_UNITS_MILLISECONDS);
+
+    R_BSP_MODULE_STOP(FSP_IP_USBFS, 0);
+    R_BSP_SoftwareDelay(1, BSP_DELAY_UNITS_MILLISECONDS);
+    R_BSP_MODULE_START(FSP_IP_USBFS, 0);
+
+    NVIC_DisableIRQ((IRQn_Type) 6);       // USBFS_INT — see header comment
+    NVIC_ClearPendingIRQ((IRQn_Type) 6);
+}
+
 // ── usb_transport_init — call once from hal_entry() ──────────────────────────
 
+// USB_TRANSPORT_ENABLE — the TinyUSB device stack is unfinished and takes the
+// board down when started, so it is off by default.
+//
+// With it off, usb_hw_reset() still runs: USBFS is left detached, every
+// interrupt source masked and cleared, NVIC entry disabled. That is what makes
+// the board boot reliably after a DFU download, where the bootloader hands over
+// with the peripheral live and the host still attached.
+//
+// The `dfu` CLI word is unaffected — it arms VBTBKR[0] and resets, which needs
+// no USB stack at all. So the route into the bootloader stays open while the
+// device stack is out of service.
+//
+// Set to 1 when picking the USB work back up. See Docs/usb-handoff.md.
+#define USB_TRANSPORT_ENABLE 0
+
 void usb_transport_init(void) {
+    usb_hw_reset();                // must precede tusb_init()
     usb_init_tick = get_ticks();   // baseline for DFU_MIN_ELAPSED guard
+
+#if USB_TRANSPORT_ENABLE
     tusb_init();
     later(usb_action);
     namedAction(usb_action);
+#else
+    (void) usb_action;             // referenced only by the enabled path
+#endif
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
