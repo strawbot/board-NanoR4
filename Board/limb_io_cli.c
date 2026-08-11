@@ -4,6 +4,7 @@
 #include "limb_io_cli.h"
 #include "limb_io.h"
 #include "mpu6050.h"
+#include "i2c1.h"
 #include "cli.h"
 #include "printers.h"
 
@@ -65,4 +66,18 @@ void limb_io_cli_assign_one(void) {   // ( limb -- )
     print("limb "); printDec(limb); print(": ");
     print(limb_io_assign_one((uint8_t)limb) ? "ok" : "FAILED");
     printCr();
+}
+
+// i2cscan — probe every valid 7-bit address (0x08-0x77; 0x00-0x07 and
+// 0x78-0x7F are reserved by the I2C spec) and print the ones that ACK.
+void i2c1_cli_scan(void) {
+    print("scanning IIC1 (0x08-0x77)..."); printCr();
+    uint8_t found = 0;
+    for (uint8_t addr = 0x08U; addr <= 0x77U; addr++) {
+        if (i2c1_probe(addr)) {
+            print("  found"); printHex2(addr); printCr();
+            found++;
+        }
+    }
+    print("scan done, "); printDec(found); print(" device(s)"); printCr();
 }

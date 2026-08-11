@@ -137,3 +137,21 @@ bool i2c1_read(uint8_t addr7, uint8_t *data, uint32_t len) {
     }
     return false;
 }
+
+// i2c1_probe — single attempt, no retry, no bus-recovery: a NACK'd address
+// is the expected outcome for ~all of the 112 addresses a scan checks, not
+// a fault to recover from. i2c1_write/read's retry+recovery pattern exists
+// for a real device that's momentarily wedged; running that on every miss
+// during a scan would make it needlessly slow for no benefit. One byte,
+// discarded — a read (not a write) so probing a device doesn't risk poking
+// an unknown register with unknown data.
+bool i2c1_probe(uint8_t addr7) {
+    uint8_t dummy;
+    g_i2c1_done  = false;
+    g_i2c1_error = false;
+    R_IIC_MASTER_SlaveAddressSet(&g_i2c1_ctrl, addr7, I2C_MASTER_ADDR_MODE_7BIT);
+    if (FSP_SUCCESS != R_IIC_MASTER_Read(&g_i2c1_ctrl, &dummy, 1, false)) {
+        return false;
+    }
+    return i2c1_wait();
+}

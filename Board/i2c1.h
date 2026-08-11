@@ -32,4 +32,9 @@ bool i2c1_write(uint8_t addr7, const uint8_t *data, uint32_t len);
 // if the transaction (and one recovery+retry) both fail.
 bool i2c1_read(uint8_t addr7, uint8_t *data, uint32_t len);
 
+// i2c1_probe — true if a device at addr7 ACKs. Single attempt, no
+// bus-recovery retry (unlike i2c1_write/read) — see i2c1.c for why: a scan
+// hits ~112 addresses expecting most to NACK, which is normal, not a fault.
+bool i2c1_probe(uint8_t addr7);
+
 #endif // BOARD_I2C1_H
