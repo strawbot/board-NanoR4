@@ -60,6 +60,17 @@ typedef struct iic_master_clock_settings
     uint8_t cks_value;                 ///< Internal Reference Clock Select
     uint8_t brh_value;                 ///< High-level period of SCL clock
     uint8_t brl_value;                 ///< Low-level period of SCL clock
+    // sddl_value/dlcs_value: added to match the field set RASC's bit-rate
+    // calculator now generates (SDA output delay compensation, present in
+    // newer FSP releases than the one this ra/fsp/ tree was vendored
+    // from). Not read anywhere in this tree's r_iic_master.c — the SDA
+    // delay feature isn't implemented here, so these just accept and
+    // ignore whatever RASC fills in (always 0/false so far), matching
+    // this configuration's actual (disabled) behavior either way. Added
+    // rather than hand-stripped from ra_gen/hal_data.c so a future RASC
+    // regeneration doesn't need this patched again.
+    uint8_t sddl_value;                ///< SDA Output Delay Counter (unused by this driver revision)
+    bool    dlcs_value;                ///< SDA Output Delay Clock Source (unused by this driver revision)
 } iic_master_clock_settings_t;
 
 /** I2C control structure. DO NOT INITIALIZE. */
@@ -107,6 +118,7 @@ typedef struct st_iic_master_extended_cfg
     iic_master_timeout_mode_t    timeout_mode;    ///< Timeout Detection Time Select: Long Mode = 0 and Short Mode = 1.
     iic_master_timeout_scl_low_t timeout_scl_low; ///< Allows timeouts to occur when SCL is held low.
     iic_master_clock_settings_t  clock_settings;  ///< I2C Clock settings
+    bool                         smbus_operation; ///< SMBus mode select (unused by this driver revision — see clock_settings note above)
 } iic_master_extended_cfg_t;
 
 /**********************************************************************************************************************

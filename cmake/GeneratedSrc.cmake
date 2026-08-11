@@ -39,6 +39,7 @@ target_include_directories(${PROJECT_NAME}.elf
     ${CMAKE_CURRENT_SOURCE_DIR}/ra/fsp/inc
     ${CMAKE_CURRENT_SOURCE_DIR}/ra/fsp/inc/api
     ${CMAKE_CURRENT_SOURCE_DIR}/ra/fsp/inc/instances
+    ${CMAKE_CURRENT_SOURCE_DIR}/ra/fsp/src/r_usb_basic/src/driver/inc
     ${CMAKE_CURRENT_SOURCE_DIR}/ra_cfg/fsp_cfg
     ${CMAKE_CURRENT_SOURCE_DIR}/ra_cfg/fsp_cfg/bsp
     ${CMAKE_CURRENT_SOURCE_DIR}/ra_gen

@@ -38,9 +38,10 @@ void output();
 #define in_interrupt()	(__get_IPSR() != 0)
 
 // UTC and time event clocks
-// RA4M1 ICLK = 32 MHz (XTAL 16 MHz × 8 / 2 / 2 via PLL; see bsp_clock_cfg.h).
-#define CLOCK_MHZ 32u
-#define ONE_SECOND (31250)	// PCLKD/1024 @ 32 MHz = 31.25 kHz → 32 µs/tick
+// RA4M1 ICLK = 48 MHz (HOCO, full chip speed; see bsp_clock_cfg.h — was
+// 32 MHz via PLL from the 16 MHz XTAL before the clock-speed bump).
+#define CLOCK_MHZ 48u
+#define ONE_SECOND (46875)	// PCLKD/1024 @ 48 MHz = 46.875 kHz → ~21.3 µs/tick
 #define TE_SECOND ONE_SECOND    // for Delta timer
 // Hardware RTC via FSP; implementation in Board/clocks.c.
 Long tick_get_utc(void);
@@ -57,7 +58,7 @@ Long tick_get_utc(void);
 #define CLOCK_HAS_DELTA   // Board/clocks.c provides set_delta_alarm() / delta_alarm()
 
 // Hi res time measurements
-// 32 MHz DWT cycle counter ticks; 31.25 ns resolution
+// 48 MHz DWT cycle counter ticks; ~20.8 ns resolution
 #define sysTicks()  (Long)(DWT->CYCCNT)
 
 #define SYS_TO_NS(n) ((unsigned long long)(n)*1000/CLOCK_MHZ)

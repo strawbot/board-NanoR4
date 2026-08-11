@@ -85,12 +85,12 @@ FSP Configuration
     HOCO 48MHz
     PLL Div /2
     PLL Mul x8
-    Clock Src: PLL
-    ICLK Div /2
-    PCLKA Div /2
+    Clock Src: HOCO
+    ICLK Div /1
+    PCLKA Div /1
     PCLKB Div /2
-    PCLKC Div /2
-    PCLKD Div /2
+    PCLKC Div /1
+    PCLKD Div /1
     FCLK Div /16
     CLKOUT Disabled
     CLKOUT Div /1
@@ -111,8 +111,8 @@ FSP Configuration
       P013 54 - - - - Disabled - - "ADC: VREFL; ADC0: AN08; OPAMP1: AMP+" - None - - 
       P014 53 GPIO - - - "Input mode" - None "ADC0: AN09; DAC120: DA" - IO - - 
       P015 52 - - - - Disabled - - "ADC0: AN10; CTSU0: TS28; IRQ0: IRQ07" - None - - 
-      P100 48 - - - - Disabled - - "ADC0: AN22; AGT0: AGTIO; CMP0: CMPIN0; GPT5: GTIOCB; IIC1: SCL; IRQ0: IRQ02; KINT0: KRM0; POEG0: GTETRG; SCI0: RXD_MISO; SCI0: SCL; SCI1: SCK; SLCDC0: VL1; SPI0: MISO" - None - - 
-      P101 47 - - - - Disabled - - "ADC0: AN21; AGT0: AGTEE; CMP0: CMPREF0; GPT5: GTIOCA; IIC1: SDA; IRQ0: IRQ01; KINT0: KRM1; POEG1: GTETRG; SCI0: SDA; SCI0: TXD_MOSI; SCI1: CTS_RTS_SS; SLCDC0: VL2; SPI0: MOSI" - None - - 
+      P100 48 IIC1_SCL1 - Medium None "Peripheral mode" CMOS None "ADC0: AN22; AGT0: AGTIO; CMP0: CMPIN0; GPT5: GTIOCB; IIC1: SCL; IRQ0: IRQ02; KINT0: KRM0; POEG0: GTETRG; SCI0: RXD_MISO; SCI0: SCL; SCI1: SCK; SLCDC0: VL1; SPI0: MISO" - IO - - 
+      P101 47 IIC1_SDA1 - Medium None "Peripheral mode" CMOS None "ADC0: AN21; AGT0: AGTEE; CMP0: CMPREF0; GPT5: GTIOCA; IIC1: SDA; IRQ0: IRQ01; KINT0: KRM1; POEG1: GTETRG; SCI0: SDA; SCI0: TXD_MOSI; SCI1: CTS_RTS_SS; SLCDC0: VL2; SPI0: MOSI" - IO - - 
       P102 46 - - - - Disabled - - "ADC0: ADTRG; ADC0: AN20; AGT0: AGTO; CAN0: CRX; CMP0: CMPIN1; GPT2: GTIOCB; KINT0: KRM2; OPS0: GTOWLO; SCI0: SCK; SCI2: SDA; SCI2: TXD_MOSI; SLCDC0: VL3; SPI0: RSPCK" - None - - 
       P103 45 - - - - Disabled - - "ADC0: AN19; CAN0: CTX; CMP0: CMPREF1; GPT2: GTIOCA; KINT0: KRM3; OPS0: GTOWUP; SCI0: CTS_RTS_SS; SLCDC0: VL4; SPI0: SSL0" - None - - 
       P104 44 - - - - Disabled - - "CTSU0: TS13; GPT1: GTIOCB; IRQ0: IRQ01; KINT0: KRM4; POEG1: GTETRG; SCI0: RXD_MISO; SCI0: SCL; SLCDC0: COM0; SPI0: SSL1" - None - - 
@@ -198,12 +198,6 @@ FSP Configuration
     Parameter Checking: Default (BSP)
     CCD Support: Not Supported
     
-  Module "ADC (r_adc)"
-    Parameter Checking: Default (BSP)
-    
-  Module "DAC (r_dac)"
-    Parameter Checking: Default (BSP)
-    
   Module "USB Composite (r_usb_composite)"
   Module "USB PCDC (r_usb_pcdc)"
   Module "USB (r_usb_basic)"
@@ -227,6 +221,12 @@ FSP Configuration
     Parameter Checking: Default (BSP)
     DTC on Transmission and Reception: Disabled
     10-bit slave addressing: Disabled
+    
+  Module "ADC (r_adc)"
+    Parameter Checking: Default (BSP)
+    
+  Module "DAC (r_dac)"
+    Parameter Checking: Default (BSP)
     
   HAL
     Instance "g_uart2 UART (r_sci_uart)"
@@ -420,59 +420,44 @@ FSP Configuration
       4th Port ELC Trigger Source: Disabled
       Pin Configuration Name: g_bsp_pin_cfg
       
-    Instance "g_timer0 Timer, General PWM (r_gpt)"
-      General: Name: g_timer0
-      General: Channel: 3
-      General: Mode: Saw-wave PWM
-      General: Period: 0x10000
-      General: Compare Match: Compare Match A: Status: Disabled
-      General: Compare Match: Compare Match A: Compare match value: 0
-      General: Compare Match: Compare Match B: Status: Disabled
-      General: Compare Match: Compare Match B: Compare match value: 0
-      General: Period Unit: Raw Counts
-      Output: Custom Waveform: GTIOA: Initial Output Level: Pin Level Low
-      Output: Custom Waveform: GTIOA: Cycle End Output Level: Pin Level Retain
-      Output: Custom Waveform: GTIOA: Compare Match Output Level: Pin Level Retain
-      Output: Custom Waveform: GTIOA: Retain Output Level at Count Stop: Disabled
-      Output: Custom Waveform: GTIOB: Initial Output Level: Pin Level Low
-      Output: Custom Waveform: GTIOB: Cycle End Output Level: Pin Level Retain
-      Output: Custom Waveform: GTIOB: Compare Match Output Level: Pin Level Retain
-      Output: Custom Waveform: GTIOB: Retain Output Level at Count Stop: Disabled
-      Output: Custom Waveform: Custom Waveform Enable: Disabled
-      Output: Duty Cycle Percent (only applicable in PWM mode): 50
-      Output: GTIOCA Output Enabled: True
-      Output: GTIOCA Stop Level: Pin Level Low
-      Output: GTIOCB Output Enabled: False
-      Output: GTIOCB Stop Level: Pin Level Low
-      Input: Count Up Source: 
-      Input: Count Down Source: 
-      Input: Start Source: 
-      Input: Stop Source: 
-      Input: Clear Source: 
-      Input: Capture A Source: 
-      Input: Capture B Source: 
-      Input: Noise Filter A Sampling Clock Select: No Filter
-      Input: Noise Filter B Sampling Clock Select: No Filter
-      Pin Polarity: GTIOCnA Polarity: Normal
-      Pin Polarity: GTIOCnB Polarity: Normal
-      Interrupts: Callback: NULL
-      Interrupts: Overflow/Crest Interrupt Priority: Disabled
-      Interrupts: Capture/Compare match A Interrupt Priority: Disabled
-      Interrupts: Capture/Compare match B Interrupt Priority: Disabled
-      Interrupts: Underflow/Trough Interrupt Priority: Disabled
-      Extra Features: Extra Features: Disabled
-      Extra Features: Output Disable: POEG Link: POEG Channel 0
-      Extra Features: Output Disable: Output Disable POEG Trigger: 
-      Extra Features: ADC Trigger: Start Event Trigger (Channels with GTINTAD only): 
-      Extra Features: ADC Trigger: ADC A Compare Match (Raw Counts): 0
-      Extra Features: ADC Trigger: ADC B Compare Match (Raw Counts): 0
-      Extra Features: Dead Time (Value range varies with Channel): Dead Time Count Up (Raw Counts): 0
-      Extra Features: Dead Time (Value range varies with Channel): Dead Time Count Down (Raw Counts) (Channels with GTDVD only): 0
-      Extra Features: Interrupt Skipping (Channels with GTITC only): Interrupt to Count: None
-      Extra Features: Interrupt Skipping (Channels with GTITC only): Interrupt Skip Count: 0
-      Extra Features: Interrupt Skipping (Channels with GTITC only): Skip ADC Events: None
-      Extra Features: Output Disable: GTIOCA Disable Setting: Disable Prohibited
-      Extra Features: Output Disable: GTIOCB Disable Setting: Disable Prohibited
+    Instance "g_r_usb_composite0 USB Composite (r_usb_composite)"
+      Name: g_r_usb_composite0
+      
+      Instance "g_pcdc0 USB PCDC (r_usb_pcdc)"
+        Name: g_pcdc0
+        
+        Instance "g_basic0 USB (r_usb_basic)"
+          Name: g_basic0
+          USB Mode: Peri mode
+          USB Speed: Full Speed
+          USB Module Number: USB_IP0 Port
+          USB Device Class: Peripheral Communications Device Class
+          USB Descriptor: g_usb_descriptor
+          USB Compliance Callback: NULL
+          USBFS Interrupt Priority: Priority 12
+          USBFS Resume Priority: Priority 12
+          USBFS D0FIFO Interrupt Priority: Priority 12
+          USBFS D1FIFO Interrupt Priority: Priority 12
+          USBHS Interrupt Priority: Not Supported
+          USBHS D0FIFO Interrupt Priority: Not Supported
+          USBHS D1FIFO Interrupt Priority: Not Supported
+          USB Callback: NULL
+          USB Callback Context: NULL
+          
+    Instance "g_i2c_master1 I2C Master (r_iic_master)"
+      Name: g_i2c_master1
+      Channel: 1
+      Rate: Fast-mode
+      Custom Rate (bps): 0
+      Rise Time (ns): 120
+      Fall Time (ns): 120
+      Duty Cycle (%): 50
+      Slave Address: 0x00
+      Address Mode: 7-Bit
+      Timeout Mode: Short Mode
+      Timeout during SCL Low: Enabled
+      Callback: NULL
+      Interrupt Priority Level: Priority 12
       
     Instance "g_adc0 ADC (r_adc)"
       General: Name: g_adc0
@@ -521,43 +506,4 @@ FSP Configuration
       Internal Output: Not Supported
       ELC Trigger Source: Disabled
       Reference Voltage: AVCC0/AVSS0
-      
-    Instance "g_r_usb_composite0 USB Composite (r_usb_composite)"
-      Name: g_r_usb_composite0
-      
-      Instance "g_pcdc0 USB PCDC (r_usb_pcdc)"
-        Name: g_pcdc0
-        
-        Instance "g_basic0 USB (r_usb_basic)"
-          Name: g_basic0
-          USB Mode: Peri mode
-          USB Speed: Full Speed
-          USB Module Number: USB_IP0 Port
-          USB Device Class: Peripheral Communications Device Class
-          USB Descriptor: g_usb_descriptor
-          USB Compliance Callback: NULL
-          USBFS Interrupt Priority: Priority 12
-          USBFS Resume Priority: Priority 12
-          USBFS D0FIFO Interrupt Priority: Priority 12
-          USBFS D1FIFO Interrupt Priority: Priority 12
-          USBHS Interrupt Priority: Not Supported
-          USBHS D0FIFO Interrupt Priority: Not Supported
-          USBHS D1FIFO Interrupt Priority: Not Supported
-          USB Callback: NULL
-          USB Callback Context: NULL
-          
-    Instance "g_i2c_master0 I2C Master (r_iic_master)"
-      Name: g_i2c_master0
-      Channel: 0
-      Rate: Standard
-      Custom Rate (bps): 0
-      Rise Time (ns): 120
-      Fall Time (ns): 120
-      Duty Cycle (%): 50
-      Slave Address: 0x10
-      Address Mode: 7-Bit
-      Timeout Mode: Short Mode
-      Timeout during SCL Low: Enabled
-      Callback: NULL
-      Interrupt Priority Level: Priority 12
       

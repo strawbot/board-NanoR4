@@ -6,7 +6,7 @@
         #endif
                 /* Number of interrupts allocated */
         #ifndef VECTOR_DATA_IRQ_COUNT
-        #define VECTOR_DATA_IRQ_COUNT    (11)
+        #define VECTOR_DATA_IRQ_COUNT    (14)
         #endif
         /* ISR prototypes */
         void sci_uart_rxi_isr(void);
@@ -15,7 +15,10 @@
         void sci_uart_eri_isr(void);
         void rtc_carry_isr(void);
         void gpt_counter_overflow_isr(void);
-        void usbfs_int_isr(void);
+        void usbfs_interrupt_handler(void);
+        void usbfs_resume_handler(void);
+        void usbfs_d0fifo_handler(void);
+        void usbfs_d1fifo_handler(void);
         void iic_master_rxi_isr(void);
         void iic_master_txi_isr(void);
         void iic_master_tei_isr(void);
@@ -36,16 +39,22 @@
         #define GPT2_COUNTER_OVERFLOW_IRQn          ((IRQn_Type) 5) /* GPT2 COUNTER OVERFLOW (Overflow) */
         #define VECTOR_NUMBER_USBFS_INT ((IRQn_Type) 6) /* USBFS INT (USBFS interrupt) */
         #define USBFS_INT_IRQn          ((IRQn_Type) 6) /* USBFS INT (USBFS interrupt) */
-        #define VECTOR_NUMBER_IIC0_RXI ((IRQn_Type) 7) /* IIC0 RXI (Receive data full) */
-        #define IIC0_RXI_IRQn          ((IRQn_Type) 7) /* IIC0 RXI (Receive data full) */
-        #define VECTOR_NUMBER_IIC0_TXI ((IRQn_Type) 8) /* IIC0 TXI (Transmit data empty) */
-        #define IIC0_TXI_IRQn          ((IRQn_Type) 8) /* IIC0 TXI (Transmit data empty) */
-        #define VECTOR_NUMBER_IIC0_TEI ((IRQn_Type) 9) /* IIC0 TEI (Transmit end) */
-        #define IIC0_TEI_IRQn          ((IRQn_Type) 9) /* IIC0 TEI (Transmit end) */
-        #define VECTOR_NUMBER_IIC0_ERI ((IRQn_Type) 10) /* IIC0 ERI (Transfer error) */
-        #define IIC0_ERI_IRQn          ((IRQn_Type) 10) /* IIC0 ERI (Transfer error) */
+        #define VECTOR_NUMBER_USBFS_RESUME ((IRQn_Type) 7) /* USBFS RESUME (USBFS resume interrupt) */
+        #define USBFS_RESUME_IRQn          ((IRQn_Type) 7) /* USBFS RESUME (USBFS resume interrupt) */
+        #define VECTOR_NUMBER_USBFS_FIFO_0 ((IRQn_Type) 8) /* USBFS FIFO 0 (DMA/DTC transfer request 0) */
+        #define USBFS_FIFO_0_IRQn          ((IRQn_Type) 8) /* USBFS FIFO 0 (DMA/DTC transfer request 0) */
+        #define VECTOR_NUMBER_USBFS_FIFO_1 ((IRQn_Type) 9) /* USBFS FIFO 1 (DMA/DTC transfer request 1) */
+        #define USBFS_FIFO_1_IRQn          ((IRQn_Type) 9) /* USBFS FIFO 1 (DMA/DTC transfer request 1) */
+        #define VECTOR_NUMBER_IIC1_RXI ((IRQn_Type) 10) /* IIC1 RXI (Receive data full) */
+        #define IIC1_RXI_IRQn          ((IRQn_Type) 10) /* IIC1 RXI (Receive data full) */
+        #define VECTOR_NUMBER_IIC1_TXI ((IRQn_Type) 11) /* IIC1 TXI (Transmit data empty) */
+        #define IIC1_TXI_IRQn          ((IRQn_Type) 11) /* IIC1 TXI (Transmit data empty) */
+        #define VECTOR_NUMBER_IIC1_TEI ((IRQn_Type) 12) /* IIC1 TEI (Transmit end) */
+        #define IIC1_TEI_IRQn          ((IRQn_Type) 12) /* IIC1 TEI (Transmit end) */
+        #define VECTOR_NUMBER_IIC1_ERI ((IRQn_Type) 13) /* IIC1 ERI (Transfer error) */
+        #define IIC1_ERI_IRQn          ((IRQn_Type) 13) /* IIC1 ERI (Transfer error) */
         /* The number of entries required for the ICU vector table. */
-        #define BSP_ICU_VECTOR_NUM_ENTRIES (11)
+        #define BSP_ICU_VECTOR_NUM_ENTRIES (14)
 
         #ifdef __cplusplus
         }

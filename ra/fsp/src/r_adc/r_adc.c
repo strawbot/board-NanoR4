@@ -1,22 +1,8 @@
-/***********************************************************************************************************************
- * Copyright [2020-2022] Renesas Electronics Corporation and/or its affiliates.  All Rights Reserved.
- *
- * This software and documentation are supplied by Renesas Electronics America Inc. and may only be used with products
- * of Renesas Electronics Corp. and its affiliates ("Renesas").  No other uses are authorized.  Renesas products are
- * sold pursuant to Renesas terms and conditions of sale.  Purchasers are solely responsible for the selection and use
- * of Renesas products and Renesas assumes no liability.  No license, express or implied, to any intellectual property
- * right is granted by Renesas. This software is protected under all applicable laws, including copyright laws. Renesas
- * reserves the right to change or discontinue this software and/or this documentation. THE SOFTWARE AND DOCUMENTATION
- * IS DELIVERED TO YOU "AS IS," AND RENESAS MAKES NO REPRESENTATIONS OR WARRANTIES, AND TO THE FULLEST EXTENT
- * PERMISSIBLE UNDER APPLICABLE LAW, DISCLAIMS ALL WARRANTIES, WHETHER EXPLICITLY OR IMPLICITLY, INCLUDING WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT, WITH RESPECT TO THE SOFTWARE OR
- * DOCUMENTATION.  RENESAS SHALL HAVE NO LIABILITY ARISING OUT OF ANY SECURITY VULNERABILITY OR BREACH.  TO THE MAXIMUM
- * EXTENT PERMITTED BY LAW, IN NO EVENT WILL RENESAS BE LIABLE TO YOU IN CONNECTION WITH THE SOFTWARE OR DOCUMENTATION
- * (OR ANY PERSON OR ENTITY CLAIMING RIGHTS DERIVED FROM YOU) FOR ANY LOSS, DAMAGES, OR CLAIMS WHATSOEVER, INCLUDING,
- * WITHOUT LIMITATION, ANY DIRECT, CONSEQUENTIAL, SPECIAL, INDIRECT, PUNITIVE, OR INCIDENTAL DAMAGES; ANY LOST PROFITS,
- * OTHER ECONOMIC DAMAGE, PROPERTY DAMAGE, OR PERSONAL INJURY; AND EVEN IF RENESAS HAS BEEN ADVISED OF THE POSSIBILITY
- * OF SUCH LOSS, DAMAGES, CLAIMS OR COSTS.
- **********************************************************************************************************************/
+/*
+* Copyright (c) 2020 - 2025 Renesas Electronics Corporation and/or its affiliates
+*
+* SPDX-License-Identifier: BSD-3-Clause
+*/
 
 /***********************************************************************************************************************
  * Includes   <System Includes> , "Project Includes"
@@ -83,19 +69,15 @@
 
 #define ADC_PRV_ADBUF_ENABLED                       (1U)
 
+#define ADC_MASK_FIRST_SENSOR_BIT                   (29U)
+
+#if 1U == BSP_FEATURE_TSN_CALIBRATION32_AVAILABLE
+ #define R_TSN                                      (R_TSN_CAL)
+#endif
+
 /***********************************************************************************************************************
  * Typedef definitions
  **********************************************************************************************************************/
-
-/** Defines the registers settings for the ADC synchronous ELC trigger. */
-typedef enum e_adc_elc_trigger
-{
-    ADC_ELC_TRIGGER_EXTERNAL = (0x00U),
-    ADC_ELC_TRIGGER          = (0x09U),
-    ADC_ELC_TRIGGER_GROUP_B  = (0x0AU),
-    ADC_ELC_TRIGGER_BOTH     = (0x0BU),
-    ADC_ELC_TRIGGER_DISABLED = (0x3FU)
-} adc_elc_trigger_t;
 
 #if defined(__ARMCC_VERSION) || defined(__ICCARM__)
 typedef void (BSP_CMSE_NONSECURE_CALL * adc_prv_ns_callback)(adc_callback_args_t * p_args);
@@ -133,32 +115,23 @@ static fsp_err_t r_adc_scan_cfg_check(adc_instance_ctrl_t * const     p_instance
 
 static void r_adc_scan_cfg(adc_instance_ctrl_t * const     p_instance_ctrl,
                            adc_channel_cfg_t const * const p_channel_cfg);
-static void    r_adc_sensor_sample_state_calculation(uint32_t * const p_sample_states);
-void           adc_scan_end_b_isr(void);
-void           adc_scan_end_isr(void);
-void           adc_window_compare_isr(void);
-static void    r_adc_irq_enable(IRQn_Type irq, uint8_t ipl, void * p_context);
-static void    r_adc_irq_disable(IRQn_Type irq);
-static int32_t r_adc_lowest_channel_get(uint32_t adc_mask);
-static void    r_adc_scan_end_common_isr(adc_event_t event);
-
-/** Look-up table for ADSTRGR values */
-static const uint32_t adc_elc_trigger_lut[] =
-{
-    [ADC_DOUBLE_TRIGGER_DISABLED]         = (ADC_ELC_TRIGGER << R_ADC0_ADSTRGR_TRSA_Pos) + ADC_ELC_TRIGGER_GROUP_B,
-    [ADC_DOUBLE_TRIGGER_ENABLED]          = (ADC_ELC_TRIGGER << R_ADC0_ADSTRGR_TRSA_Pos) + ADC_ELC_TRIGGER_GROUP_B,
-    [ADC_DOUBLE_TRIGGER_ENABLED_EXTENDED] = (ADC_ELC_TRIGGER_BOTH << R_ADC0_ADSTRGR_TRSA_Pos) +
-                                            ADC_ELC_TRIGGER_DISABLED,
-};
+static void     r_adc_sensor_sample_state_calculation(uint32_t * const p_sample_states);
+void            adc_scan_end_b_isr(void);
+void            adc_scan_end_isr(void);
+void            adc_window_compare_isr(void);
+static void     r_adc_irq_enable(IRQn_Type irq, uint8_t ipl, void * p_context);
+static void     r_adc_irq_disable(IRQn_Type irq);
+static uint32_t r_adc_lowest_channel_get(uint32_t adc_mask);
+static void     r_adc_scan_end_common_isr(adc_event_t event);
 
 #if ADC_CFG_PARAM_CHECKING_ENABLE
 
 /** Mask of valid channels on this MCU. */
 static const uint32_t g_adc_valid_channels[] =
 {
-    BSP_FEATURE_ADC_UNIT_0_CHANNELS,
- #if BSP_FEATURE_ADC_UNIT_1_CHANNELS
-    BSP_FEATURE_ADC_UNIT_1_CHANNELS
+    BSP_FEATURE_ADC_UNIT_0_CHANNELS_MASK,
+ #if BSP_FEATURE_ADC_UNIT_1_CHANNELS_MASK
+    BSP_FEATURE_ADC_UNIT_1_CHANNELS_MASK
  #endif
 };
 #endif
@@ -317,7 +290,7 @@ fsp_err_t R_ADC_ScanCfg (adc_ctrl_t * p_ctrl, void const * const p_channel_cfg)
  **********************************************************************************************************************/
 fsp_err_t R_ADC_CallbackSet (adc_ctrl_t * const          p_api_ctrl,
                              void (                    * p_callback)(adc_callback_args_t *),
-                             void const * const          p_context,
+                             void * const                p_context,
                              adc_callback_args_t * const p_callback_memory)
 {
     adc_instance_ctrl_t * p_ctrl = (adc_instance_ctrl_t *) p_api_ctrl;
@@ -623,12 +596,12 @@ fsp_err_t R_ADC_InfoGet (adc_ctrl_t * p_ctrl, adc_info_t * p_adc_info)
          * 2 bits. */
         uint32_t adc_mask_in_order = adc_mask & ~(uint32_t) ADC_MASK_SENSORS;
         adc_mask_in_order <<= 3U;
-        adc_mask_in_order  |= adc_mask >> 28U;
-        int32_t lowest_channel = r_adc_lowest_channel_get(adc_mask_in_order);
+        adc_mask_in_order  |= adc_mask >> ADC_MASK_FIRST_SENSOR_BIT;
+        uint32_t lowest_channel = r_adc_lowest_channel_get(adc_mask_in_order);
         p_adc_info->p_address = &p_instance_ctrl->p_reg->ADDR[lowest_channel - 3];
 
         /* Determine the highest channel that is configured. */
-        int32_t highest_channel = 31 - __CLZ(adc_mask_in_order);
+        uint32_t highest_channel = 31 - __CLZ(adc_mask_in_order);
 
         /* Determine the size of data that must be read to read all the channels between and including the
          * highest and lowest channels.*/
@@ -642,7 +615,7 @@ fsp_err_t R_ADC_InfoGet (adc_ctrl_t * p_ctrl, adc_info_t * p_adc_info)
 
     p_adc_info->transfer_size = TRANSFER_SIZE_2_BYTE;
 
-#if BSP_FEATURE_ADC_UNIT_1_CHANNELS
+#if BSP_FEATURE_ADC_UNIT_1_CHANNELS_MASK
 
     /* Specify the peripheral name in the ELC list */
     p_adc_info->elc_event =
@@ -659,27 +632,36 @@ fsp_err_t R_ADC_InfoGet (adc_ctrl_t * p_ctrl, adc_info_t * p_adc_info)
     p_adc_info->calibration_data = UINT32_MAX;
 
     /* If calibration register is available, retrieve it from the MCU */
-#if 1U == BSP_FEATURE_ADC_TSN_CALIBRATION_AVAILABLE
- #if 1U == BSP_FEATURE_ADC_TSN_CALIBRATION32_AVAILABLE
+#if 1U == BSP_FEATURE_TSN_CALIBRATION_AVAILABLE
 
     /* Read into memory. */
-    uint32_t data = R_TSN_CAL->TSCDR;
+    uint32_t data = R_TSN->TSCDR;
+
+ #if 1U == BSP_FEATURE_TSN_CALIBRATION32_AVAILABLE
 
     /* Read the temperature calibration data from ROM. */
-    p_adc_info->calibration_data = (data & BSP_FEATURE_ADC_TSN_CALIBRATION32_MASK);
+    p_adc_info->calibration_data = (data & BSP_FEATURE_TSN_CALIBRATION32_MASK);
  #else
 
-    /* Read into memory to prevent compiler warning when performing "|" on volatile register data. */
-    uint32_t high = R_TSN->TSCDRH;
-    uint32_t low  = R_TSN->TSCDRL;
+    /* Read the temperature calibration data from ROM. */
+    p_adc_info->calibration_data = data;
 
-    /* Read the calibration data from ROM and shift to fit into result variable. */
-    p_adc_info->calibration_data = ((high << 8) | low);
+  #if 1U == BSP_FEATURE_TSN_HAS_ROOM_TEMP_REG
+
+    /* Read the temperature calibration data from ROM. */
+    p_adc_info->room_calibration_data = R_TSN->TSCDRR;
+  #endif
+
+  #if 1U == BSP_FEATURE_TSN_HAS_LOW_TEMP_REG
+
+    /* Read the temperature calibration data from ROM. */
+    p_adc_info->low_calibration_data = R_TSN->TSCDRL;
+  #endif
  #endif
 #endif
 
     /* Provide the previously retrieved slope information */
-    p_adc_info->slope_microvolts = BSP_FEATURE_ADC_TSN_SLOPE;
+    p_adc_info->slope_microvolts = BSP_FEATURE_TSN_SLOPE;
 
     return err;
 }
@@ -719,9 +701,9 @@ fsp_err_t R_ADC_Close (adc_ctrl_t * p_ctrl)
 
 #if BSP_FEATURE_ADC_HAS_SAMPLE_HOLD_REG
 
-    /* Disable sample and hold before entering module stop state to reduce power consumption (reference section 47.6.8
-     * "Available Functions and Register Settings of AN000 to AN002, AN007, AN100 to AN102, and AN107" in the RA6M3
-     * manual R01UH0886EJ0100. */
+    /* Disable sample and hold before entering module stop state to reduce power consumption (See
+     * "Available Functions and Register Settings of AN000 to AN002, AN007, AN100 to AN102, and AN107" in the ADC section of
+     * the relevant hardware manual. */
     p_instance_ctrl->p_reg->ADSHCR = 0U;
 #endif
 
@@ -742,12 +724,12 @@ fsp_err_t R_ADC_Close (adc_ctrl_t * p_ctrl)
  * a scan on MCUs that require calibration.
  *
  * Calibration is complete when the callback is called with ADC_EVENT_CALIBRATION_COMPLETE or when R_ADC_StatusGet
- * returns ADC_STATUS_IDLE. Reference Figure 32.35 "Software flow and operation example of calibration operation."
- * in the RA2A1 manual R01UH0888EJ0100.
+ * returns ADC_STATUS_IDLE. See figure "Software flow and operation example of calibration operation."
+ * in the ADC section of the relevant hardware manual.
  *
- * ADC calibration time: 12 PCLKB + 774,930 ADCLK. (Reference Table 32.16 "Required calibration time (shown
- * as the number of ADCLK and PCLKB cycles)" in the RA2A1 manual R01UH0888EJ0100. The lowest supported ADCLK
- * is 1MHz.
+ * ADC calibration time: 12 PCLKB + 774,930 ADCLK. See table "Required calibration time (shown
+ * as the number of ADCLK and PCLKB cycles)" in the ADC section of the relevant hardware manual.
+ * The lowest supported ADCLK is 1MHz.
  *
  * Calibration will take a minimum of 24 milliseconds at 32 MHz PCLKB and ADCLK. This wait could take up to 780
  * milliseconds for a 1 MHz PCLKD (ADCLK).
@@ -865,15 +847,15 @@ static fsp_err_t r_adc_open_cfg_check (adc_cfg_t const * const p_cfg)
     /* Verify the unit exists on the MCU. */
     FSP_ERROR_RETURN(((1U << p_cfg->unit) & BSP_FEATURE_ADC_VALID_UNIT_MASK), FSP_ERR_IP_CHANNEL_NOT_PRESENT);
 
-    /* Verify the ADC clock frequency is at least 1 MHz (reference "Frequency" row of table "60.5 ADC12
-     * Characteristics" in the RA6M3 manual R01UH0886EJ0100. The maximum frequency is the maximum frequency supported
+    /* Verify the ADC clock frequency is at least 1 MHz (See "Frequency" row of table "ADC12
+     * Characteristics" in the relevant hardware manual.) The maximum frequency is the maximum frequency supported
      * by the ADCLK, so it is not verified here. */
     uint32_t freq_hz = R_FSP_SystemClockHzGet(BSP_FEATURE_ADC_CLOCK_SOURCE);
     FSP_ERROR_RETURN(freq_hz >= ADC_PRV_MIN_ADCLK_HZ, FSP_ERR_INVALID_HW_CONDITION);
 
-    /* Check for valid argument values for addition/averaging. Reference section 47.2.10 "A/D-Converted Value
-     * Addition/Average Count Select Register (ADADC)" in the RA6M3 manual R01UH0886EJ0100 and section 32.2.11
-     * "A/D-Converted Value Average Count Select Register (ADADC)" in the RA2A1 manual R01UH0888EJ0100. */
+    /* Check for valid argument values for addition/averaging. See "A/D-Converted Value
+     * Addition/Average Count Select Register (ADADC)" desciption in the ADC section of the relevant hardware manual and
+     * "A/D-Converted Value Average Count Select Register (ADADC)" in the ADC section of the relevant hardware manual. */
     adc_extended_cfg_t const * p_cfg_extend = (adc_extended_cfg_t const *) p_cfg->p_extend;
     if (ADC_ADD_OFF != p_cfg_extend->add_average_count)
     {
@@ -888,22 +870,24 @@ static fsp_err_t r_adc_open_cfg_check (adc_cfg_t const * const p_cfg)
  #endif
     }
 
-    /* If 16 time addition is used only 12 bit accuracy can be selected. Reference Note 1 of section 47.2.10
-     * "A/D-Converted Value Addition/Average Count Select Register (ADADC)" in the RA6M3 manual R01UH0886EJ0100. */
+    /* If 16 time addition is used only 12 bit accuracy can be selected. See Note 1 of
+     * "A/D-Converted Value Addition/Average Count Select Register (ADADC)" description in the ADC section of the relevant hardware manual. */
     if (ADC_ADD_SIXTEEN == p_cfg_extend->add_average_count)
     {
         FSP_ASSERT(ADC_RESOLUTION_12_BIT == p_cfg->resolution);
     }
 
-    /* Only synchronous triggers (ELC) allowed in group scan mode (reference TRSA documentation in section 47.2.12
-     * "A/D Conversion Start Trigger Select Register (ADSTRGR)" in the RA6M3 manual R01UH0886EJ0100.  */
+    /* Only synchronous triggers (ELC) allowed in group scan mode (See
+     * "A/D Conversion Start Trigger Select Register (ADSTRGR)" desciption in the ADC section of the relevant hardware manual.) */
     if ((ADC_MODE_GROUP_SCAN == p_cfg->mode) || (ADC_DOUBLE_TRIGGER_DISABLED != p_cfg_extend->double_trigger_mode))
     {
-        FSP_ASSERT(ADC_TRIGGER_SYNC_ELC == p_cfg->trigger);
+        FSP_ASSERT((ADC_START_SOURCE_DISABLED != p_cfg_extend->trigger) &&
+                   (ADC_START_SOURCE_ASYNC_EXTERNAL != p_cfg_extend->trigger));
 
         if ((ADC_MODE_GROUP_SCAN == p_cfg->mode))
         {
-            FSP_ASSERT(ADC_TRIGGER_SYNC_ELC == p_cfg_extend->trigger_group_b);
+            FSP_ASSERT((ADC_START_SOURCE_DISABLED != p_cfg_extend->trigger_group_b) && \
+                       (ADC_START_SOURCE_ASYNC_EXTERNAL != p_cfg_extend->trigger_group_b));
         }
     }
 
@@ -927,8 +911,7 @@ static fsp_err_t r_adc_open_cfg_resolution_check (adc_cfg_t const * const p_cfg)
  #if 12U == BSP_FEATURE_ADC_MAX_RESOLUTION_BITS
   #if BSP_FEATURE_ADC_HAS_ADCER_ADPRC
 
-    /* Resolution options for ADC12 (reference section 47.2.11 "A/D Control Extended Register (ADCER)" in the RA6M3
-     * manual R01UH0886EJ0100. */
+    /* Resolution options for ADC12 (reference section "A/D Control Extended Register (ADCER)" in the relevant hardware manual.) */
     FSP_ASSERT((ADC_RESOLUTION_12_BIT == p_cfg->resolution) ||
                (ADC_RESOLUTION_10_BIT == p_cfg->resolution) ||
                (ADC_RESOLUTION_8_BIT == p_cfg->resolution));
@@ -939,16 +922,14 @@ static fsp_err_t r_adc_open_cfg_resolution_check (adc_cfg_t const * const p_cfg)
 
  #if 14U == BSP_FEATURE_ADC_MAX_RESOLUTION_BITS
 
-    /* Resolution options for ADC14 (reference section 35.2.11 "A/D Control Extended Register (ADCER)" in the RA4M1
-     * manual R01UH0886EJ0100. */
+    /* Resolution options for ADC14 (reference section "A/D Control Extended Register (ADCER)" in the relevant hardware manual.) */
     FSP_ASSERT((ADC_RESOLUTION_12_BIT == p_cfg->resolution) ||
                (ADC_RESOLUTION_14_BIT == p_cfg->resolution));
  #endif
 
  #if 16U == BSP_FEATURE_ADC_MAX_RESOLUTION_BITS
 
-    /* ADC16 only offers 16-bit resolution (reference Table 32.1 "ADC16 specifications (1 of 2)" in the RA2A1 manual
-     * R01UH0888EJ0100. */
+    /* ADC16 only offers 16-bit resolution (refer "ADC16 specifications" in the relevant hardware manual.) */
     FSP_ASSERT(ADC_RESOLUTION_16_BIT == p_cfg->resolution);
  #endif
 
@@ -980,8 +961,7 @@ static fsp_err_t r_adc_scan_cfg_check_sample_hold (adc_instance_ctrl_t * const  
     if (0U != p_channel_cfg->sample_hold_mask)
     {
         /* Sample and Hold channels can only be 0, 1, 2 and must have at least minimum state count specified (reference
-         * section 47.2.15 "A/D Sample and Hold Circuit Control Register (ADSHCR)" in the RA6M3 manual
-         * R01UH0886EJ0100. */
+         * section "A/D Sample and Hold Circuit Control Register (ADSHCR)" description in the ADC section of the relevant hardware manual.) */
         FSP_ASSERT(p_channel_cfg->sample_hold_mask <= ADC_SAMPLE_HOLD_CHANNELS);
         FSP_ASSERT(p_channel_cfg->sample_hold_states >= ADC_SAMPLE_STATE_HOLD_COUNT_MIN);
 
@@ -991,8 +971,8 @@ static fsp_err_t r_adc_scan_cfg_check_sample_hold (adc_instance_ctrl_t * const  
             if (ADC_GROUP_A_PRIORITY_OFF != p_channel_cfg->priority_group_a)
             {
                 /* Sample and hold channels cannot be in GroupB if GroupA priority enabled. (reference SHANS[2:0] bits
-                 * in section 47.2.15 "A/D Sample and Hold Circuit Control Register (ADSHCR)" in the RA6M3 manual
-                 * R01UH0886EJ0100.*/
+                 * in section "A/D Sample and Hold Circuit Control Register (ADSHCR)" description in the ADC section of the relevant
+                 * hardware manual.*/
                 FSP_ASSERT(0 == b_mask);
             }
         }
@@ -1003,8 +983,8 @@ static fsp_err_t r_adc_scan_cfg_check_sample_hold (adc_instance_ctrl_t * const  
 }
 
 /*******************************************************************************************************************//**
- * Enforces constraints on Window Compare function usage per section 47.3.5.3 "Constraints on the compare function" in
- * the RA6M3 User's Manual (R01UH0886EJ0100)
+ * Enforces constraints on Window Compare function usage per section "Constraints on the compare function" in
+ * the relevant hardware manual
  *
  * @param[in]  p_window_cfg            Pointer to window compare configuration
  *
@@ -1061,8 +1041,8 @@ static fsp_err_t r_adc_scan_cfg_check_sensors (adc_instance_ctrl_t * const     p
 
  #if !BSP_FEATURE_ADC_GROUP_B_SENSORS_ALLOWED
 
-    /* Sensors are not supported in Group B in some MCUs. Reference section 32.2.14 "A/D Conversion Extended Input
-     * Control Register (ADEXICR)" of the RA2A1 manual R01UH0888EJ0100. */
+    /* Sensors are not supported in Group B in some MCUs. Reference section "A/D Conversion Extended Input
+     * Control Register (ADEXICR)" description in the ADC section of the relevant hardware manual. */
     FSP_ASSERT(0U == (p_channel_cfg->scan_mask_group_b & ADC_MASK_SENSORS));
  #endif
 
@@ -1072,8 +1052,8 @@ static fsp_err_t r_adc_scan_cfg_check_sensors (adc_instance_ctrl_t * const     p
     {
         /* If the temperature sensor or the internal voltage reference is used, then none of the channels can be used
          * at the same time. The temperature sensor and the internal voltage reference can only be used in single scan
-         * mode. Reference TSSA and OCSA bits in section 35.2.13 "A/D Conversion Extended Input Control Register
-         * (ADEXICR)" of the RA4M1 manual R01UH0887EJ0100. */
+         * mode. Reference TSSA and OCSA bits in section "A/D Conversion Extended Input Control Register
+         * (ADEXICR)" description in the ADC section of the relevant hardware manual. */
         FSP_ASSERT(ADC_MASK_SENSORS != sensor_mask);
         FSP_ASSERT(p_channel_cfg->scan_mask == sensor_mask);
         FSP_ASSERT(ADC_MODE_SINGLE_SCAN == p_instance_ctrl->p_cfg->mode);
@@ -1116,8 +1096,9 @@ static void r_adc_open_sub (adc_instance_ctrl_t * const p_instance_ctrl, adc_cfg
      *     R_ADC_ScanStart if software trigger mode is used.
      */
     uint32_t adcsr = (uint32_t) (p_cfg->mode << R_ADC0_ADCSR_ADCS_Pos);
-    adcsr |= (uint32_t) (R_ADC0_ADCSR_GBADIE_Msk);
-    adcsr |= ((uint32_t) p_cfg->trigger << R_ADC0_ADCSR_EXTRG_Pos);
+    adcsr |= (uint32_t) (R_ADC0_ADCSR_GBADIE_Msk | R_ADC0_ADCSR_TRGE_Msk);
+    adcsr |= ((uint32_t) (ADC_START_SOURCE_ASYNC_EXTERNAL == p_cfg_extend->trigger) << R_ADC0_ADCSR_EXTRG_Pos); // Only check GroupA. GroupB is never external.
+    adcsr |= ((uint32_t) (ADC_START_SOURCE_DISABLED != p_cfg_extend->trigger) << R_ADC0_ADCSR_TRGE_Pos);        // Only check GroupA. GroupB is never external.
 
 #if BSP_FEATURE_ADC_HAS_ADHVREFCNT
     if (ADC_PRV_ADHVREFCNT_VREF_INTERNAL_BIT_1 & p_cfg_extend->adc_vref_control)
@@ -1128,9 +1109,9 @@ static void r_adc_open_sub (adc_instance_ctrl_t * const p_instance_ctrl, adc_cfg
 
     if (ADC_DOUBLE_TRIGGER_DISABLED != p_cfg_extend->double_trigger_mode)
     {
-        adcsr |= R_ADC0_ADCSR_TRGE_Msk | R_ADC0_ADCSR_DBLE_Msk;
+        adcsr |= R_ADC0_ADCSR_DBLE_Msk;
     }
-    else if (ADC_TRIGGER_SOFTWARE == p_cfg->trigger)
+    else if (ADC_START_SOURCE_DISABLED == p_cfg_extend->trigger)
     {
         adcsr |= R_ADC0_ADCSR_ADST_Msk;
     }
@@ -1142,19 +1123,18 @@ static void r_adc_open_sub (adc_instance_ctrl_t * const p_instance_ctrl, adc_cfg
     p_instance_ctrl->scan_start_adcsr = (uint16_t) adcsr;
 
     /* The default value for ADSTRGR is 0 out of reset. Update it only if the ADC is triggered on ELC events. */
-    uint32_t adstrgr = 0U;
-    if (ADC_TRIGGER_SYNC_ELC == p_cfg->trigger)
-    {
-        /* Set ADSTRGR per the following:
-         *   Extended double-trigger mode:
-         *    - Normal (Group A): ELC_PERIPHERAL_ADCn and ELC_PERIPHERAL_ADCn_B
-         *    - Group B: None
-         *   All other modes:
-         *    - Normal (Group A): ELC_PERIPHERAL_ADCn
-         *    - Group B: ELC_PERIPHERAL_ADCn_B
-         */
-        adstrgr = adc_elc_trigger_lut[p_cfg_extend->double_trigger_mode];
-    }
+
+    /* Set ADSTRGR per the following:
+     *   Extended double-trigger mode:
+     *    - Normal (Group A): ELC_PERIPHERAL_ADCn and ELC_PERIPHERAL_ADCn_B
+     *    - Group B: None
+     *   All other modes:
+     *    - Normal (Group A): ELC_PERIPHERAL_ADCn
+     *    - Group B: ELC_PERIPHERAL_ADCn_B
+     */
+    uint32_t adstrgr =
+        ((R_ADC0_ADSTRGR_TRSA_Msk & ((uint32_t) p_cfg_extend->trigger << R_ADC0_ADSTRGR_TRSA_Pos)) | \
+         (R_ADC0_ADSTRGR_TRSB_Msk & ((uint32_t) p_cfg_extend->trigger_group_b << R_ADC0_ADSTRGR_TRSB_Pos)));
 
     /* Determine the value for ADCER:
      *   * The resolution is set as configured in ADCER.ADPRC (on MCUs that have this bitfield).
@@ -1216,7 +1196,7 @@ static void r_adc_open_sub (adc_instance_ctrl_t * const p_instance_ctrl, adc_cfg
     if (ADC_VREF_CONTROL_VREFH != p_cfg_extend->adc_vref_control)
     {
         /* Configure Reference Voltage controls
-         * Reference section "32.6 Selecting Reference Voltage" in the RA2A1 manual R01UH0888EJ0100. */
+         * See "Selecting Reference Voltage" in the ADC section of the relevant hardware manual. */
         p_instance_ctrl->p_reg->VREFAMPCNT =
             (uint8_t) (p_cfg_extend->adc_vref_control &
                        (R_ADC0_VREFAMPCNT_BGREN_Msk | R_ADC0_VREFAMPCNT_VREFADCG_Msk));
@@ -1231,8 +1211,8 @@ static void r_adc_open_sub (adc_instance_ctrl_t * const p_instance_ctrl, adc_cfg
 #if BSP_FEATURE_ADC_HAS_ADHVREFCNT
 
     /* If the internal voltage is set as VREFH, discharge the VREF node for 1 us before setting ADHVREFCNT.HVSEL to 2.
-     * Reference section 35.7 "A/D Conversion Procedure when Selecting Internal Reference Voltage as High-Potential
-     * Reference Voltage" in the RA4M1 manual R01UH0887EJ0100.
+     * See "A/D Conversion Procedure when Selecting Internal Reference Voltage as High-Potential
+     * Reference Voltage" in the ADC section of the relevant hardware manual.
      *
      * Also wait 5 us before using the ADC. This wait is the responsibility of the application. */
     if (ADC_PRV_ADHVREFCNT_VREF_INTERNAL_BIT_1 & p_cfg_extend->adc_vref_control)
@@ -1273,7 +1253,7 @@ static void r_adc_sensor_cfg (adc_instance_ctrl_t * const     p_instance_ctrl,
     uint32_t adexicr            = 0U;
     if (combined_scan_mask & ADC_MASK_TEMPERATURE)
     {
-#if BSP_FEATURE_ADC_TSN_CONTROL_AVAILABLE
+#if BSP_FEATURE_TSN_CONTROL_AVAILABLE
 
         /* Power on the temperature sensor. This is only needed for TSNs that have the control register */
         R_BSP_MODULE_START(FSP_IP_TSN, 0U);
@@ -1358,8 +1338,8 @@ static void r_adc_sensor_sample_state_calculation (uint32_t * const p_sample_sta
     /* Retrieve the clock source and frequency used by the ADC peripheral and sampling time required for the sensor. */
     uint32_t freq_hz = R_FSP_SystemClockHzGet(BSP_FEATURE_ADC_CLOCK_SOURCE);
 
-    /* Calculate sample states required for the current ADC conversion clock (reference section 47.2.14 "A/D Sampling
-     * State Register n (ADSSTRn) (n = 00 to 07, L, T, O)" in the RA6M3 manual R01UH0886EJ0100.
+    /* Calculate sample states required for the current ADC conversion clock (See "A/D Sampling
+     * State Register n (ADSSTRn) (n = 00 to 07, L, T, O)" description in the ADC section of the relevant hardware manual).
      *
      * sample_states = required_sample_time / adclk_period
      *               = required_sample_time (nsec) * adclk_frequency (kHz) / 1000000 (usec / sec) + 1
@@ -1473,17 +1453,8 @@ static void r_adc_scan_cfg (adc_instance_ctrl_t * const p_instance_ctrl, adc_cha
     p_instance_ctrl->p_reg->ADANSB[1] = (uint16_t) ((scan_mask_group_b >> 16));
     p_instance_ctrl->p_reg->ADADS[1]  = (uint16_t) ((add_mask >> 16));
 
-    /* If either voltage or temperature sensor are used, configure them. */
-    uint32_t temp_mask = p_channel_cfg->scan_mask | p_channel_cfg->scan_mask_group_b;
-    if (temp_mask & ADC_MASK_SENSORS)
-    {
-        /* Calculate sample state values such that the sample time for the temperature and voltage sensor is the
-         * minimum defined by the hardware manual. The minimum is 4.15 microseconds for MF3 devices and
-         * 5 microseconds for RV40. The sample states will be calculated to allow sampling for this duration. */
-
-        /* Retrieve the clock source and frequency used by the ADC peripheral and sampling time required for the sensor. */
-        r_adc_sensor_cfg(p_instance_ctrl, p_channel_cfg);
-    }
+    /* Configure voltage and/or temperature sensors, if used. */
+    r_adc_sensor_cfg(p_instance_ctrl, p_channel_cfg);
 
 #if BSP_FEATURE_ADC_HAS_SAMPLE_HOLD_REG
 
@@ -1512,14 +1483,18 @@ static void r_adc_scan_cfg (adc_instance_ctrl_t * const p_instance_ctrl, adc_cha
             p_instance_ctrl->p_reg->ADCMPDR1 = p_window_cfg->compare_ref_high;
 
             /* Set Window A channel mask */
-            p_instance_ctrl->p_reg->ADCMPANSR[0] = p_window_cfg->compare_mask & UINT16_MAX;
-            p_instance_ctrl->p_reg->ADCMPANSR[1] = (uint16_t) ((p_window_cfg->compare_mask << 4) >> 20);
-            p_instance_ctrl->p_reg->ADCMPANSER   = (uint8_t) (p_window_cfg->compare_mask >> 28);
+            uint32_t compare_mask = p_window_cfg->compare_mask;
+            p_instance_ctrl->p_reg->ADCMPANSR[0] = compare_mask & UINT16_MAX;
+            p_instance_ctrl->p_reg->ADCMPANSR[1] = (uint16_t) (((uint32_t) ~ADC_MASK_SENSORS & compare_mask) >> 16);
+            p_instance_ctrl->p_reg->ADCMPANSER   =
+                (uint8_t) ((ADC_MASK_SENSORS & compare_mask) >> ADC_MASK_FIRST_SENSOR_BIT);
 
             /* Set Window A channel inequality mode mask */
-            p_instance_ctrl->p_reg->ADCMPLR[0] = p_window_cfg->compare_mode_mask & UINT16_MAX;
-            p_instance_ctrl->p_reg->ADCMPLR[1] = (uint16_t) ((p_window_cfg->compare_mode_mask << 4) >> 20);
-            p_instance_ctrl->p_reg->ADCMPLER   = (uint8_t) (p_window_cfg->compare_mode_mask >> 28);
+            uint32_t compare_mode_mask = p_window_cfg->compare_mode_mask;
+            p_instance_ctrl->p_reg->ADCMPLR[0] = compare_mode_mask & UINT16_MAX;
+            p_instance_ctrl->p_reg->ADCMPLR[1] = (uint16_t) (((uint32_t) ~ADC_MASK_SENSORS & compare_mode_mask) >> 16);
+            p_instance_ctrl->p_reg->ADCMPLER   =
+                (uint8_t) ((ADC_MASK_SENSORS & compare_mode_mask) >> ADC_MASK_FIRST_SENSOR_BIT);
         }
 
         if (p_window_cfg->compare_cfg & R_ADC0_ADCMPCR_CMPBE_Msk)
@@ -1591,7 +1566,7 @@ static void r_adc_irq_disable (IRQn_Type irq)
  *
  * @retval  adc_mask_count  index value of lowest channel
  **********************************************************************************************************************/
-static int32_t r_adc_lowest_channel_get (uint32_t adc_mask)
+static uint32_t r_adc_lowest_channel_get (uint32_t adc_mask)
 {
     /* Initialize the mask result */
     uint32_t adc_mask_result = 0U;
@@ -1603,7 +1578,7 @@ static int32_t r_adc_lowest_channel_get (uint32_t adc_mask)
         adc_mask_result = (uint32_t) (adc_mask & (1U << adc_mask_count));
     }
 
-    return adc_mask_count;
+    return (uint32_t) adc_mask_count;
 }
 
 /*******************************************************************************************************************//**
@@ -1669,7 +1644,7 @@ static void r_adc_call_callback (adc_instance_ctrl_t * p_ctrl, adc_callback_args
 static void r_adc_scan_end_common_isr (adc_event_t event)
 {
     /* Save context if RTOS is used */
-    FSP_CONTEXT_SAVE;
+    FSP_CONTEXT_SAVE
 
     adc_instance_ctrl_t * p_instance_ctrl = (adc_instance_ctrl_t *) R_FSP_IsrContextGet(R_FSP_CurrentIrqGet());
 
@@ -1706,7 +1681,7 @@ static void r_adc_scan_end_common_isr (adc_event_t event)
     }
 
     /* Restore context if RTOS is used */
-    FSP_CONTEXT_RESTORE;
+    FSP_CONTEXT_RESTORE
 }
 
 /*******************************************************************************************************************//**
@@ -1731,7 +1706,7 @@ void adc_scan_end_b_isr (void)
 void adc_window_compare_isr (void)
 {
     /* Save context if RTOS is used */
-    FSP_CONTEXT_SAVE;
+    FSP_CONTEXT_SAVE
 
     IRQn_Type irq = R_FSP_CurrentIrqGet();
 
@@ -1756,28 +1731,28 @@ void adc_window_compare_isr (void)
         uint8_t  adcmpser = p_reg->ADCMPSER;
 
         /* Get the lowest channel that meets Window A criteria */
-        uint32_t lowest_channel = __CLZ(__RBIT(adcmpsr0 + (uint32_t) (adcmpsr1 << 16) + (uint32_t) (adcmpser << 28)));
+        uint32_t lowest_channel = __CLZ(__RBIT(adcmpsr0 + (uint32_t) (adcmpsr1 << 16) + (uint32_t) (adcmpser << 29)));
 
         /* Clear the status flag corresponding to the lowest channel */
         if (lowest_channel < 16)
         {
             p_reg->ADCMPSR[0] = (uint16_t) (adcmpsr0 & ~(1 << (lowest_channel & 0xF)));
         }
-        else if (lowest_channel < 28)
+        else if (lowest_channel < 29)
         {
             p_reg->ADCMPSR[1] = (uint16_t) (adcmpsr1 & ~(1 << (lowest_channel & 0xF)));
         }
         else
         {
-            p_reg->ADCMPSER = (uint8_t) (adcmpser & ~(1 << (lowest_channel & 0x3)));
+            p_reg->ADCMPSER = (uint8_t) (adcmpser & ~(lowest_channel & 0x3));
         }
 
         args.channel = (adc_channel_t) lowest_channel;
 
-        if (args.channel > 28)
+        if (args.channel > 29)
         {
             /* Adjust sensor channels to align with the adc_channel_t enumeration */
-            args.channel = (adc_channel_t) (ADC_CHANNEL_TEMPERATURE + (args.channel - 28));
+            args.channel = (adc_channel_t) (ADC_CHANNEL_TEMPERATURE + (args.channel - 29));
         }
     }
     else
@@ -1807,5 +1782,5 @@ void adc_window_compare_isr (void)
     R_BSP_IrqStatusClear(irq);
 
     /* Restore context if RTOS is used */
-    FSP_CONTEXT_RESTORE;
+    FSP_CONTEXT_RESTORE
 }

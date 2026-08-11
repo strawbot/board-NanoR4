@@ -35,7 +35,13 @@
 float adc_read_sense_ma(void);
 
 // ── Configuration ─────────────────────────────────────────────
-#define MW_PWM_PERIOD       400         // duty steps (= counter period)
+// 600 (not 400) since the 48MHz clock-speed bump: PCLKD/8 is now 6MHz
+// instead of 4MHz, and 6MHz/600=10kHz keeps the PWM frequency unchanged
+// (holding frequency fixed via the period-count math instead of the
+// source_div was the only way to land exactly back on 10kHz, since /8 is
+// the nearest power-of-2 divider FSP's source_div supports from 48MHz —
+// see the GPT3 instance config below). Bonus: finer duty resolution.
+#define MW_PWM_PERIOD       600         // duty steps (= counter period)
 #define MW_I_THRESHOLD      5.0f        // mA — onset of conduction
 #define MW_I_MAX            550.0f      // mA — hard ceiling / plateau trigger
 #define MW_PLATEAU_STEPS    5           // consecutive low-slope steps → plateau
@@ -54,7 +60,7 @@ float adc_read_sense_ma(void);
 #define MW_MAX_RETRY        3
 
 // ── GPT3 PWM instance for P112 (GTIOC3B) ─────────────────────
-// Period: 400 counts at PCLKD/8 (32 MHz/8 = 4 MHz) → 10 kHz PWM.
+// Period: 600 counts at PCLKD/8 (48 MHz/8 = 6 MHz) → 10 kHz PWM.
 // source_div = 3 means divide-by-2^3 = /8 (raw exponent, not FSP enum).
 // P112 configured as GTIOC3B in RASC / pin_data.c.
 
@@ -90,7 +96,7 @@ static const timer_cfg_t g_mw_pwm_cfg = {
     .mode               = TIMER_MODE_PWM,
     .period_counts      = (uint32_t)MW_PWM_PERIOD,
     .duty_cycle_counts  = 0U,
-    .source_div         = (timer_source_div_t)3,  // /8 → 4 MHz → 10 kHz
+    .source_div         = (timer_source_div_t)3,  // /8 → 6 MHz → 10 kHz
     .channel            = 3,                       // GPT3; GTIOC3A = P003
     .p_callback         = NULL,
     .p_context          = NULL,

@@ -123,16 +123,16 @@
     <node id="board.clock.pll.div" option="board.clock.pll.div.2"/>
     <node id="board.clock.pll.mul" option="board.clock.pll.mul.8"/>
     <node id="board.clock.pll.display" option="board.clock.pll.display.value"/>
-    <node id="board.clock.clock.source" option="board.clock.clock.source.pll"/>
-    <node id="board.clock.iclk.div" option="board.clock.iclk.div.2"/>
+    <node id="board.clock.clock.source" option="board.clock.clock.source.hoco"/>
+    <node id="board.clock.iclk.div" option="board.clock.iclk.div.1"/>
     <node id="board.clock.iclk.display" option="board.clock.iclk.display.value"/>
-    <node id="board.clock.pclka.div" option="board.clock.pclka.div.2"/>
+    <node id="board.clock.pclka.div" option="board.clock.pclka.div.1"/>
     <node id="board.clock.pclka.display" option="board.clock.pclka.display.value"/>
     <node id="board.clock.pclkb.div" option="board.clock.pclkb.div.2"/>
     <node id="board.clock.pclkb.display" option="board.clock.pclkb.display.value"/>
-    <node id="board.clock.pclkc.div" option="board.clock.pclkc.div.2"/>
+    <node id="board.clock.pclkc.div" option="board.clock.pclkc.div.1"/>
     <node id="board.clock.pclkc.display" option="board.clock.pclkc.display.value"/>
-    <node id="board.clock.pclkd.div" option="board.clock.pclkd.div.2"/>
+    <node id="board.clock.pclkd.div" option="board.clock.pclkd.div.1"/>
     <node id="board.clock.pclkd.display" option="board.clock.pclkd.display.value"/>
     <node id="board.clock.fclk.div" option="board.clock.fclk.div.16"/>
     <node id="board.clock.fclk.display" option="board.clock.fclk.display.value"/>
@@ -426,61 +426,46 @@
       <property id="module.driver.ioport.elc_trigger_ioport4" value="_disabled"/>
       <property id="module.driver.ioport.pincfg" value="g_bsp_pin_cfg"/>
     </module>
-    <module id="module.driver.timer_on_gpt.46607600">
-      <property id="module.driver.timer.name" value="g_timer0"/>
-      <property id="module.driver.timer.channel" value="3"/>
-      <property id="module.driver.timer.mode" value="module.driver.timer.mode.mode_pwm"/>
-      <property id="module.driver.timer.period" value="0x10000"/>
-      <property id="module.driver.timer.compare_match.a.status" value="module.driver.timer.compare_match.a.status.disabled"/>
-      <property id="module.driver.timer.compare_match.a.value" value="0"/>
-      <property id="module.driver.timer.compare_match.b.status" value="module.driver.timer.compare_match.b.status.disabled"/>
-      <property id="module.driver.timer.compare_match.b.value" value="0"/>
-      <property id="module.driver.timer.unit" value="module.driver.timer.unit.unit_period_raw_counts"/>
-      <property id="module.driver.timer.gtior.gtioa.initial_output_level" value="module.driver.timer.gtior.gtioa.initial_output_level.low"/>
-      <property id="module.driver.timer.gtior.gtioa.cycle_end_output_level" value="module.driver.timer.gtior.gtioa.cycle_end_output_level.retain"/>
-      <property id="module.driver.timer.gtior.gtioa.compare_match_output_level" value="module.driver.timer.gtior.gtioa.compare_match_output_level.retain"/>
-      <property id="module.driver.timer.gtior.gtioa.count_stop_retain" value="module.driver.timer.gtior.gtioa.count_stop_retain.disabled"/>
-      <property id="module.driver.timer.gtior.gtiob.initial_output_level" value="module.driver.timer.gtior.gtiob.initial_output_level.low"/>
-      <property id="module.driver.timer.gtior.gtiob.cycle_end_output_level" value="module.driver.timer.gtior.gtiob.cycle_end_output_level.retain"/>
-      <property id="module.driver.timer.gtior.gtiob.compare_match_output_level" value="module.driver.timer.gtior.gtiob.compare_match_output_level.retain"/>
-      <property id="module.driver.timer.gtior.gtiob.count_stop_retain" value="module.driver.timer.gtior.gtiob.count_stop_retain.disabled"/>
-      <property id="module.driver.timer.gtior.custom_waveform_enable" value="module.driver.timer.gtior.custom_waveform_enable.disabled"/>
-      <property id="module.driver.timer.duty_cycle" value="50"/>
-      <property id="module.driver.timer.gtioca_output_enabled" value="module.driver.timer.gtioca_output_enabled.true"/>
-      <property id="module.driver.timer.gtioca_stop_level" value="module.driver.timer.gtioca_stop_level.pin_level_low"/>
-      <property id="module.driver.timer.gtiocb_output_enabled" value="module.driver.timer.gtiocb_output_enabled.false"/>
-      <property id="module.driver.timer.gtiocb_stop_level" value="module.driver.timer.gtiocb_stop_level.pin_level_low"/>
-      <property id="module.driver.timer.count_up_source" value=""/>
-      <property id="module.driver.timer.count_down_source" value=""/>
-      <property id="module.driver.timer.start_source" value=""/>
-      <property id="module.driver.timer.stop_source" value=""/>
-      <property id="module.driver.timer.clear_source" value=""/>
-      <property id="module.driver.timer.capture_a_source" value=""/>
-      <property id="module.driver.timer.capture_b_source" value=""/>
-      <property id="module.driver.timer.gtioca_filter" value="module.driver.timer.gtioc_filter.gtioc_filter_none"/>
-      <property id="module.driver.timer.gtiocb_filter" value="module.driver.timer.gtioc_filter.gtioc_filter_none"/>
-      <property id="module.driver.timer.gtioca_polarity" value="module.driver.timer.gtioc_polarity.normal"/>
-      <property id="module.driver.timer.gtiocb_polarity" value="module.driver.timer.gtioc_polarity.normal"/>
-      <property id="module.driver.timer.p_callback" value="NULL"/>
-      <property id="module.driver.timer.ipl" value="_disabled"/>
-      <property id="module.driver.timer.capture_a_ipl" value="_disabled"/>
-      <property id="module.driver.timer.capture_b_ipl" value="_disabled"/>
-      <property id="module.driver.timer.trough_ipl" value="_disabled"/>
-      <property id="module.driver.timer.extra" value="module.driver.timer.extra.disabled"/>
-      <property id="module.driver.timer.poeg_link" value="enum.driver.poeg.channels.poeg_link_poeg0"/>
-      <property id="module.driver.timer.output_disable" value=""/>
-      <property id="module.driver.timer.adc_trigger" value=""/>
-      <property id="module.driver.timer.adc_a_compare_match" value="0"/>
-      <property id="module.driver.timer.adc_b_compare_match" value="0"/>
-      <property id="module.driver.timer.dead_time_count_up" value="0"/>
-      <property id="module.driver.timer.dead_time_count_down" value="0"/>
-      <property id="module.driver.timer.interrupt_skip.source" value="module.driver.timer.interrupt_skip.source.none"/>
-      <property id="module.driver.timer.interrupt_skip.count" value="module.driver.timer.interrupt_skip.count.count_0"/>
-      <property id="module.driver.timer.interrupt_skip.adc" value="module.driver.timer.interrupt_skip.skip_sources.interrupt_skip.adc.none"/>
-      <property id="module.driver.timer.gtioca_disable_setting" value="module.driver.timer.gtioca_disable_setting.gtioc_disable_prohibited"/>
-      <property id="module.driver.timer.gtiocb_disable_setting" value="module.driver.timer.gtiocb_disable_setting.gtioc_disable_prohibited"/>
+    <module id="module.driver.usb_composite.157692837">
+      <property id="module.driver.r_usb_composite.name" value="g_r_usb_composite0"/>
     </module>
-    <module id="module.driver.adc_on_adc.242951543">
+    <module id="module.driver.pcdc_on_usb.1500893942">
+      <property id="module.driver.pcdc.name" value="g_pcdc0"/>
+    </module>
+    <module id="module.driver.basic_on_usb.144588747">
+      <property id="module.driver.basic.name" value="g_basic0"/>
+      <property id="module.driver.usb_basic.usb_mode" value="module.driver.usb_basic.usb_mode.host"/>
+      <property id="module.driver.usb_basic.usb_speed" value="module.driver.usb_basic.usb_speed.fs"/>
+      <property id="module.driver.usb_basic.usb_modulenumber" value="module.driver.usb_basic.usb_modulenumber.0"/>
+      <property id="module.driver.usb_basic.usb_classtype" value="module.driver.usb_basic.usb_classtype.pcdc"/>
+      <property id="module.driver.usb_basic.p_usb_reg" value="g_usb_descriptor"/>
+      <property id="module.driver.usb_basic.complience_cb" value="NULL"/>
+      <property id="module.driver.usb_basic.ipl" value="board.icu.common.irq.priority12"/>
+      <property id="module.driver.usb_basic.ipl_r" value="board.icu.common.irq.priority12"/>
+      <property id="module.driver.usb_basic.ipl_d0" value="board.icu.common.irq.priority12"/>
+      <property id="module.driver.usb_basic.ipl_d1" value="board.icu.common.irq.priority12"/>
+      <property id="module.driver.usb_basic.hsipl" value="_disabled"/>
+      <property id="module.driver.usb_basic.hsipl_d0" value="_disabled"/>
+      <property id="module.driver.usb_basic.hsipl_d1" value="_disabled"/>
+      <property id="module.driver.usb_basic.rtos_callback" value="NULL"/>
+      <property id="module.driver.usb_basic.other_context" value="NULL"/>
+    </module>
+    <module id="module.driver.i2c_on_iic_master.1892376398">
+      <property id="module.driver.i2c_master.name" value="g_i2c_master1"/>
+      <property id="module.driver.i2c_master.channel" value="1"/>
+      <property id="module.driver.i2c_master.rate" value="module.driver.i2c_master.rate.rate_fast"/>
+      <property id="module.driver.i2c_master.rate_value" value="0"/>
+      <property id="module.driver.i2c_master.rise_time_ns" value="120"/>
+      <property id="module.driver.i2c_master.fall_time_ns" value="120"/>
+      <property id="module.driver.i2c_master.duty" value="50"/>
+      <property id="module.driver.i2c_master.slave" value="0x00"/>
+      <property id="module.driver.i2c_master.addr_mode" value="module.driver.i2c_master.addr_mode.addr_mode_7bit"/>
+      <property id="module.driver.i2c_master.timeout_mode" value="module.driver.i2c_master.timeout_mode.short_mode"/>
+      <property id="module.driver.i2c_master.timeout_scl_low" value="module.driver.i2c_master.timeout_scl_low.enabled"/>
+      <property id="module.driver.i2c_master.p_callback" value="NULL"/>
+      <property id="module.driver.i2c_master.ipl" value="board.icu.common.irq.priority12"/>
+    </module>
+    <module id="module.driver.adc_on_adc.1450596406">
       <property id="module.driver.adc.name" value="g_adc0"/>
       <property id="module.driver.adc.unit" value="0"/>
       <property id="module.driver.adc.resolution" value="module.driver.adc.resolution.resolution_14_bit"/>
@@ -517,7 +502,7 @@
       <property id="module.driver.adc.window_b_ipl" value="_disabled"/>
       <property id="module.driver.adc.adbuf" value="module.driver.adc.adbuf.disabled"/>
     </module>
-    <module id="module.driver.dac_on_dac.1146942893">
+    <module id="module.driver.dac_on_dac.773722317">
       <property id="module.driver.dac.name" value="g_dac0"/>
       <property id="module.driver.dac.channel_id" value="0"/>
       <property id="module.driver.dac.ad_da_synchronized" value="module.driver.dac.ad_da_synchronized.disabled"/>
@@ -527,45 +512,6 @@
       <property id="module.driver.dac.internal_output" value="enum.mcu.dac.internal_output.disabled"/>
       <property id="module.driver.dac.elc_trigger" value="_disabled"/>
       <property id="module.driver.dac.ref_volt_sel" value="module.driver.dac.ref_volt_sel.avcc0_avss0"/>
-    </module>
-    <module id="module.driver.usb_composite.157692837">
-      <property id="module.driver.r_usb_composite.name" value="g_r_usb_composite0"/>
-    </module>
-    <module id="module.driver.pcdc_on_usb.1500893942">
-      <property id="module.driver.pcdc.name" value="g_pcdc0"/>
-    </module>
-    <module id="module.driver.basic_on_usb.144588747">
-      <property id="module.driver.basic.name" value="g_basic0"/>
-      <property id="module.driver.usb_basic.usb_mode" value="module.driver.usb_basic.usb_mode.host"/>
-      <property id="module.driver.usb_basic.usb_speed" value="module.driver.usb_basic.usb_speed.fs"/>
-      <property id="module.driver.usb_basic.usb_modulenumber" value="module.driver.usb_basic.usb_modulenumber.0"/>
-      <property id="module.driver.usb_basic.usb_classtype" value="module.driver.usb_basic.usb_classtype.pcdc"/>
-      <property id="module.driver.usb_basic.p_usb_reg" value="g_usb_descriptor"/>
-      <property id="module.driver.usb_basic.complience_cb" value="NULL"/>
-      <property id="module.driver.usb_basic.ipl" value="board.icu.common.irq.priority12"/>
-      <property id="module.driver.usb_basic.ipl_r" value="board.icu.common.irq.priority12"/>
-      <property id="module.driver.usb_basic.ipl_d0" value="board.icu.common.irq.priority12"/>
-      <property id="module.driver.usb_basic.ipl_d1" value="board.icu.common.irq.priority12"/>
-      <property id="module.driver.usb_basic.hsipl" value="_disabled"/>
-      <property id="module.driver.usb_basic.hsipl_d0" value="_disabled"/>
-      <property id="module.driver.usb_basic.hsipl_d1" value="_disabled"/>
-      <property id="module.driver.usb_basic.rtos_callback" value="NULL"/>
-      <property id="module.driver.usb_basic.other_context" value="NULL"/>
-    </module>
-    <module id="module.driver.i2c_on_iic_master.487834719">
-      <property id="module.driver.i2c_master.name" value="g_i2c_master0"/>
-      <property id="module.driver.i2c_master.channel" value="0"/>
-      <property id="module.driver.i2c_master.rate" value="module.driver.i2c_master.rate.rate_standard"/>
-      <property id="module.driver.i2c_master.rate_value" value="0"/>
-      <property id="module.driver.i2c_master.rise_time_ns" value="120"/>
-      <property id="module.driver.i2c_master.fall_time_ns" value="120"/>
-      <property id="module.driver.i2c_master.duty" value="50"/>
-      <property id="module.driver.i2c_master.slave" value="0x10"/>
-      <property id="module.driver.i2c_master.addr_mode" value="module.driver.i2c_master.addr_mode.addr_mode_7bit"/>
-      <property id="module.driver.i2c_master.timeout_mode" value="module.driver.i2c_master.timeout_mode.short_mode"/>
-      <property id="module.driver.i2c_master.timeout_scl_low" value="module.driver.i2c_master.timeout_scl_low.enabled"/>
-      <property id="module.driver.i2c_master.p_callback" value="NULL"/>
-      <property id="module.driver.i2c_master.ipl" value="board.icu.common.irq.priority12"/>
     </module>
     <context id="_hal.0">
       <stack module="module.driver.uart_on_sci_uart.674874090">
@@ -577,15 +523,14 @@
       <stack module="module.driver.timer_on_gpt.2013765909"/>
       <stack module="module.driver.elc_on_elc.1839054822"/>
       <stack module="module.driver.ioport_on_ioport.1777067794"/>
-      <stack module="module.driver.timer_on_gpt.46607600"/>
-      <stack module="module.driver.adc_on_adc.242951543"/>
-      <stack module="module.driver.dac_on_dac.1146942893"/>
       <stack module="module.driver.usb_composite.157692837">
         <stack module="module.driver.pcdc_on_usb.1500893942" requires="module.driver.r_usb_composite_pmsc_phid.requires.class1">
           <stack module="module.driver.basic_on_usb.144588747" requires="module.driver.basic_on_usb.requires.basic"/>
         </stack>
       </stack>
-      <stack module="module.driver.i2c_on_iic_master.487834719"/>
+      <stack module="module.driver.i2c_on_iic_master.1892376398"/>
+      <stack module="module.driver.adc_on_adc.1450596406"/>
+      <stack module="module.driver.dac_on_dac.773722317"/>
     </context>
     <config id="config.driver.adc">
       <property id="config.driver.adc.param_checking_enable" value="config.driver.adc.param_checking_enable.bsp"/>
@@ -681,12 +626,22 @@
       <configSetting altId="iic0.pairing.free" configurationId="iic0.pairing"/>
       <configSetting altId="iic0.scl.p400" configurationId="iic0.scl"/>
       <configSetting altId="iic0.sda.p401" configurationId="iic0.sda"/>
+      <configSetting altId="iic1.mode.enabled.free" configurationId="iic1.mode"/>
+      <configSetting altId="iic1.pairing.free" configurationId="iic1.pairing"/>
+      <configSetting altId="iic1.scl.p100" configurationId="iic1.scl"/>
+      <configSetting altId="iic1.sda.p101" configurationId="iic1.sda"/>
       <configSetting altId="p000.adc0.an00" configurationId="p000"/>
       <configSetting altId="p000.gpio_mode.gpio_mode_an" configurationId="p000.gpio_mode"/>
       <configSetting altId="p001.adc0.an01" configurationId="p001"/>
       <configSetting altId="p001.gpio_mode.gpio_mode_an" configurationId="p001.gpio_mode"/>
       <configSetting altId="p014.input" configurationId="p014"/>
       <configSetting altId="p014.gpio_mode.gpio_mode_in" configurationId="p014.gpio_mode"/>
+      <configSetting altId="p100.iic1.scl" configurationId="p100"/>
+      <configSetting altId="p100.gpio_speed.gpio_speed_medium" configurationId="p100.gpio_drivecapacity"/>
+      <configSetting altId="p100.gpio_mode.gpio_mode_peripheral" configurationId="p100.gpio_mode"/>
+      <configSetting altId="p101.iic1.sda" configurationId="p101"/>
+      <configSetting altId="p101.gpio_speed.gpio_speed_medium" configurationId="p101.gpio_drivecapacity"/>
+      <configSetting altId="p101.gpio_mode.gpio_mode_peripheral" configurationId="p101.gpio_mode"/>
       <configSetting altId="p108.debug0.tms" configurationId="p108"/>
       <configSetting altId="p108.gpio_mode.gpio_mode_peripheral" configurationId="p108.gpio_mode"/>
       <configSetting altId="p109.debug0.tdo" configurationId="p109"/>

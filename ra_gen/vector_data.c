@@ -10,11 +10,14 @@
             [3] = sci_uart_eri_isr, /* SCI2 ERI (Receive error) */
             [4] = rtc_carry_isr, /* RTC CARRY (Carry interrupt) */
             [5] = gpt_counter_overflow_isr, /* GPT2 COUNTER OVERFLOW (Overflow) */
-            [6] = usbfs_int_isr, /* USBFS INT (USBFS interrupt) */
-            [7] = iic_master_rxi_isr, /* IIC0 RXI (Receive data full) */
-            [8] = iic_master_txi_isr, /* IIC0 TXI (Transmit data empty) */
-            [9] = iic_master_tei_isr, /* IIC0 TEI (Transmit end) */
-            [10] = iic_master_eri_isr, /* IIC0 ERI (Transfer error) */
+            [6] = usbfs_interrupt_handler, /* USBFS INT (USBFS interrupt) */
+            [7] = usbfs_resume_handler, /* USBFS RESUME (USBFS resume interrupt) */
+            [8] = usbfs_d0fifo_handler, /* USBFS FIFO 0 (DMA/DTC transfer request 0) */
+            [9] = usbfs_d1fifo_handler, /* USBFS FIFO 1 (DMA/DTC transfer request 1) */
+            [10] = iic_master_rxi_isr, /* IIC1 RXI (Receive data full) */
+            [11] = iic_master_txi_isr, /* IIC1 TXI (Transmit data empty) */
+            [12] = iic_master_tei_isr, /* IIC1 TEI (Transmit end) */
+            [13] = iic_master_eri_isr, /* IIC1 ERI (Transfer error) */
         };
         #if BSP_FEATURE_ICU_HAS_IELSR
         const bsp_interrupt_event_t g_interrupt_event_link_select[BSP_ICU_VECTOR_NUM_ENTRIES] =
@@ -26,10 +29,13 @@
             [4] = BSP_PRV_VECT_ENUM(EVENT_RTC_CARRY,GROUP4), /* RTC CARRY (Carry interrupt) */
             [5] = BSP_PRV_VECT_ENUM(EVENT_GPT2_COUNTER_OVERFLOW,GROUP5), /* GPT2 COUNTER OVERFLOW (Overflow) */
             [6] = BSP_PRV_VECT_ENUM(EVENT_USBFS_INT,GROUP6), /* USBFS INT (USBFS interrupt) */
-            [7] = BSP_PRV_VECT_ENUM(EVENT_IIC0_RXI,GROUP7), /* IIC0 RXI (Receive data full) */
-            [8] = BSP_PRV_VECT_ENUM(EVENT_IIC0_TXI,GROUP8), /* IIC0 TXI (Transmit data empty) */
-            [9] = BSP_PRV_VECT_ENUM(EVENT_IIC0_TEI,GROUP9), /* IIC0 TEI (Transmit end) */
-            [10] = BSP_PRV_VECT_ENUM(EVENT_IIC0_ERI,GROUP10), /* IIC0 ERI (Transfer error) */
+            [7] = BSP_PRV_VECT_ENUM(EVENT_USBFS_RESUME,GROUP7), /* USBFS RESUME (USBFS resume interrupt) */
+            [8] = BSP_PRV_VECT_ENUM(EVENT_USBFS_FIFO_0,GROUP0), /* USBFS FIFO 0 (DMA/DTC transfer request 0) */
+            [9] = BSP_PRV_VECT_ENUM(EVENT_USBFS_FIFO_1,GROUP1), /* USBFS FIFO 1 (DMA/DTC transfer request 1) */
+            [10] = BSP_PRV_VECT_ENUM(EVENT_IIC1_RXI,GROUP2), /* IIC1 RXI (Receive data full) */
+            [11] = BSP_PRV_VECT_ENUM(EVENT_IIC1_TXI,GROUP3), /* IIC1 TXI (Transmit data empty) */
+            [12] = BSP_PRV_VECT_ENUM(EVENT_IIC1_TEI,GROUP4), /* IIC1 TEI (Transmit end) */
+            [13] = BSP_PRV_VECT_ENUM(EVENT_IIC1_ERI,GROUP5), /* IIC1 ERI (Transfer error) */
         };
         #endif
         #endif

@@ -8,20 +8,11 @@
 #include "usb_init.h"
 #include "canary.h"
 #include "board_cli.h"
-#include "i2c0.h"
-#include "ad5593r.h"
+#include "i2c1.h"
+#include "limb_io.h"
 #include "printers.h"
 
 void muscle_wire_init(void);
-
-static const ad5593r_hw_t g_ad5593r_hw = {
-    .i2c_write = i2c0_write,
-    .i2c_read  = i2c0_read,
-};
-
-// Result of ad5593r_init(). No longer printed at boot — kept so a CLI word can
-// report it on demand.
-static bool g_ad5593r_ok;
 
 // init_cli is defined in TimbreOS/cli.c but not declared in cli.h —
 // follow the convention used by the other board ports.
@@ -121,9 +112,7 @@ void hal_entry(void)
     dac_init();
     adc_init();
     muscle_wire_init();   // open GPT3 PWM on P003 before scheduler starts
-    i2c0_init();          // IIC0: SCL=P400, SDA=P401, 400 kHz
-    ad5593r_bind_hw(&g_ad5593r_hw);
-    g_ad5593r_ok = ad5593r_init();
+    i2c1_init();          // IIC1: SCL=P100, SDA=P101, 400 kHz — limb array bus
     init_tea();
     usart_transport_init();
 
@@ -132,6 +121,11 @@ void hal_entry(void)
 
     init_cli();
     usart_drain();         // init_cli() prints its own banner
+
+    // limb_io_init() calls in() to arm its first sweep tick, so it must
+    // come after init_tea() (unlike the peripheral opens above, which
+    // don't touch the scheduler).
+    limb_io_init();
 
     /* USB comes up LAST, immediately before the run loop, so the first USB
      * interrupt is serviced on the next scheduler pass rather than after a few

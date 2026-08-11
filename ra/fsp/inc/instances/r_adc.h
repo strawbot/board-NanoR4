@@ -1,22 +1,8 @@
-/***********************************************************************************************************************
- * Copyright [2020-2022] Renesas Electronics Corporation and/or its affiliates.  All Rights Reserved.
- *
- * This software and documentation are supplied by Renesas Electronics America Inc. and may only be used with products
- * of Renesas Electronics Corp. and its affiliates ("Renesas").  No other uses are authorized.  Renesas products are
- * sold pursuant to Renesas terms and conditions of sale.  Purchasers are solely responsible for the selection and use
- * of Renesas products and Renesas assumes no liability.  No license, express or implied, to any intellectual property
- * right is granted by Renesas. This software is protected under all applicable laws, including copyright laws. Renesas
- * reserves the right to change or discontinue this software and/or this documentation. THE SOFTWARE AND DOCUMENTATION
- * IS DELIVERED TO YOU "AS IS," AND RENESAS MAKES NO REPRESENTATIONS OR WARRANTIES, AND TO THE FULLEST EXTENT
- * PERMISSIBLE UNDER APPLICABLE LAW, DISCLAIMS ALL WARRANTIES, WHETHER EXPLICITLY OR IMPLICITLY, INCLUDING WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT, WITH RESPECT TO THE SOFTWARE OR
- * DOCUMENTATION.  RENESAS SHALL HAVE NO LIABILITY ARISING OUT OF ANY SECURITY VULNERABILITY OR BREACH.  TO THE MAXIMUM
- * EXTENT PERMITTED BY LAW, IN NO EVENT WILL RENESAS BE LIABLE TO YOU IN CONNECTION WITH THE SOFTWARE OR DOCUMENTATION
- * (OR ANY PERSON OR ENTITY CLAIMING RIGHTS DERIVED FROM YOU) FOR ANY LOSS, DAMAGES, OR CLAIMS WHATSOEVER, INCLUDING,
- * WITHOUT LIMITATION, ANY DIRECT, CONSEQUENTIAL, SPECIAL, INDIRECT, PUNITIVE, OR INCIDENTAL DAMAGES; ANY LOST PROFITS,
- * OTHER ECONOMIC DAMAGE, PROPERTY DAMAGE, OR PERSONAL INJURY; AND EVEN IF RENESAS HAS BEEN ADVISED OF THE POSSIBILITY
- * OF SUCH LOSS, DAMAGES, CLAIMS OR COSTS.
- **********************************************************************************************************************/
+/*
+* Copyright (c) 2020 - 2025 Renesas Electronics Corporation and/or its affiliates
+*
+* SPDX-License-Identifier: BSD-3-Clause
+*/
 
 #ifndef R_ADC_H
 #define R_ADC_H
@@ -97,8 +83,9 @@ typedef enum e_adc_mask
     ADC_MASK_CHANNEL_25  = (1U << 25U),                            ///< Channel 25 mask
     ADC_MASK_CHANNEL_26  = (1U << 26U),                            ///< Channel 26 mask
     ADC_MASK_CHANNEL_27  = (1U << 27U),                            ///< Channel 27 mask
-    ADC_MASK_TEMPERATURE = (1U << 28UL),                           ///< Temperature sensor channel mask
-    ADC_MASK_VOLT        = (1U << 29UL),                           ///< Voltage reference channel mask
+    ADC_MASK_CHANNEL_28  = (1U << 28U),                            ///< Channel 28 mask
+    ADC_MASK_TEMPERATURE = (1U << 29UL),                           ///< Temperature sensor channel mask
+    ADC_MASK_VOLT        = (1U << 30UL),                           ///< Voltage reference channel mask
     ADC_MASK_SENSORS     = (ADC_MASK_TEMPERATURE | ADC_MASK_VOLT), ///< All sensor channel mask
 } adc_mask_t;
 
@@ -128,7 +115,7 @@ typedef enum e_adc_clear
 typedef enum e_adc_vref_control
 {
     /* Available selections on MCUs with VREFAMPCNT.
-     * Reference Table 32.12 "VREFADC output voltage control list" in the RA2A1 manual R01UH0888EJ0100.*/
+     * Refer Table "VREFADC output voltage control list" in the ADC section of the relevant hardware manual.*/
 
     ADC_VREF_CONTROL_VREFH       = 0,      ///< VREFAMPCNT reset value. VREFADC Output voltage is Hi-Z
     ADC_VREF_CONTROL_1_5V_OUTPUT = 25,     ///< BGR turn ON. VREFADC Output voltage is 1.5 V
@@ -136,8 +123,8 @@ typedef enum e_adc_vref_control
     ADC_VREF_CONTROL_2_5V_OUTPUT = 31,     ///< BGR turn ON. VREFADC Output voltage is 2.5 V
 
     /* Available selections on MCUs with ADHVREFCNT.
-     * Reference Section 35.2.31 "A/D High-Potential/Low-Potential Reference Voltage Control Register (ADHVREFCNT)"
-     * in the RA4M1 manual R01UH0887EJ0100.*/
+     * Reference Section "A/D High-Potential/Low-Potential Reference Voltage Control Register (ADHVREFCNT)" description
+     * in the ADC section of the relevant hardware manual.*/
 
     ADC_VREF_CONTROL_AVCC0_AVSS0  = 0x0,   ///< High potential is AVCC0, low potential is AVSS0
     ADC_VREF_CONTROL_VREFH0_AVSS0 = 0x1,   ///< High potential is VREFH0, low potential is AVSS0
@@ -217,8 +204,10 @@ typedef enum e_adc_window_b_channel
     ADC_WINDOW_B_CHANNEL_25,
     ADC_WINDOW_B_CHANNEL_26,
     ADC_WINDOW_B_CHANNEL_27,
+    ADC_WINDOW_B_CHANNEL_28,
     ADC_WINDOW_B_CHANNEL_TEMPERATURE = 32,
     ADC_WINDOW_B_CHANNEL_VOLT        = 33,
+    ADC_WINDOW_B_CHANNEL_NONE        = 63,
 } adc_window_b_channel_t;
 
 /** ADC Window B comparison mode */
@@ -246,6 +235,29 @@ typedef enum e_adc_double_trigger
     ADC_DOUBLE_TRIGGER_ENABLED_EXTENDED = 2, ///< Double-triggering enabled on both ADC ELC events
 } adc_double_trigger_t;
 
+/** ADC Trigger synchronous start source
+ * Note: not all sources are available for all MCUs or channels. See User Manual for more information. */
+typedef enum
+{
+    ADC_START_SOURCE_DISABLED       = 0x3F, ///< ELC/GPT Start source disabled (For use with software start)
+    ADC_START_SOURCE_ASYNC_EXTERNAL = 0x00, ///< External Trigger Input
+    ADC_START_SOURCE_ELC_AD0        = 0x09, ///< ELC_AD0 (Converter 0 and Converter 1)
+    ADC_START_SOURCE_ELC_AD1        = 0x0A, ///< ELC_AD1 (Converter 0 and Converter 1)
+    ADC_START_SOURCE_ELC_AD01       = 0x0B, ///< ELC_AD0 and ELC_AD1 (Converter 0) also ELC_AD0 and ELC_AD1 (Converter 1)
+    ADC_START_SOURCE_GPT_A0_A4      = 0x11, ///< GTADTRA0 (Converter 0) and GTADTRA4 (Converter 1)
+    ADC_START_SOURCE_GPT_B0_B4      = 0x12, ///< GTADTRB0 (Converter 0) and GTADTRB4 (Converter 1)
+    ADC_START_SOURCE_GPT_A1_A5      = 0x13, ///< GTADTRA1 (Converter 0) and GTADTRB5 (Converter 1)
+    ADC_START_SOURCE_GPT_B1_B5      = 0x14, ///< GTADTRB1 (Converter 0) and GTADTRB5 (Converter 1)
+    ADC_START_SOURCE_GPT_A2_A6      = 0x15, ///< GTADTRA2 (Converter 0) and GTADTRA6 (Converter 1)
+    ADC_START_SOURCE_GPT_B2_B6      = 0x16, ///< GTADTRB2 (Converter 0) and GTADTRB6 (Converter 1)
+    ADC_START_SOURCE_GPT_A3_A7      = 0x17, ///< GTADTRA3 (Converter 0) and GTADTRA7 (Converter 1)
+    ADC_START_SOURCE_GPT_B3_B7      = 0x18, ///< GTADTRB3 (Converter 0) and GTADTRB7 (Converter 1)
+    ADC_START_SOURCE_GPT_AB0_AB4    = 0x19, ///< GTADTRA/B0 (Converter 0) and GTADTRA/B4 (Converter 1)
+    ADC_START_SOURCE_GPT_AB1_AB5    = 0x1A, ///< GTADTRA/B1 (Converter 0) and GTADTRA/B5 (Converter 1)
+    ADC_START_SOURCE_GPT_AB2_AB6    = 0x1B, ///< GTADTRA/B2 (Converter 0) and GTADTRA/B6 (Converter 1)
+    ADC_START_SOURCE_GPT_AB3_AB7    = 0x1C, ///< GTADTRA/B3 (Converter 0) and GTADTRA/B7 (Converter 1)
+} adc_start_source_t;
+
 /** ADC sample state configuration */
 typedef struct st_adc_sample_state
 {
@@ -272,7 +284,8 @@ typedef struct st_adc_extended_cfg
 {
     adc_add_t            add_average_count;   ///< Add or average samples
     adc_clear_t          clearing;            ///< Clear after read
-    adc_trigger_t        trigger_group_b;     ///< Group B trigger source; valid only for group mode
+    adc_start_source_t   trigger;             ///< Trigger source for ADC
+    adc_start_source_t   trigger_group_b;     ///< Trigger source for ADC group B; valid only for group mode
     adc_double_trigger_t double_trigger_mode; ///< Double-trigger mode setting
     adc_vref_control_t   adc_vref_control;    ///< VREFADC output voltage control
     uint8_t              enable_adbuf;        ///< Enable ADC Ring Buffer, Valid only to use along with DMAC transfer
@@ -315,7 +328,7 @@ typedef struct
     adc_callback_args_t * p_callback_memory;    // Pointer to non-secure memory that can be used to pass arguments to a callback in non-secure memory.
 
     /* Pointer to context to be passed into callback function */
-    void const * p_context;
+    void * p_context;
 } adc_instance_ctrl_t;
 
 /**********************************************************************************************************************
@@ -346,7 +359,7 @@ fsp_err_t R_ADC_OffsetSet(adc_ctrl_t * const p_ctrl, adc_channel_t const reg_id,
 fsp_err_t R_ADC_Calibrate(adc_ctrl_t * const p_ctrl, void const * p_extend);
 fsp_err_t R_ADC_CallbackSet(adc_ctrl_t * const          p_api_ctrl,
                             void (                    * p_callback)(adc_callback_args_t *),
-                            void const * const          p_context,
+                            void * const                p_context,
                             adc_callback_args_t * const p_callback_memory);
 
 /*******************************************************************************************************************//**

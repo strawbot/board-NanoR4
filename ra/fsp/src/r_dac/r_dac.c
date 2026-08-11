@@ -1,22 +1,8 @@
-/***********************************************************************************************************************
- * Copyright [2020-2022] Renesas Electronics Corporation and/or its affiliates.  All Rights Reserved.
- *
- * This software and documentation are supplied by Renesas Electronics America Inc. and may only be used with products
- * of Renesas Electronics Corp. and its affiliates ("Renesas").  No other uses are authorized.  Renesas products are
- * sold pursuant to Renesas terms and conditions of sale.  Purchasers are solely responsible for the selection and use
- * of Renesas products and Renesas assumes no liability.  No license, express or implied, to any intellectual property
- * right is granted by Renesas. This software is protected under all applicable laws, including copyright laws. Renesas
- * reserves the right to change or discontinue this software and/or this documentation. THE SOFTWARE AND DOCUMENTATION
- * IS DELIVERED TO YOU "AS IS," AND RENESAS MAKES NO REPRESENTATIONS OR WARRANTIES, AND TO THE FULLEST EXTENT
- * PERMISSIBLE UNDER APPLICABLE LAW, DISCLAIMS ALL WARRANTIES, WHETHER EXPLICITLY OR IMPLICITLY, INCLUDING WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT, WITH RESPECT TO THE SOFTWARE OR
- * DOCUMENTATION.  RENESAS SHALL HAVE NO LIABILITY ARISING OUT OF ANY SECURITY VULNERABILITY OR BREACH.  TO THE MAXIMUM
- * EXTENT PERMITTED BY LAW, IN NO EVENT WILL RENESAS BE LIABLE TO YOU IN CONNECTION WITH THE SOFTWARE OR DOCUMENTATION
- * (OR ANY PERSON OR ENTITY CLAIMING RIGHTS DERIVED FROM YOU) FOR ANY LOSS, DAMAGES, OR CLAIMS WHATSOEVER, INCLUDING,
- * WITHOUT LIMITATION, ANY DIRECT, CONSEQUENTIAL, SPECIAL, INDIRECT, PUNITIVE, OR INCIDENTAL DAMAGES; ANY LOST PROFITS,
- * OTHER ECONOMIC DAMAGE, PROPERTY DAMAGE, OR PERSONAL INJURY; AND EVEN IF RENESAS HAS BEEN ADVISED OF THE POSSIBILITY
- * OF SUCH LOSS, DAMAGES, CLAIMS OR COSTS.
- **********************************************************************************************************************/
+/*
+* Copyright (c) 2020 - 2025 Renesas Electronics Corporation and/or its affiliates
+*
+* SPDX-License-Identifier: BSD-3-Clause
+*/
 
 /***********************************************************************************************************************
  * Includes
@@ -29,22 +15,29 @@
  **********************************************************************************************************************/
 
 /* D/A Control Register Mask */
-/** Driver ID (DTC in ASCII), used to identify Digital to Analog Converter (DAC) configuration  */
+/** Driver ID (DAC in ASCII), used to identify Digital to Analog Converter (DAC) configuration  */
 #define DAC_OPEN                                     (0x44414300)
-#define DAC_VREF_AVCC0_AVSS0                         (0x01U)
 #define DAC_DAADSCR_REG_DAADST_BIT_POS               (0x07U)
-#define DAC_DAADUSR_REG_MASK                         (0x02U)
+#define DAC_DAADUSR_REG_MASK                         BSP_FEATURE_DAC_AD_SYNC_UNIT_MASK
 #define DAC_DADPR_REG_DPSEL_BIT_POS                  (0x07U)
 #define DAC_DAAMPCR_AMP_CTRL_BITS                    (0x06U) /* 6th bit for channel 0; 7th bit for channel 1 */
 #define DAC_DACR_DAOE_BITS                           (0x06U) /* 6th bit for channel 0; 7th bit for channel 1 */
 #define DAC_DAASWCR_DAASW0_MASK                      (0x40)
 #define DAC_DAASWCR_DAASW1_MASK                      (0x80)
-#define DAC_ADC_UNIT_1                               (0x01)
-#define DAC_MAX_CHANNELS_PER_UNIT                    (2U)
+#if 0x01U == BSP_FEATURE_DAC_AD_SYNC_UNIT_MASK
+ #define DAC_ADC_UNIT                                (0)
+#elif 0x02U == BSP_FEATURE_DAC_AD_SYNC_UNIT_MASK
+ #define DAC_ADC_UNIT                                (1)
+#endif
 
-/* Conversion time with Output Amplifier. See hardware manual (see Table 60.44
- *'D/A conversion characteristics' of the RA6M3 manual R01UH0886EJ0100). */
+/* Conversion time with Output Amplifier. See hardware manual (see Table
+ * "D/A conversion characteristics" in the DAC12 Characteristics section of the relevant hardware manual.) */
 #define DAC_CONVERSION_TIME_WITH_OUTPUT_AMPLIFIER    (0x04U) /* Unit: Microseconds. */
+
+#define DAC_VREF_DISCHARGING_DELAY_US                (10)
+#define DAC_INTERNAL_VREF_WAIT_TIME_US               (5)
+#define DAC12_CHANNEL_COUNT                          (BSP_FEATURE_DAC12_CHANNELS_PER_UNIT * \
+                                                      BSP_FEATURE_DAC12_UNIT_COUNT)
 
 /***********************************************************************************************************************
  * Typedef definitions
@@ -105,25 +98,25 @@ fsp_err_t R_DAC_Open (dac_ctrl_t * p_api_ctrl, dac_cfg_t const * const p_cfg)
 #if DAC_CFG_PARAM_CHECKING_ENABLE
     FSP_ASSERT(NULL != p_cfg);
     FSP_ASSERT(NULL != p_ctrl);
-    FSP_ERROR_RETURN(p_cfg->channel < (uint8_t) BSP_FEATURE_DAC_MAX_CHANNELS, FSP_ERR_IP_CHANNEL_NOT_PRESENT);
+    FSP_ERROR_RETURN(p_cfg->channel < (uint8_t) DAC12_CHANNEL_COUNT, FSP_ERR_IP_CHANNEL_NOT_PRESENT);
     FSP_ERROR_RETURN(false == p_ctrl->channel_opened, FSP_ERR_ALREADY_OPEN);
-    if (1U == BSP_FEATURE_DAC_HAS_CHARGEPUMP)
-    {
-        FSP_ASSERT(NULL != p_cfg->p_extend)
-    }
+ #if (BSP_FEATURE_DAC_HAS_CHARGEPUMP || BSP_FEATURE_DAC_HAS_DAVREFCR)
+    FSP_ASSERT(NULL != p_cfg->p_extend)
+ #endif
 #endif
 
-#if (BSP_FEATURE_DAC_MAX_CHANNELS > 2U)
-    uint8_t unit = p_cfg->channel / DAC_MAX_CHANNELS_PER_UNIT;
+#if (DAC12_CHANNEL_COUNT > 2U)
+    uint8_t unit = p_cfg->channel / BSP_FEATURE_DAC12_CHANNELS_PER_UNIT;
     p_ctrl->p_reg = (R_DAC_Type *) ((uint32_t) R_DAC0 + (unit * ((uint32_t) R_DAC1 - (uint32_t) R_DAC0)));
 #else
     p_ctrl->p_reg = R_DAC;
 #endif
 
-    p_ctrl->channel_index = p_cfg->channel % DAC_MAX_CHANNELS_PER_UNIT;
+    p_ctrl->channel_index = p_cfg->channel % BSP_FEATURE_DAC12_CHANNELS_PER_UNIT;
 
     /* Power on the DAC device. */
-    R_BSP_MODULE_START(FSP_IP_DAC, p_cfg->channel / DAC_MAX_CHANNELS_PER_UNIT);
+    uint8_t dac_unit = p_cfg->channel / BSP_FEATURE_DAC12_CHANNELS_PER_UNIT;
+    R_BSP_MODULE_START(FSP_IP_DAC, dac_unit);
 
     /* Added this to a separate block to avoid redeclaration of
      * critical section variable under module start macro. */
@@ -143,17 +136,16 @@ fsp_err_t R_DAC_Open (dac_ctrl_t * p_api_ctrl, dac_cfg_t const * const p_cfg)
     p_ctrl->p_reg->DADPR = (uint8_t) ((uint8_t) p_extend->data_format << (uint8_t) DAC_DADPR_REG_DPSEL_BIT_POS);
 
 #if BSP_FEATURE_DAC_HAS_DA_AD_SYNCHRONIZE
- #if BSP_FEATURE_ADC_UNIT_1_CHANNELS
+ #if BSP_FEATURE_DAC_AD_SYNC_UNIT_MASK
 
-    /* DA/AD Synchronization. Described in hardware manual (see Section 48.2.7
-     * 'D/A A/D Synchronous Unit Select Register (DAADUSR)' and Section 48.2.4
-     * 'D/A A/D Synchronous Start Control Register (DAADSCR)'of the RA6M3 manual R01UH0886EJ0100). */
-
-    /* D/A A/D Synchronous Unit Select Register: Select ADC Unit 1 for synchronization with this DAC channel */
+    /* DA/AD Synchronization. Described in hardware manual (see
+     * "D/A A/D Synchronous Unit Select Register (DAADUSR)" and
+     * "D/A A/D Synchronous Start Control Register (DAADSCR)" descriptions in the DAC section of the relevant hardware manual).
+     * D/A A/D Synchronous Unit Select Register: Select ADC Unit for synchronization with this DAC channel */
     if ((0U == p_ctrl->p_reg->DAADSCR) && (p_cfg->ad_da_synchronized))
     {
         /* For correctly writing to this register:
-         * 1. ADC (unit 1) module stop bit must be cleared.
+         * 1. ADC module stop bit must be cleared.
          * 2. DAADSCR.DAADST must be cleared.
          *
          * If ADC module is started, this will have no effect.
@@ -162,9 +154,9 @@ fsp_err_t R_DAC_Open (dac_ctrl_t * p_api_ctrl, dac_cfg_t const * const p_cfg)
          * Since the ad_da_synchronized is set to true in the configuration structure
          * the ADC module is believed to be started at a later point in the application.
          */
-        R_BSP_MODULE_START(FSP_IP_ADC, (uint16_t) DAC_ADC_UNIT_1);
+        R_BSP_MODULE_START(FSP_IP_ADC, (uint16_t) DAC_ADC_UNIT);
 
-        p_ctrl->p_reg->DAADUSR = (uint8_t) DAC_DAADUSR_REG_MASK;
+        p_ctrl->p_reg->DAADUSR = (uint8_t) BSP_FEATURE_DAC_AD_SYNC_UNIT_MASK;
 
         /* Configure D/A-A/D Synchronous Start Control Register(DAADSCR). */
         p_ctrl->p_reg->DAADSCR = (uint8_t) (1U << (uint8_t) DAC_DAADSCR_REG_DAADST_BIT_POS);
@@ -180,13 +172,35 @@ fsp_err_t R_DAC_Open (dac_ctrl_t * p_api_ctrl, dac_cfg_t const * const p_cfg)
     p_ctrl->output_amplifier_enabled = p_extend->output_amplifier_enabled;
 #endif
 
-#if BSP_FEATURE_DAC_HAS_INTERNAL_OUTPUT
+#if BSP_FEATURE_DAC_HAS_DAASWCR_INTERNAL_OUTPUT_CONTROL
     p_ctrl->internal_output_enabled = p_extend->internal_output_enabled;
 #endif
 
     /* Set the reference voltage. */
 #if BSP_FEATURE_DAC_HAS_DAVREFCR
-    p_ctrl->p_reg->DAVREFCR = (uint8_t) DAC_VREF_AVCC0_AVSS0;
+
+    /* D/A Reference Voltage Select. Described in hardware manual (see
+     * "D/A VREF Control Register (DAVREFCR)" description and
+     * "Notes on Using the Internal Reference Voltage as the Reference Voltage" in the DAC Operation section of
+     * the relevant hardware manual). *//* Clear REF bits before changing the value of these bits. */
+    p_ctrl->p_reg->DAVREFCR = 0x00;
+    if (DAC_VREF_IVREF_AVSS0 == p_extend->ref_volt_sel)
+    {
+        p_ctrl->p_reg->DADR[0] = 0x00U;
+
+        /* Discharge for 10 us. */
+        R_BSP_SoftwareDelay(DAC_VREF_DISCHARGING_DELAY_US, BSP_DELAY_UNITS_MICROSECONDS);
+        p_ctrl->p_reg->DAVREFCR     = (uint8_t) p_extend->ref_volt_sel;
+        p_ctrl->p_reg->DACR_b.DAOE0 = 1U;
+
+        /* Wait 5 us, the stabilization wait time of the internal reference voltage. */
+        R_BSP_SoftwareDelay(DAC_INTERNAL_VREF_WAIT_TIME_US, BSP_DELAY_UNITS_MICROSECONDS);
+    }
+    else
+    {
+        p_ctrl->p_reg->DAVREFCR = (uint8_t) p_extend->ref_volt_sel;
+    }
+    FSP_REGISTER_READ(p_ctrl->p_reg->DAVREFCR)
 #endif
 
 #if (1U == BSP_FEATURE_DAC_HAS_CHARGEPUMP)
@@ -257,8 +271,8 @@ fsp_err_t R_DAC_Start (dac_ctrl_t * p_api_ctrl)
 
 #if BSP_FEATURE_DAC_HAS_OUTPUT_AMPLIFIER
 
-    /* Initialize output amplifier. Described in hardware manual (see Section 48.6.5
-     * 'Initialization Procedure with the Output Amplifier' of the RA6M3 manual R01UH0878EJ0100). */
+    /* Initialize output amplifier. Described in hardware manual (see
+     * "Initialization Procedure with the Output Amplifier" in the DAC section of the relevant hardware manual). */
     if (p_ctrl->output_amplifier_enabled)
     {
         /* Store value intended to be amplified during DAC output */
@@ -309,7 +323,7 @@ fsp_err_t R_DAC_Start (dac_ctrl_t * p_api_ctrl)
 
         if (0U == p_ctrl->channel_index)
         {
-#if BSP_FEATURE_DAC_HAS_INTERNAL_OUTPUT
+#if BSP_FEATURE_DAC_HAS_DAASWCR_INTERNAL_OUTPUT_CONTROL
             p_ctrl->p_reg->DACR_b.DAOE0     = 0U;                              /* Disable channel 0 */
             p_ctrl->p_reg->DAASWCR_b.DAASW0 = p_ctrl->internal_output_enabled; /* Disable channel 0 internal output. */
 #endif
@@ -319,7 +333,7 @@ fsp_err_t R_DAC_Start (dac_ctrl_t * p_api_ctrl)
         }
         else
         {
-#if BSP_FEATURE_DAC_HAS_INTERNAL_OUTPUT
+#if BSP_FEATURE_DAC_HAS_DAASWCR_INTERNAL_OUTPUT_CONTROL
             p_ctrl->p_reg->DACR_b.DAOE1     = 0U;                              /* Disable channel 1 */
             p_ctrl->p_reg->DAASWCR_b.DAASW1 = p_ctrl->internal_output_enabled; /* Disable channel 1 internal output. */
 #endif

@@ -2,7 +2,14 @@
 <azone>
     <rzone name="R7FA4M1AB3CFM.rzone"/>
     <partition>
+        <peripheral name="PORT0.CM4" group="PORT">
+            <slot name="P000.CM4" secure="false"/>
+            <slot name="P001.CM4" secure="false"/>
+            <slot name="P014.CM4" secure="false"/>
+        </peripheral>
         <peripheral name="PORT1.CM4" group="PORT">
+            <slot name="P100.CM4" secure="false"/>
+            <slot name="P101.CM4" secure="false"/>
             <slot name="P108.CM4" secure="false"/>
             <slot name="P109.CM4" secure="false"/>
             <slot name="P110.CM4" secure="false"/>
@@ -19,6 +26,8 @@
             <slot name="P302.CM4" secure="false"/>
         </peripheral>
         <peripheral name="PORT4.CM4" group="PORT">
+            <slot name="P400.CM4" secure="false"/>
+            <slot name="P401.CM4" secure="false"/>
             <slot name="P409.CM4" secure="false"/>
             <slot name="P410.CM4" secure="false"/>
             <slot name="P411.CM4" secure="false"/>
@@ -28,7 +37,11 @@
         <peripheral name="RTC.CM4" security=""/>
         <peripheral name="GPT0.CM4" group="GPT" security=""/>
         <peripheral name="GPT2.CM4" group="GPT" security=""/>
-        <peripheral name="GPT3.CM4" group="GPT" security=""/>
+        <peripheral name="USB_FS.CM4" security=""/>
+        <peripheral name="IIC1.CM4" group="IIC" security=""/>
+        <peripheral name="ADC0.CM4" group="ADC" security=""/>
+        <peripheral name="DAC0.CM4" group="DAC" security=""/>
+        <peripheral name="DAC120.CM4" group="DAC12" security=""/>
         <peripheral name="ICU.CM4">
             <slot name="IRQ0.CM4" secure="false"/>
             <slot name="IRQ1.CM4" secure="false"/>
@@ -36,6 +49,14 @@
             <slot name="IRQ3.CM4" secure="false"/>
             <slot name="IRQ4.CM4" secure="false"/>
             <slot name="IRQ5.CM4" secure="false"/>
+            <slot name="IRQ6.CM4" secure="false"/>
+            <slot name="IRQ7.CM4" secure="false"/>
+            <slot name="IRQ8.CM4" secure="false"/>
+            <slot name="IRQ9.CM4" secure="false"/>
+            <slot name="IRQ10.CM4" secure="false"/>
+            <slot name="IRQ11.CM4" secure="false"/>
+            <slot name="IRQ12.CM4" secure="false"/>
+            <slot name="IRQ13.CM4" secure="false"/>
         </peripheral>
     </partition>
 </azone>

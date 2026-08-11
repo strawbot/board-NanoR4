@@ -26,15 +26,7 @@ void adc_init(void);        // Open ADC0 unit 0, configure AN00, start continuou
 uint32_t adc_read_mv(void); // Read AN00 (P000) and return millivolts (0–5000), callable any time
 void cli_adc_read(void);    // CLI word: pushes AN00 reading in mV onto the data stack
 
-// ad5593r (IIC0: SCL=P400, SDA=P401) — chip driver in Robot/io/ad5593r
-void ad5593r_show_status(void);  // print pin config, reference state, each I/O port's value, and die temp
-void ad5593r_cli_dac_set(void);  // (mv ch) write mv millivolts (0-2500) to DAC channel ch (0-3)
-void ad5593r_cli_adc_read(void); // (ch -- mv) read ADC channel ch (0-3), push millivolts
-void ad5593r_cli_reset(void);    // reset the chip and reconfigure DAC/ADC/reference
-
-// limb calibration (Robot/io/ad5593r/ad5593r_limb) — each DAC/ADC channel
-// pair (0-3) drives one muscle-wire limb.
-void ad5593r_cli_limb_calibrate(void); // ramp DAC 0-3 until ADC saturates, score each limb's linear region (blocks, worst case ~164s)
-void ad5593r_cli_limb_set(void);       // (pct limb) drive limb (0-3) to pct% (0-100) of its calibrated range
+// limb I/O array (IIC1: SCL=P100, SDA=P101) — see Board/limb_io.h and
+// Board/limb_io_cli.h for the 4x ADS1015 + 4x MCP4728 + MPU6050 CLI words.
 
 #endif // BOARD_CLI_H

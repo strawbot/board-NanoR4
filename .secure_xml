@@ -23,16 +23,16 @@
     <node id="board.clock.pll.div" option="board.clock.pll.div.2"/>
     <node id="board.clock.pll.mul" option="board.clock.pll.mul.8"/>
     <node id="board.clock.pll.display" option="board.clock.pll.display.value"/>
-    <node id="board.clock.clock.source" option="board.clock.clock.source.pll"/>
-    <node id="board.clock.iclk.div" option="board.clock.iclk.div.2"/>
+    <node id="board.clock.clock.source" option="board.clock.clock.source.hoco"/>
+    <node id="board.clock.iclk.div" option="board.clock.iclk.div.1"/>
     <node id="board.clock.iclk.display" option="board.clock.iclk.display.value"/>
-    <node id="board.clock.pclka.div" option="board.clock.pclka.div.2"/>
+    <node id="board.clock.pclka.div" option="board.clock.pclka.div.1"/>
     <node id="board.clock.pclka.display" option="board.clock.pclka.display.value"/>
     <node id="board.clock.pclkb.div" option="board.clock.pclkb.div.2"/>
     <node id="board.clock.pclkb.display" option="board.clock.pclkb.display.value"/>
-    <node id="board.clock.pclkc.div" option="board.clock.pclkc.div.2"/>
+    <node id="board.clock.pclkc.div" option="board.clock.pclkc.div.1"/>
     <node id="board.clock.pclkc.display" option="board.clock.pclkc.display.value"/>
-    <node id="board.clock.pclkd.div" option="board.clock.pclkd.div.2"/>
+    <node id="board.clock.pclkd.div" option="board.clock.pclkd.div.1"/>
     <node id="board.clock.pclkd.display" option="board.clock.pclkd.display.value"/>
     <node id="board.clock.fclk.div" option="board.clock.fclk.div.16"/>
     <node id="board.clock.fclk.display" option="board.clock.fclk.display.value"/>
@@ -52,12 +52,14 @@
       <configSetting altId="debug0.tdi.p110" configurationId="debug0.tdi" isUsedByDriver="true" peripheral="DEBUG0"/>
       <configSetting altId="debug0.tdo.p109" configurationId="debug0.tdo" isUsedByDriver="true" peripheral="DEBUG0"/>
       <configSetting altId="debug0.tms.p108" configurationId="debug0.tms" isUsedByDriver="true" peripheral="DEBUG0"/>
-      <configSetting altId="gpt3.gtiocb.p112" configurationId="gpt3.gtiocb" isUsedByDriver="true" peripheral="GPT3"/>
+      <configSetting altId="gpt3.gtiocb.p112" configurationId="gpt3.gtiocb" peripheral="GPT3"/>
       <configSetting altId="gpt5.gtioca.p409" configurationId="gpt5.gtioca" peripheral="GPT5"/>
       <configSetting altId="gpt6.gtioca.p411" configurationId="gpt6.gtioca" peripheral="GPT6"/>
       <configSetting altId="gpt6.gtiocb.p410" configurationId="gpt6.gtiocb" peripheral="GPT6"/>
-      <configSetting altId="iic0.scl.p400" configurationId="iic0.scl" isUsedByDriver="true" peripheral="IIC0"/>
-      <configSetting altId="iic0.sda.p401" configurationId="iic0.sda" isUsedByDriver="true" peripheral="IIC0"/>
+      <configSetting altId="iic0.scl.p400" configurationId="iic0.scl" peripheral="IIC0"/>
+      <configSetting altId="iic0.sda.p401" configurationId="iic0.sda" peripheral="IIC0"/>
+      <configSetting altId="iic1.scl.p100" configurationId="iic1.scl" isUsedByDriver="true" peripheral="IIC1"/>
+      <configSetting altId="iic1.sda.p101" configurationId="iic1.sda" isUsedByDriver="true" peripheral="IIC1"/>
       <configSetting altId="p014.input" configurationId="p014"/>
       <configSetting altId="p204.output.low" configurationId="p204"/>
       <configSetting altId="sci2.rxd.p301" configurationId="sci2.rxd" isUsedByDriver="true" peripheral="SCI2"/>

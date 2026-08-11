@@ -13,12 +13,12 @@
 // Two GPT channels plus the on-chip RTC:
 //
 //   tick_timer  — GPT0, 32-bit free-running uptime counter.
-//                 PCLKD/1024 @ 32 MHz → 31.25 kHz → 32 µs/tick.
-//                 Period = 0x7FFFFFFF (rollover ≈ 38 hours).
+//                 PCLKD/1024 @ 48 MHz (full chip speed) → 46.875 kHz →
+//                 ~21.3 µs/tick. Period = 0x7FFFFFFF (rollover ≈ 25 hours).
 //                 Feeds get_ticks() for the TEA scheduler.
 //   delta_timer — GPT2, 16-bit one-shot alarm used by set_delta_alarm().
-//                 PCLKD/1024 @ 32 MHz, same 32 µs tick units.
-//                 Max one-shot period ≈ 2.097 s (0xFFFF ticks).
+//                 PCLKD/1024 @ 48 MHz, same ~21.3 µs tick units.
+//                 Max one-shot period ≈ 1.4 s (0xFFFF ticks).
 //   g_rtc0      — IRTC running off LOCO (internal ~32 kHz RC oscillator).
 //                 Nano R4 has NO 32.768 kHz sub-clock crystal — only the
 //                 16 MHz main XO — so LOCO is the only RTC source.
@@ -28,7 +28,7 @@
 // BRING-UP NOTES (read before touching GPT/ELC config)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// 1. ONE_SECOND is 31250 (project_defs.h), matching PCLKD/1024 at 32 MHz.
+// 1. ONE_SECOND is 46875 (project_defs.h), matching PCLKD/1024 at 48 MHz.
 //
 // 2. RA4M1 GPT_SOURCE_GPT_A … GPT_SOURCE_GPT_H are fixed ELC slots, not
 //    arbitrary channel assignments. Cascading GPT3 → GPT0/GPT2 via
@@ -62,7 +62,7 @@ extern const char build_timestamp[];
 void delta_timer_cb(timer_callback_args_t * p_args);
 
 // GPT2 (delta_timer) is 16-bit — clamp alarm periods to 0xFFFF ticks.
-// At PCLKD/1024 = 31.25 kHz that is ~2.097 s max one-shot.
+// At PCLKD/1024 = 46.875 kHz that is ~1.4 s max one-shot.
 #define DELTA_MAX_TICKS  0xFFFFu
 
 // ── Hardware RTC (IRTC on LOCO) ──────────────────────────────────────────
