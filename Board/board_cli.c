@@ -24,6 +24,9 @@
 
 // ── clocks & uptime ────────────────────────────────────────────────────────
 void show_sys(void) {
+    print(CLI_TITLE);
+    print_build_banner(); printCr();
+
     // Clock tree is pinned down in ra_gen/bsp_clock_cfg.h.
     // HOCO 48 MHz → ICLK/PCLKA/PCLKC/PCLKD /1 = 48 MHz (full chip speed —
     // was XTAL 16 MHz → PLL x8/2 = 64 MHz → ICLK/PCLKD /2 = 32 MHz before

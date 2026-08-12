@@ -49,7 +49,10 @@ Words // system
 	limbio! limb_io_cli_dac_set // (code ch) write raw 12-bit code (0-4095) to DAC channel ch (0-15)
 	limbio-assign limb_io_cli_assign // one-time: program the 4 MCP4728s to 0x60-0x63 via their SEL lines
 	limbio-assign1 limb_io_cli_assign_one // (limb) assign a single limb's MCP4728, for bench debugging
+	limbio-reset1 limb_io_cli_reset_one // (limb) move a limb's MCP4728 back to the shared default address 0x60
 	i2cscan i2c1_cli_scan // scan IIC1 (0x08-0x77) for devices, print the ones that ACK
+	i2ctest limb_io_cli_isolated_read // (limb count) pause the sweep, read limb's channel 0 count times back-to-back with no other bus traffic
+	i2cregs limb_io_cli_debug_ch0 // (limb) pause the sweep, print the ADS1015's raw Config + Conversion registers around a channel-0 conversion
 //	dac@ cli_dac_read // ( - n ) current dac value
 //	calibrate calibrate_muscle_wire // calibrate the muscle wire should take about 4s
 //	mw cli_set_muscle_wire // ( n ) set muscle wire to n% of its maximum

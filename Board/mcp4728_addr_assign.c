@@ -9,8 +9,10 @@
 //   byte3 = 0 1 1 <new_bits:3>     1 0  = 0x60 | (new_bits << 2) | 2
 //   byte4 = 0 1 1 <new_bits:3>     1 1  = 0x60 | (new_bits << 2) | 3
 //
-// All 4 MCP4728s on this board start at the shared default (current_bits
-// = 0), so byte2 is always 0x61 here.
+// current_bits comes from the caller's current_addr7 (normally 0x60, the
+// shared factory default all 4 chips start at — see mcp4728_addr_assign.h
+// for reprogramming an already-assigned chip, e.g. resetting one back to
+// 0x60).
 //
 // SEL/LDAC pin timing (Note 2 on the same figure): keep the target chip's
 // SEL pin high through byte 2's 8th data bit, drop it low in the gap
@@ -34,8 +36,8 @@ static void clock_byte_bits(uint8_t b) {
     }
 }
 
-bool mcp4728_addr_assign_one(bsp_io_port_pin_t sel_pin, uint8_t target_addr7) {
-    uint8_t current_bits = 0x60U & 0x07U;               // all chips start at 0x60
+bool mcp4728_addr_assign_one(bsp_io_port_pin_t sel_pin, uint8_t current_addr7, uint8_t target_addr7) {
+    uint8_t current_bits = current_addr7 & 0x07U;
     uint8_t new_bits     = target_addr7 & 0x07U;
 
     i2c1_bb_take_over();

@@ -66,6 +66,36 @@ bool limb_io_assign_addresses(void);
 // one chip at a time.
 bool limb_io_assign_one(uint8_t limb);
 
+// limb_io_reset_one — undo assignment: move limb's MCP4728 from its
+// assigned address back to the shared factory default (0x60), so it can
+// be freely reassigned afterward. No-op-equivalent for limb 0 (already at
+// 0x60).
+bool limb_io_reset_one(uint8_t limb);
+
+// limb_io_pause_sweep / limb_io_resume_sweep — stop/restart the periodic
+// sweep. Used to get a clean bus (no IMU reads, no other limbs) for
+// limb_io_isolated_read_ch0() below; also safe to call standalone.
+void limb_io_pause_sweep(void);
+void limb_io_resume_sweep(void);
+
+// limb_io_isolated_read_ch0 — diagnostic: pauses the sweep, then reads
+// channel 0 of limb (0-3) `count` times back-to-back (same address, same
+// channel, no other bus traffic in between — unlike the normal sweep,
+// which always precedes a limb's channel 0 with a different device),
+// printing each raw code, then resumes the sweep. See Board/limb_io_cli.c
+// for the `i2ctest` CLI word. count is clamped to 1-50.
+void limb_io_isolated_read_ch0(uint8_t limb, uint8_t count);
+
+// limb_io_debug_ch0 — diagnostic: pauses the sweep, then prints the
+// ADS1015's raw Config register (not just the downstream conversion
+// result) before starting a channel-0 conversion, immediately after
+// starting it, and after waiting out the conversion time — plus the final
+// conversion register value. Lets you see whether the OS/MUX/PGA/MODE/DR
+// write actually landed as intended, instead of only ever seeing "code=0"
+// and having to guess why. See Board/limb_io_cli.c for the `i2cregs` CLI
+// word.
+void limb_io_debug_ch0(uint8_t limb);
+
 // limb_io_ready — fired once per completed sweep (all 16 ADC channels +
 // IMU). Nothing in this module calls when() on it; it's the extension
 // seam for a future planning/gait layer.

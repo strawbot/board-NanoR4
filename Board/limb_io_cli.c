@@ -68,6 +68,13 @@ void limb_io_cli_assign_one(void) {   // ( limb -- )
     printCr();
 }
 
+void limb_io_cli_reset_one(void) {   // ( limb -- )
+    Cell limb = ret();
+    print("limb "); printDec(limb); print(" -> 0x60: ");
+    print(limb_io_reset_one((uint8_t)limb) ? "ok" : "FAILED");
+    printCr();
+}
+
 // i2cscan — probe every valid 7-bit address (0x08-0x77; 0x00-0x07 and
 // 0x78-0x7F are reserved by the I2C spec) and print the ones that ACK.
 void i2c1_cli_scan(void) {
@@ -80,4 +87,23 @@ void i2c1_cli_scan(void) {
         }
     }
     print("scan done, "); printDec(found); print(" device(s)"); printCr();
+}
+
+void limb_io_cli_isolated_read(void) {   // ( limb count -- )
+    Cell count = ret();
+    Cell limb  = ret();
+    if (limb < 0 || limb >= LIMB_IO_LIMBS) {
+        print("i2ctest: bad limb"); printCr();
+        return;
+    }
+    limb_io_isolated_read_ch0((uint8_t)limb, (uint8_t)count);
+}
+
+void limb_io_cli_debug_ch0(void) {   // ( limb -- )
+    Cell limb = ret();
+    if (limb < 0 || limb >= LIMB_IO_LIMBS) {
+        print("i2cregs: bad limb"); printCr();
+        return;
+    }
+    limb_io_debug_ch0((uint8_t)limb);
 }
