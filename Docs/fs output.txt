@@ -1,0 +1,160 @@
+fs: opencfg test
+lfs: opencfg_: forceconsistency
+lfs: forceconsistency: desuperblock
+lfs: forceconsistency: desuperblock returned
+lfs: forceconsistency: demove
+lfs: forceconsistency: demove returned
+lfs: forceconsistency: deorphan
+lfs: forceconsistency: deorphan returned
+lfs: opencfg_: forceconsistency returned
+lfs: opencfg_: dir_find
+lfs: opencfg_: dir_find returned
+lfs: opencfg_: dir_commit (create)
+lfs: relocatingcommit dir->erased=1 
+lfs: relocatingcommit: dir_traverse
+lfs: traverse iter=1  sp=0  off=64  dir->off=64  ptag=500FFC04  attrcount=3 
+lfs: traverse iter=2  sp=0  off=64  dir->off=64  ptag=500FFC04  attrcount=2 
+lfs: traverse iter=3  sp=0  off=64  dir->off=64  ptag=500FFC04  attrcount=1 
+lfs: traverse iter=4  sp=0  off=64  dir->off=64  ptag=500FFC04  attrcount=0 
+lfs: relocatingcommit: dir_traverse returned
+lfs: relocatingcommit: dir_commitcrc
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+lfs: relocatingcommit: dir_commitcrc returned
+lfs: opencfg_: dir_commit (create) returned
+fs: opencfg -> 00000000 
+fs: write text len=23 
+fs: write text -> 00000017 
+fs: write nl
+fs: write nl -> 00000001 
+fs: closing
+lfs: relocatingcommit dir->erased=1 
+lfs: relocatingcommit: dir_traverse
+lfs: traverse iter=1  sp=0  off=100  dir->off=100  ptag=500FFC04  attrcount=2 
+lfs: traverse iter=2  sp=0  off=100  dir->off=100  ptag=500FFC04  attrcount=1 
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+lfs: relocatingcommit: dir_traverse returned
+lfs: relocatingcommit: compact (splittingcompact)
+lfs: traverse iter=1  sp=0  off=0  dir->off=100  ptag=FFFFFFFF  attrcount=2 
+lfs: traverse iter=2  sp=1  off=4  dir->off=100  ptag=8FF00008  attrcount=2 
+lfs: traverse iter=3  sp=1  off=16  dir->off=100  ptag=A0100018  attrcount=2 
+lfs: traverse iter=4  sp=1  off=44  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=5  sp=1  off=56  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=6  sp=1  off=64  dir->off=100  ptag=C0100400  attrcount=2 
+lfs: traverse iter=7  sp=1  off=68  dir->off=100  ptag=80100404  attrcount=2 
+lfs: traverse iter=8  sp=1  off=76  dir->off=100  ptag=A0100400  attrcount=2 
+lfs: traverse iter=9  sp=1  off=80  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=10  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=11  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=1 
+lfs: traverse iter=12  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=0 
+lfs: traverse iter=13  sp=0  off=4  dir->off=100  ptag=8FF00008  attrcount=2 
+lfs: traverse iter=14  sp=1  off=16  dir->off=100  ptag=A0100018  attrcount=2 
+lfs: traverse iter=15  sp=1  off=44  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=16  sp=1  off=56  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=17  sp=1  off=64  dir->off=100  ptag=C0100400  attrcount=2 
+lfs: traverse iter=18  sp=1  off=68  dir->off=100  ptag=80100404  attrcount=2 
+lfs: traverse iter=19  sp=1  off=76  dir->off=100  ptag=A0100400  attrcount=2 
+lfs: traverse iter=20  sp=1  off=80  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=21  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=22  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=1 
+lfs: traverse iter=23  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=0 
+lfs: traverse iter=24  sp=0  off=16  dir->off=100  ptag=A0100018  attrcount=2 
+lfs: traverse iter=25  sp=0  off=44  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=26  sp=0  off=56  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=27  sp=0  off=64  dir->off=100  ptag=C0100400  attrcount=2 
+lfs: traverse iter=28  sp=1  off=68  dir->off=100  ptag=80100404  attrcount=2 
+lfs: traverse iter=29  sp=1  off=76  dir->off=100  ptag=A0100400  attrcount=2 
+lfs: traverse iter=30  sp=1  off=80  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=31  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=32  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=1 
+lfs: traverse iter=33  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=0 
+lfs: traverse iter=34  sp=0  off=68  dir->off=100  ptag=80100404  attrcount=2 
+lfs: traverse iter=35  sp=1  off=76  dir->off=100  ptag=A0100400  attrcount=2 
+lfs: traverse iter=36  sp=1  off=80  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=37  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=38  sp=0  off=76  dir->off=100  ptag=A0100400  attrcount=2 
+lfs: traverse iter=39  sp=0  off=80  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=40  sp=0  off=92  dir->off=100  ptag=D00FFC04  attrcount=2 
+rmlfs: erase: calling p_flash->p_api->erase
+rmlfs: erase: p_flash->p_api->erase returned
+lfs: traverse iter=1  sp=0  off=0  dir->off=100  ptag=FFFFFFFF  attrcount=2 
+lfs: traverse iter=2  sp=1  off=4  dir->off=100  ptag=8FF00008  attrcount=2 
+lfs: traverse iter=3  sp=1  off=16  dir->off=100  ptag=A0100018  attrcount=2 
+lfs: traverse iter=4  sp=1  off=44  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=5  sp=1  off=56  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=6  sp=1  off=64  dir->off=100  ptag=C0100400  attrcount=2 
+lfs: traverse iter=7  sp=1  off=68  dir->off=100  ptag=80100404  attrcount=2 
+lfs: traverse iter=8  sp=1  off=76  dir->off=100  ptag=A0100400  attrcount=2 
+lfs: traverse iter=9  sp=1  off=80  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=10  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=11  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=1 
+lfs: traverse iter=12  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=0 
+lfs: traverse iter=13  sp=0  off=4  dir->off=100  ptag=8FF00008  attrcount=2 
+lfs: traverse iter=14  sp=1  off=16  dir->off=100  ptag=A0100018  attrcount=2 
+lfs: traverse iter=15  sp=1  off=44  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=16  sp=1  off=56  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=17  sp=1  off=64  dir->off=100  ptag=C0100400  attrcount=2 
+lfs: traverse iter=18  sp=1  off=68  dir->off=100  ptag=80100404  attrcount=2 
+lfs: traverse iter=19  sp=1  off=76  dir->off=100  ptag=A0100400  attrcount=2 
+lfs: traverse iter=20  sp=1  off=80  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=21  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=22  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=1 
+lfs: traverse iter=23  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=0 
+lfs: traverse iter=24  sp=0  off=16  dir->off=100  ptag=A0100018  attrcount=2 
+lfs: traverse iter=25  sp=0  off=44  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=26  sp=0  off=56  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=27  sp=0  off=64  dir->off=100  ptag=C0100400  attrcount=2 
+lfs: traverse iter=28  sp=1  off=68  dir->off=100  ptag=80100404  attrcount=2 
+lfs: traverse iter=29  sp=1  off=76  dir->off=100  ptag=A0100400  attrcount=2 
+lfs: traverse iter=30  sp=1  off=80  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=31  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=32  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=1 
+lfs: traverse iter=33  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=0 
+lfs: traverse iter=34  sp=0  off=68  dir->off=100  ptag=80100404  attrcount=2 
+lfs: traverse iter=35  sp=1  off=76  dir->off=100  ptag=A0100400  attrcount=2 
+lfs: traverse iter=36  sp=1  off=80  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=37  sp=1  off=92  dir->off=100  ptag=D00FFC04  attrcount=2 
+lfs: traverse iter=38  sp=0  off=76  dir->off=100  ptag=A0100400  attrcount=2 
+lfs: traverse iter=39  sp=0  off=80  dir->off=100  ptag=DFFFFC08  attrcount=2 
+lfs: traverse iter=40  sp=0  off=92  dir->off=100  ptag=D00FFC04  attrcount=2 
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+rmlfs: write: calling p_flash->p_api->write
+rmlfs: write: p_flash->p_api->write returned
+ra/arm/littlefs/lfs.c:2183:warn: Unable to split {0x1, 0x0}
+rmlfs: erase: calling p_flash->p_api->erase
+rmlfs: erase: p_flash->p_api->erase returned
+ra/arm/littlefs/lfs.c:269:assert: pcache->block == LFS_BLOCK_NULL

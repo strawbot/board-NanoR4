@@ -96,7 +96,7 @@
       <property id="config.bsp.option_setting.osis.id_fixed.4" value=""/>
     </config>
     <config id="config.bsp.ra">
-      <property id="config.bsp.common.main" value="0x400"/>
+      <property id="config.bsp.common.main" value="0x800"/>
       <property id="config.bsp.common.heap" value="0"/>
       <property id="config.bsp.common.bootloader.xip_enable" value="config.bsp.common.bootloader.xip_enable.disabled"/>
       <property id="config.bsp.common.vcc" value="3300"/>
@@ -229,6 +229,10 @@
     </component>
     <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_usb_composite" variant="" vendor="Renesas" version="6.2.0">
       <description>USB Composite</description>
+      <originalPack>Renesas.RA.6.2.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_flash_lp" variant="" vendor="Renesas" version="6.2.0">
+      <description>Flash Memory Low Power</description>
       <originalPack>Renesas.RA.6.2.0.pack</originalPack>
     </component>
   </raComponentSelection>
@@ -513,6 +517,12 @@
       <property id="module.driver.dac.elc_trigger" value="_disabled"/>
       <property id="module.driver.dac.ref_volt_sel" value="module.driver.dac.ref_volt_sel.avcc0_avss0"/>
     </module>
+    <module id="module.driver.flash_on_flash_lp.774776676">
+      <property id="module.driver.flash.name" value="g_flash0"/>
+      <property id="module.driver.flash.data_flash_bgo" value="module.driver.flash.data_flash_bgo.disabled"/>
+      <property id="module.driver.flash.p_callback" value="NULL"/>
+      <property id="module.driver.flash.ipl" value="_disabled"/>
+    </module>
     <context id="_hal.0">
       <stack module="module.driver.uart_on_sci_uart.674874090">
         <stack module="module.driver.transfer_on_dtc.1056166033" requires="module.driver.uart_on_sci_uart.requires.transfer_tx"/>
@@ -531,6 +541,7 @@
       <stack module="module.driver.i2c_on_iic_master.1892376398"/>
       <stack module="module.driver.adc_on_adc.1450596406"/>
       <stack module="module.driver.dac_on_dac.773722317"/>
+      <stack module="module.driver.flash_on_flash_lp.774776676"/>
     </context>
     <config id="config.driver.adc">
       <property id="config.driver.adc.param_checking_enable" value="config.driver.adc.param_checking_enable.bsp"/>
@@ -588,6 +599,14 @@
     <config id="config.driver.dtc">
       <property id="config.driver.dtc.param_checking_enable" value="config.driver.dtc.param_checking_enable.bsp"/>
       <property id="config.driver.dtc.vector_table" value=".fsp_dtc_vector_table"/>
+    </config>
+    <config id="config.driver.flash_lp">
+      <property id="config.driver.flash_lp.param_checking_enable" value="config.flash_lp.param_checking_enable.bsp"/>
+      <property id="config.driver.flash_lp.param_code_flash_programming_enable" value="config.driver.flash_lp.param_code_flash_programming_enable.disabled"/>
+      <property id="config.driver.flash_lp.bank_programming_enable" value="enum.mcu.flash.bank_programming.disabled"/>
+      <property id="config.driver.flash_lp.param_data_flash_programming_enable" value="config.driver.flash_lp.param_data_flash_programming_enable.enabled"/>
+      <property id="config.driver.flash_lp.data_flash_bgo_enable" value="config.driver.flash_lp.data_flash_bgo_enable.disabled"/>
+      <property id="config.driver.flash_lp.instant_bank_swap" value="enum.mcu.flash.instant_bank_swap.disabled"/>
     </config>
     <config id="config.driver.rtc">
       <property id="config.driver.rtc.param_checking_enable" value="config.driver.rtc.param_checking_enable.bsp"/>

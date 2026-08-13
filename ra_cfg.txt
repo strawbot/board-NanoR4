@@ -63,7 +63,7 @@ FSP Configuration
     
   RA4M1 event data
   RA Common
-    Main stack size (bytes): 0x400
+    Main stack size (bytes): 0x800
     Heap size (bytes): 0
     Bootloader Secondary XIP: Disabled
     MCU Vcc (mV): 3300
@@ -227,6 +227,14 @@ FSP Configuration
     
   Module "DAC (r_dac)"
     Parameter Checking: Default (BSP)
+    
+  Module "Flash (r_flash_lp)"
+    Parameter Checking: Default (BSP)
+    Code Flash Programming: Disabled
+    Code Flash Background Operation Support With Bank Programming: Not Supported
+    Data Flash Programming: Enabled
+    Data Flash Background Operation Support: Disabled
+    Instant Bank Swap (No Reset Required): Not Supported
     
   HAL
     Instance "g_uart2 UART (r_sci_uart)"
@@ -506,4 +514,10 @@ FSP Configuration
       Internal Output: Not Supported
       ELC Trigger Source: Disabled
       Reference Voltage: AVCC0/AVSS0
+      
+    Instance "g_flash0 Flash (r_flash_lp)"
+      Name: g_flash0
+      Data Flash Background Operation: Disabled
+      Callback: NULL
+      Flash Ready Interrupt Priority: Disabled
       

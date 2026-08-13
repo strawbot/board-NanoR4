@@ -58,3 +58,14 @@ Words // system
 //	mw cli_set_muscle_wire // ( n ) set muscle wire to n% of its maximum
 //	pwm cli_pwm_pct // ( n ) set PWM duty to n% (0-100) directly, bypassing PI
 End
+
+Words // Nano FS (minimal ping-ponged-directory + append-log store on the RA4M1's 8K data flash)
+	ls fs_cli_ls // list files with sizes, plus file-count and space used/free/reclaimable
+	rm fs_cli_rm // <name> remove a file
+	mv fs_cli_mv // <old> <new> rename a file
+	cp fs_cli_cp // <src> <dst> copy a file
+	echo fs_cli_echo // <name> <text...> append the rest of the line (no quotes) plus a CRLF to a file, creating it if needed
+	run fs_cli_run // <name> stream a file's contents through the CLI interpreter, as if typed
+	cat fs_cli_cat // <name> print a file's contents as raw text
+	hexdump fs_cli_hexdump // <name> print a file's contents as an offset/hex/ASCII dump
+End

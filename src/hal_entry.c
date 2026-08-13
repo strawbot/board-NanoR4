@@ -10,6 +10,7 @@
 #include "board_cli.h"
 #include "i2c1.h"
 #include "limb_io.h"
+#include "fs_hw_flash.h"
 #include "printers.h"
 
 void muscle_wire_init(void);
@@ -121,6 +122,10 @@ void hal_entry(void)
 
     init_cli();
     usart_drain();         // init_cli() prints its own banner
+
+    fs_hw_flash_init();    // mount (formatting once if blank/unreadable) before
+                            // anything might want to read/write a file
+    usart_drain();
 
     // limb_io_init() calls in() to arm its first sweep tick, so it must
     // come after init_tea() (unlike the peripheral opens above, which
