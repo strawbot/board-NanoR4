@@ -89,14 +89,15 @@ void i2c1_cli_scan(void) {
     print("scan done, "); printDec(found); print(" device(s)"); printCr();
 }
 
-void limb_io_cli_isolated_read(void) {   // ( limb count -- )
-    Cell count = ret();
-    Cell limb  = ret();
-    if (limb < 0 || limb >= LIMB_IO_LIMBS) {
-        print("i2ctest: bad limb"); printCr();
+void limb_io_cli_isolated_read(void) {   // ( limb channel count -- )
+    Cell count   = ret();
+    Cell channel = ret();
+    Cell limb    = ret();
+    if (limb < 0 || limb >= LIMB_IO_LIMBS || channel < 0 || channel >= 4) {
+        print("i2ctest: bad limb/channel"); printCr();
         return;
     }
-    limb_io_isolated_read_ch0((uint8_t)limb, (uint8_t)count);
+    limb_io_isolated_read((uint8_t)limb, (uint8_t)channel, (uint8_t)count);
 }
 
 void limb_io_cli_debug_ch0(void) {   // ( limb -- )
@@ -106,4 +107,61 @@ void limb_io_cli_debug_ch0(void) {   // ( limb -- )
         return;
     }
     limb_io_debug_ch0((uint8_t)limb);
+}
+
+void limb_io_cli_sequence(void) {   // ( limb start_channel -- )
+    Cell start_ch = ret();
+    Cell limb     = ret();
+    if (limb < 0 || limb >= LIMB_IO_LIMBS || start_ch < 0 || start_ch >= 4) {
+        print("i2cseq: bad limb/start_channel"); printCr();
+        return;
+    }
+    limb_io_test_sequence((uint8_t)limb, (uint8_t)start_ch);
+}
+
+void limb_io_cli_verify(void) {   // ( limb -- )
+    Cell limb = ret();
+    if (limb < 0 || limb >= LIMB_IO_LIMBS) {
+        print("i2cverify: bad limb"); printCr();
+        return;
+    }
+    limb_io_verify((uint8_t)limb);
+}
+
+// i2cpattern — set limb's 4 DAC channels to an alternating LOW/HIGH
+// pattern (ch0=LOW, ch1=HIGH, ch2=LOW, ch3=HIGH) instead of 4 separate
+// `limbio!` calls. Alternating rather than a plain ramp is deliberate: if
+// a channel ever showed a neighbor's value instead of its own (a MUX
+// mixup, not the staleness bug already fixed, but a different failure
+// mode worth being able to see at a glance), adjacent channels being far
+// apart makes that immediately obvious against the reads from i2ctest/
+// i2cseq/i2cverify.
+#define I2C_PATTERN_LOW  1000U
+#define I2C_PATTERN_HIGH 3000U
+
+void limb_io_cli_pattern(void) {   // ( limb -- )
+    Cell limb = ret();
+    if (limb < 0 || limb >= LIMB_IO_LIMBS) {
+        print("i2cpattern: bad limb"); printCr();
+        return;
+    }
+    static const uint16_t pattern[4] = { I2C_PATTERN_LOW, I2C_PATTERN_HIGH, I2C_PATTERN_LOW, I2C_PATTERN_HIGH };
+    print("limb "); printDec(limb); print(":"); printCr();
+    for (uint8_t sub = 0; sub < 4U; sub++) {
+        uint8_t ch = (uint8_t)(limb * 4U + sub);
+        bool ok = limb_io_set_dac(ch, pattern[sub]);
+        print("  ch"); printDec(sub); print(" <- "); printDec(pattern[sub]);
+        print(ok ? "" : "  FAILED");
+        printCr();
+    }
+}
+
+void limb_io_cli_harness(void) {   // ( limb start_channel -- )
+    Cell start_ch = ret();
+    Cell limb     = ret();
+    if (limb < 0 || limb >= LIMB_IO_LIMBS || start_ch < 0 || start_ch >= 4) {
+        print("i2charness: bad limb/start_channel"); printCr();
+        return;
+    }
+    limb_io_test_harness((uint8_t)limb, (uint8_t)start_ch);
 }

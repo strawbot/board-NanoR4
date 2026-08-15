@@ -51,8 +51,12 @@ Words // system
 	limbio-assign1 limb_io_cli_assign_one // (limb) assign a single limb's MCP4728, for bench debugging
 	limbio-reset1 limb_io_cli_reset_one // (limb) move a limb's MCP4728 back to the shared default address 0x60
 	i2cscan i2c1_cli_scan // scan IIC1 (0x08-0x77) for devices, print the ones that ACK
-	i2ctest limb_io_cli_isolated_read // (limb count) pause the sweep, read limb's channel 0 count times back-to-back with no other bus traffic
+	i2ctest limb_io_cli_isolated_read // (limb channel count) pause the sweep, read limb's channel count times back-to-back with no other bus traffic
 	i2cregs limb_io_cli_debug_ch0 // (limb) pause the sweep, print the ADS1015's raw Config + Conversion registers around a channel-0 conversion
+	i2cseq limb_io_cli_sequence // (limb start_channel) pause the sweep, IMU-prime, read all 4 channels starting from start_channel — is staleness tied to channel 0 or to sequence position?
+	i2cverify limb_io_cli_verify // (limb) compare the sweep's cached value against a fresh isolated read for all 4 channels, flag mismatches
+	i2cpattern limb_io_cli_pattern // (limb) set limb's 4 DAC channels to an alternating LOW/HIGH pattern, one command instead of four
+	i2charness limb_io_cli_harness // (limb start_channel) automated pass/fail regression test: zero -> ramp -> zero, verifying ADC readings each time, reads starting from start_channel
 //	dac@ cli_dac_read // ( - n ) current dac value
 //	calibrate calibrate_muscle_wire // calibrate the muscle wire should take about 4s
 //	mw cli_set_muscle_wire // ( n ) set muscle wire to n% of its maximum

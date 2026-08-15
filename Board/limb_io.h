@@ -73,18 +73,19 @@ bool limb_io_assign_one(uint8_t limb);
 bool limb_io_reset_one(uint8_t limb);
 
 // limb_io_pause_sweep / limb_io_resume_sweep — stop/restart the periodic
-// sweep. Used to get a clean bus (no IMU reads, no other limbs) for
-// limb_io_isolated_read_ch0() below; also safe to call standalone.
+// sweep. Used to get a clean bus (no IMU reads, no other limbs) for the
+// diagnostics below; also safe to call standalone.
 void limb_io_pause_sweep(void);
 void limb_io_resume_sweep(void);
 
-// limb_io_isolated_read_ch0 — diagnostic: pauses the sweep, then reads
-// channel 0 of limb (0-3) `count` times back-to-back (same address, same
-// channel, no other bus traffic in between — unlike the normal sweep,
-// which always precedes a limb's channel 0 with a different device),
-// printing each raw code, then resumes the sweep. See Board/limb_io_cli.c
-// for the `i2ctest` CLI word. count is clamped to 1-50.
-void limb_io_isolated_read_ch0(uint8_t limb, uint8_t count);
+// limb_io_isolated_read — diagnostic: pauses the sweep, then reads
+// channel (0-3) of limb (0-3) `count` times back-to-back (same address,
+// same channel, no other bus traffic in between — unlike the normal
+// sweep, which always precedes a limb's first-scanned channel with a
+// different device), printing each raw code, then resumes the sweep. See
+// Board/limb_io_cli.c for the `i2ctest` CLI word. count is clamped to
+// 1-50.
+void limb_io_isolated_read(uint8_t limb, uint8_t channel, uint8_t count);
 
 // limb_io_debug_ch0 — diagnostic: pauses the sweep, then prints the
 // ADS1015's raw Config register (not just the downstream conversion
@@ -95,6 +96,38 @@ void limb_io_isolated_read_ch0(uint8_t limb, uint8_t count);
 // and having to guess why. See Board/limb_io_cli.c for the `i2cregs` CLI
 // word.
 void limb_io_debug_ch0(uint8_t limb);
+
+// limb_io_test_sequence — diagnostic: pauses the sweep, reads the IMU
+// (to reliably reproduce the "just switched I2C target" scenario the
+// normal sweep always hits), then reads all 4 of limb's ADC channels
+// back-to-back starting from start_channel (wrapping: e.g. start_channel
+// 2 -> order 2,3,0,1), printing each. Answers "is address-switch-adjacent
+// staleness specific to channel 0, or to whichever channel happens to be
+// first in the sequence" — run with start_channel 0,1,2,3 in turn and
+// compare which position (not which channel number) looks wrong against
+// known DAC values. See Board/limb_io_cli.c for the `i2cseq` CLI word.
+void limb_io_test_sequence(uint8_t limb, uint8_t start_channel);
+
+// limb_io_verify — self-test: for each of limb's 4 ADC channels, prints
+// the current sweep-cached value (what limbio shows) side by side with a
+// freshly-taken isolated reading (ground truth), flagging any pair that
+// differs by more than a small noise tolerance. Run any time to check
+// whether the sweep's cache still matches reality — not just for the
+// known channel-0-position issue, but as a standing regression check for
+// any other staleness this hasn't caught yet. See Board/limb_io_cli.c for
+// the `i2cverify` CLI word.
+void limb_io_verify(uint8_t limb);
+
+// limb_io_test_harness — automated pass/fail regression test: writes all 4
+// of limb's DACs to zero (expect ADCs ~0), then to 1000/2000/3000/4000
+// (expect ADC[ch] proportional to ADC[ch0]*(ch+1)), then back to zero
+// (expect ADCs ~0 again) — each phase's reads start from start_channel
+// (wrapping) and are IMU-primed, same as limb_io_test_sequence. Prints a
+// PASS/FAIL per channel per phase plus a final N/3 summary. Run with
+// start_channel 0-3 across separate calls to check whether any staleness
+// is tied to channel 0 specifically or to whichever channel reads first.
+// See Board/limb_io_cli.c for the `i2charness` CLI word.
+void limb_io_test_harness(uint8_t limb, uint8_t start_channel);
 
 // limb_io_ready — fired once per completed sweep (all 16 ADC channels +
 // IMU). Nothing in this module calls when() on it; it's the extension
