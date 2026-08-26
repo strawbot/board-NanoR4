@@ -687,6 +687,8 @@
       <configSetting altId="p401.iic0.sda" configurationId="p401"/>
       <configSetting altId="p401.gpio_speed.gpio_speed_medium" configurationId="p401.gpio_drivecapacity"/>
       <configSetting altId="p401.gpio_mode.gpio_mode_peripheral" configurationId="p401.gpio_mode"/>
+      <configSetting altId="p407.usbfs0.vbus" configurationId="p407"/>
+      <configSetting altId="p407.gpio_mode.gpio_mode_peripheral" configurationId="p407.gpio_mode"/>
       <configSetting altId="p409.gpt5.gtioca" configurationId="p409"/>
       <configSetting altId="p409.gpio_mode.gpio_mode_peripheral" configurationId="p409.gpio_mode"/>
       <configSetting altId="p410.gpt6.gtiocb" configurationId="p410"/>
@@ -697,6 +699,8 @@
       <configSetting altId="sci2.rxd.p301" configurationId="sci2.rxd"/>
       <configSetting altId="sci2.txd.p302" configurationId="sci2.txd"/>
       <configSetting altId="slcdc0.mode.custom" configurationId="slcdc0.mode"/>
+      <configSetting altId="usbfs0.mode.custom" configurationId="usbfs0.mode"/>
+      <configSetting altId="usbfs0.vbus.p407" configurationId="usbfs0.vbus"/>
     </pincfg>
   </raPinConfiguration>
 </raConfiguration>

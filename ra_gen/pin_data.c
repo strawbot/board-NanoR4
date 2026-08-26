@@ -93,6 +93,11 @@ const ioport_pin_cfg_t g_bsp_pin_cfg_data[] = {
     },
     
     {
+        .pin = BSP_IO_PORT_04_PIN_07,
+        .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN | (uint32_t) IOPORT_PERIPHERAL_USB_FS)
+    },
+    
+    {
         .pin = BSP_IO_PORT_04_PIN_09,
         .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN | (uint32_t) IOPORT_PERIPHERAL_GPT1)
     },
@@ -105,6 +110,24 @@ const ioport_pin_cfg_t g_bsp_pin_cfg_data[] = {
     {
         .pin = BSP_IO_PORT_04_PIN_11,
         .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN | (uint32_t) IOPORT_PERIPHERAL_GPT1)
+    },
+
+    /* USBFS0 D+/D- — like VBUS above, never assigned by RASC (also absent
+     * from configuration.xml; add both there via the Pins tab so they
+     * survive the next regen). Confirmed via ra_cfg.txt (RASC's own
+     * pin-function table for this part): P914 = "USBFS0: USBDP", P915 =
+     * "USBFS0: USBDM", both listed Disabled. Matches TinyUSB's own uno_r4
+     * reference board port (same RA4M1 die) exactly — see
+     * tinyusb/hw/bsp/ra/boards/uno_r4/ra_gen/pin_data.c. See
+     * Docs/usb-handoff.md. */
+    {
+        .pin = BSP_IO_PORT_09_PIN_14,
+        .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN | (uint32_t) IOPORT_PERIPHERAL_USB_FS)
+    },
+
+    {
+        .pin = BSP_IO_PORT_09_PIN_15,
+        .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN | (uint32_t) IOPORT_PERIPHERAL_USB_FS)
     },
 };
 

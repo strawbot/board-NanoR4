@@ -33,16 +33,209 @@
 #include "clocks.h"
 #include "project_defs.h"
 
+#include "cli.h"
+#include "byteq.h"
+
 #include "tusb.h"
 #include "usb_init.h"
+
+// ── VBATT backup register helpers ─────────────────────────────────────────────
+//
+// Shared by dfu_arm_bootloader() below and usb_isr_snapshot(). See that
+// function's comment for why VBAE must be set first and PRCR unlocked around
+// the writes.
+
+#define PRCR_PRC1_UNLOCK  0xA502U
+#define PRCR_LOCK         0xA500U
+#define VBTBER_VBAE       (1U << 3)
+
+#define VBT_WORD(off)     (*(volatile uint32_t *) &R_SYSTEM->VBTBKR[(off)])
+
+// ── usb_trace — append-only checkpoint log for the SET_ADDRESS/enumeration
+// stall investigation. Live debugging (J-Link and, before it, an OpenOCD/
+// ST-Link setup) consumed enormous effort without ever reliably working
+// (breakpoints reported success but never actually programmed into
+// silicon on the OpenOCD path; the J-Link path lost the session
+// entirely) -- see Docs/usb-handoff.md's "Debugging setup" section. This
+// is the same VBATT-survives-a-hang approach that already found the ICU
+// interrupt-storm bug, applied to a specific question: does execution
+// reach TinyUSB's SET_ADDRESS handling, does the synthetic setup event it
+// generates get processed cleanly, and does the host ever send anything
+// at all afterward? Called from board-patched checkpoints in
+// tinyusb/src/portable/renesas/rusb2/dcd_rusb2.c and
+// tinyusb/src/device/usbd.c (both hand-patched, same "flag it clearly"
+// precedent as the RUSB2 spin-loop and IELSR fixes already in
+// dcd_rusb2.c). Offsets: fault.c uses 4-27, usb_isr_snapshot 32-52,
+// bsp_group_irq.c's NMI fallback 56-143; this uses 144+.
+
+#define USB_TRACE_MARKER  0xACE00042UL
+#define USB_TRACE_BASE    152U
+#define USB_TRACE_SLOTS   16U
+
+void usb_trace_init(void) {
+    R_SYSTEM->PRCR   = PRCR_PRC1_UNLOCK;
+    R_SYSTEM->VBTBER = VBTBER_VBAE;
+    VBT_WORD(144) = USB_TRACE_MARKER;
+    VBT_WORD(148) = 0;
+    R_SYSTEM->PRCR = PRCR_LOCK;
+}
+
+void usb_trace(uint32_t checkpoint_id, uint32_t extra) {
+    R_SYSTEM->PRCR   = PRCR_PRC1_UNLOCK;
+    R_SYSTEM->VBTBER = VBTBER_VBAE;
+
+    uint32_t idx = VBT_WORD(148);
+    if (idx < USB_TRACE_SLOTS) {
+        VBT_WORD(USB_TRACE_BASE + idx * 8U)       = checkpoint_id;
+        VBT_WORD(USB_TRACE_BASE + idx * 8U + 4U)  = extra;
+        VBT_WORD(148) = idx + 1U;
+    }
+
+    R_SYSTEM->PRCR = PRCR_LOCK;
+}
+
+// Checkpoint IDs, referenced from the patched TinyUSB files:
+//   1 = process_set_address() entered (dcd_rusb2.c), extra = new address
+//   2 = process_set_address()'s synthetic dcd_event_setup_received() about
+//       to fire (dcd_rusb2.c)
+//   3 = process_setup_packet() entered -- a REAL host SETUP arrived
+//       (dcd_rusb2.c), extra = 0
+//   4 = usbd.c's DCD_EVENT_SETUP_RECEIVED handling, extra =
+//       _usbd_queued_setup at that point (tests the TU_ASSERT theory in
+//       Docs/usb-handoff.md's "Open issue" section directly)
+//   5 = process_control_request()'s dispatch switch (usbd.c), extra =
+//       bRequest -- which standard requests actually get this far
+
+void usb_cli_trace_dump(void) {
+    if (VBT_WORD(144) != USB_TRACE_MARKER) {
+        print("no trace captured since last power-up"); printCr();
+        return;
+    }
+    uint32_t count = VBT_WORD(148);
+    if (count > USB_TRACE_SLOTS) count = USB_TRACE_SLOTS;
+    print("usb_trace: "); printDec((Long) count); print(" entries"); printCr();
+    for (uint32_t i = 0; i < count; i++) {
+        print("  [");   printDec((Long) i); print("] checkpoint=");
+        printDec((Long) VBT_WORD(USB_TRACE_BASE + i * 8U));
+        print(" extra=0x");
+        printHex((Long) VBT_WORD(USB_TRACE_BASE + i * 8U + 4U));
+        printCr();
+    }
+}
 
 // ── USBFS interrupt handler ───────────────────────────────────────────────────
 //
 // Declared in ra_gen/vector_data.h and registered in the g_vector_table at
 // slot 6 (USBFS_INT_IRQn).  The FSP ICU routes ELC_EVENT_USBFS_INT here.
+//
+// usbfs_isr_count — free-running fire count, read by the `usbisr` CLI word.
+// See Docs/usb-handoff.md: if this climbs into the millions in a second once
+// USB_TRANSPORT_ENABLE is on, the suspected ISR storm is confirmed.
+
+static volatile uint32_t usbfs_isr_count;
+
+// ── usb_isr_snapshot — crash telemetry that survives a hang + power cycle ────
+//
+// A lockup during real USB traffic leaves the CLI unresponsive, so nothing
+// can be queried live once it happens. This stashes the ISR count, the raw
+// USBFS INTSTS0/INTENB0 (read BEFORE tud_int_handler() touches anything —
+// this is the true, unmassaged cause), and the shared CLI emitq depth into
+// VBATT backup registers (fault.c's marker lives at byte offsets 4-27; this
+// uses 32+ to stay clear of it).
+//
+// Two captures, at different offsets, answer different questions:
+//   - "first" (offset 48+, written once, on entry #1): what actually
+//     triggered the very first interrupt of the storm — the real cause,
+//     before millions of subsequent entries could muddy it.
+//   - "last" (offset 32+, overwritten every 256th entry): the state deep
+//     into the storm, and how many times it had fired by then.
+// If "first" and "last" show the same cause bits, whatever triggers it
+// never gets acknowledged and just keeps re-arriving. If they differ, the
+// storm changes character partway through. Read back with `usbcrash`.
+// See Docs/usb-handoff.md.
+
+#define USB_SNAPSHOT_MARKER  0xC0FFEE01UL
+
+static void usb_isr_snapshot(bool first) {
+    uint16_t intsts0 = R_USB_FS0->INTSTS0;
+    uint16_t intenb0 = R_USB_FS0->INTENB0;
+    Cell     depth   = qbq(emitq);
+
+    R_SYSTEM->PRCR   = PRCR_PRC1_UNLOCK;
+    R_SYSTEM->VBTBER = VBTBER_VBAE;
+
+    if (first) {
+        VBT_WORD(48) = USB_SNAPSHOT_MARKER;
+        VBT_WORD(52) = ((uint32_t) intsts0 << 16) | intenb0;
+    } else {
+        VBT_WORD(32) = USB_SNAPSHOT_MARKER;
+        VBT_WORD(36) = usbfs_isr_count;
+        VBT_WORD(40) = ((uint32_t) intsts0 << 16) | intenb0;
+        VBT_WORD(44) = (uint32_t) depth;
+    }
+
+    R_SYSTEM->PRCR = PRCR_LOCK;
+}
+
+void usb_cli_crash_snapshot(void) {
+    if (VBT_WORD(48) == USB_SNAPSHOT_MARKER) {
+        print("INTSTS0:INTENB0 at FIRST entry: "); printHex((Long) VBT_WORD(52)); printCr();
+    } else {
+        print("no first-entry snapshot captured since last power-up"); printCr();
+    }
+
+    if (VBT_WORD(32) != USB_SNAPSHOT_MARKER) {
+        print("no last-entry snapshot captured since last power-up"); printCr();
+        return;
+    }
+    print("usbfs_isr_count at last snapshot: "); printDec((Long) VBT_WORD(36)); printCr();
+    print("INTSTS0:INTENB0 at last snapshot: "); printHex((Long) VBT_WORD(40)); printCr();
+    print("emitq depth at last snapshot: ");     printDec((Long) VBT_WORD(44)); printCr();
+}
 
 void usbfs_int_isr(void) {
+    usbfs_isr_count++;
+    if (usbfs_isr_count == 1) {
+        usb_isr_snapshot(true);
+    }
+    if ((usbfs_isr_count & 0xFFU) == 0) {
+        usb_isr_snapshot(false);
+    }
+
     tud_int_handler(0);
+
+    // The one-time clear in usb_hw_reset() wasn't enough: under a live
+    // debugger the storm re-enters with BOTH INTSTS0 and INTENB0 reading 0
+    // (the peripheral has nothing enabled and nothing pending, so it cannot
+    // be the one re-asserting the request). IELSR[n].IR is a true latch,
+    // not a passive reflection of the peripheral's line -- every normal
+    // FSP-generated ISR clears it as boilerplate on EVERY entry, not just
+    // once at setup. tud_int_handler() only clears the peripheral's own
+    // INTSTS0 (that's all a generic, non-FSP-integrated driver can know to
+    // do); nothing else was clearing the ICU's separate latch on each
+    // interrupt, only the one-time clear before enabling. Order matters:
+    // this must run AFTER tud_int_handler() has acknowledged the
+    // peripheral's own condition, or the ICU could just re-latch a request
+    // that's still actually pending. See Docs/usb-handoff.md.
+    R_BSP_IrqStatusClear((IRQn_Type) 6);
+}
+
+void usb_cli_isr_count(void) {
+    print("usbfs_int_isr fired "); printDec((Long) usbfs_isr_count); print(" times"); printCr();
+}
+
+// tusb_init_ok / intenb0_after_init — captured once, right after tusb_init()
+// returns, from the SAME boot instance. tusb_init() silently swallows any
+// TU_ASSERT/TU_VERIFY failure along its class-driver-init -> dcd_init() ->
+// dcd_int_enable() call chain (CFG_TUSB_DEBUG is 0, so nothing gets logged
+// either way) — this is the only way to tell, from this build, whether it
+// actually reached dcd_init() or bailed out earlier. See Docs/usb-handoff.md.
+static bool     tusb_init_ok;
+static uint16_t intenb0_after_init;
+
+void usb_cli_init_status(void) {
+    print("tusb_init() returned "); print(tusb_init_ok ? "true" : "false"); printCr();
+    print("INTENB0 immediately after: "); printHex((Long) intenb0_after_init); printCr();
 }
 
 // ── usb_action — TinyUSB task pump in the tea.c action queue ─────────────────
@@ -87,9 +280,6 @@ static void usb_action(void) {
 // nothing to do with this bootloader.  It never worked.
 
 #define DFU_MAGIC         0x07738135UL
-#define PRCR_PRC1_UNLOCK  0xA502U
-#define PRCR_LOCK         0xA500U
-#define VBTBER_VBAE       (1U << 3)
 
 #define DFU_BOOT_FLAG     (*(volatile uint32_t *) &R_SYSTEM->VBTBKR[0])
 
@@ -204,12 +394,29 @@ void tud_dfu_runtime_reboot_to_dfu_cb(void) {
 //   5. START it again so TinyUSB inherits reset-default registers.
 //
 // The delay after the detach matters: hosts need ~10 ms of SE0 to register a
-// disconnect. 20 ms is cheap insurance at boot.
+// disconnect. 20 ms was cheap insurance at boot; bumping it to 300 ms made
+// zero difference to the DFU-restart storm (confirmed via usb_isr_snapshot()/
+// `usbcrash`: DVSQ never advances past Default state, emitq stays empty
+// throughout — millions of INTENB0-legitimate interrupts, not one stuck bit,
+// not the output() path, and not fixed by more settle time). So it isn't
+// buying safety in that scenario — but paying it unconditionally on EVERY
+// boot is a separate, real cost: a genuine cold boot has nothing to detach
+// from (DPRPU is already low — nothing, bootloader included, left a
+// pull-up asserted), so this delay is pure wasted time before we ever
+// signal presence to the host. That's a real candidate for why cold boot
+// enumeration never even starts: by the time our pull-up finally goes up
+// (after boot-time printing/init + this delay + the module stop/restart
+// cycle), the host's initial attach-detection window may already have
+// closed. Only pay the long delay when there's actually something stale to
+// tear down. See Docs/usb-handoff.md.
+#define USB_DETACH_SETTLE_MS  300U
 #define USB_SYSCFG_USBE   (1U << 0)
 #define USB_SYSCFG_DPRPU  (1U << 4)
 
 static void usb_hw_reset(void) {
     R_BSP_MODULE_START(FSP_IP_USBFS, 0);
+
+    bool was_attached = (R_USB_FS0->SYSCFG & USB_SYSCFG_DPRPU) != 0;
 
     R_USB_FS0->SYSCFG  &= (uint16_t) ~USB_SYSCFG_DPRPU;   // detach from the bus
     R_USB_FS0->INTENB0  = 0;                              // mask all sources
@@ -219,14 +426,47 @@ static void usb_hw_reset(void) {
     R_USB_FS0->INTSTS1  = 0;
     R_USB_FS0->SYSCFG  &= (uint16_t) ~USB_SYSCFG_USBE;
 
-    R_BSP_SoftwareDelay(20, BSP_DELAY_UNITS_MILLISECONDS);
+    if (was_attached) {
+        R_BSP_SoftwareDelay(USB_DETACH_SETTLE_MS, BSP_DELAY_UNITS_MILLISECONDS);
+    }
 
+    // This gap is a bare timed delay standing in for a hardware handshake
+    // FSP's generic R_BSP_MODULE_STOP/START don't expose for USBFS: they
+    // toggle the MSTP bit and return, with no flag confirming the block
+    // actually finished resetting internally before the next write. Compare
+    // board-Discovery's working STM32 implementation (same TimbreOS
+    // scheduler, same Cortex-M4 core): its USB_CoreReset() blocks on
+    // GRSTCTL.AHBIDL actually going high -- a true handshake that can't
+    // race regardless of CPU speed. We have no equivalent status flag to
+    // poll here, so this is a guess at how long that takes -- and it's
+    // exactly the kind of gap a debugger's single-stepping papers over for
+    // free (real elapsed time between steps is generous) while full-speed
+    // execution might not respect reliably, which matches what was
+    // observed: the storm/stall is far less likely to reproduce when
+    // slowed by breakpoints. 1 ms was a guess with no basis; widening it
+    // substantially is the cheapest next experiment. See
+    // Docs/usb-handoff.md.
     R_BSP_MODULE_STOP(FSP_IP_USBFS, 0);
-    R_BSP_SoftwareDelay(1, BSP_DELAY_UNITS_MILLISECONDS);
+    R_BSP_SoftwareDelay(20, BSP_DELAY_UNITS_MILLISECONDS);
     R_BSP_MODULE_START(FSP_IP_USBFS, 0);
 
     NVIC_DisableIRQ((IRQn_Type) 6);       // USBFS_INT — see header comment
     NVIC_ClearPendingIRQ((IRQn_Type) 6);
+
+    // NVIC_ClearPendingIRQ() only clears the NVIC's own pending latch. The
+    // ICU sits underneath it with a SEPARATE per-vector latch (IELSR[6].IR)
+    // that drives the NVIC line — confirmed under a live debugger: the
+    // storm re-enters usbfs_int_isr() with INTSTS0 AND INTENB0 both 0 (the
+    // peripheral has nothing enabled and nothing pending, so it cannot be
+    // the one generating these requests), meaning IELSR[6].IR was latched
+    // stale from some transient (very plausibly the module STOP/START cycle
+    // just above) and never cleared before NVIC_EnableIRQ() went live in
+    // tusb_init(), so the CPU re-takes the same already-latched request
+    // forever. R_BSP_IrqStatusClear() is the FSP helper every normal
+    // R_xxx_Open() call gets automatically via R_BSP_IrqCfgEnable() -- our
+    // hand-rolled TinyUSB init never went through that path, so this was
+    // never done. See Docs/usb-handoff.md.
+    R_BSP_IrqStatusClear((IRQn_Type) 6);
 }
 
 // ── usb_transport_init — call once from hal_entry() ──────────────────────────
@@ -244,14 +484,48 @@ static void usb_hw_reset(void) {
 // device stack is out of service.
 //
 // Set to 1 when picking the USB work back up. See Docs/usb-handoff.md.
-#define USB_TRANSPORT_ENABLE 0
+//
+// Re-enabled (2026-08-18) under a live J-Link/SWD debug session (see
+// Docs/usb-handoff.md) — a real debugger can halt/reset via SWD regardless
+// of firmware state, so the storm hanging the board is no longer a recovery
+// risk the way it was over plain UART. Do not ship a build with this on
+// until the storm is fixed; if testing without a debugger attached, revert
+// to 0 and recover a hung board via the bootloader's physical
+// double-tap-reset DFU entry.
+#define USB_TRANSPORT_ENABLE 1
 
 void usb_transport_init(void) {
+    // Invalidate last boot's "first entry" snapshot so a quiet boot (no ISR
+    // fire at all this time) reports "no snapshot" instead of stale data
+    // from a previous storm. usbfs_isr_count itself is a RAM var and already
+    // starts at 0 every boot, so the "last" snapshot (gated on that counter)
+    // doesn't need this — only the marker-gated "first" one does.
+    R_SYSTEM->PRCR   = PRCR_PRC1_UNLOCK;
+    R_SYSTEM->VBTBER = VBTBER_VBAE;
+    VBT_WORD(48)     = 0;
+    R_SYSTEM->PRCR   = PRCR_LOCK;
+
+    usb_trace_init();               // fresh checkpoint log for this boot
+
     usb_hw_reset();                // must precede tusb_init()
     usb_init_tick = get_ticks();   // baseline for DFU_MIN_ELAPSED guard
 
 #if USB_TRANSPORT_ENABLE
-    tusb_init();
+    tusb_init_ok = tusb_init();
+    intenb0_after_init = R_USB_FS0->INTENB0;
+
+    // TinyUSB's own reference port for this exact board (Arduino UNO R4,
+    // same RA4M1 die) sets this right after tusb_init() returns —
+    // tinyusb/hw/bsp/ra/family.c's board_init_after_tusb(), gated
+    // `#if defined(BOARD_UNO_R4)`. We never called it, and never set this
+    // bit any other way. VDCEN enables the transceiver's regulator; without
+    // it SYSCFG.DPRPU can read back "set" in software while the actual D+
+    // pull-up drive is electrically marginal — consistent with what we saw:
+    // VBSTS true but the host never reacting cleanly (cold boot) or reacting
+    // to what looks like glitchy repeated resets (DFU-restart storm). See
+    // Docs/usb-handoff.md.
+    R_USB_FS0->USBMC |= R_USB_FS0_USBMC_VDCEN_Msk;
+
     later(usb_action);
     namedAction(usb_action);
 #else

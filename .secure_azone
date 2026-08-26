@@ -28,6 +28,7 @@
         <peripheral name="PORT4.CM4" group="PORT">
             <slot name="P400.CM4" secure="false"/>
             <slot name="P401.CM4" secure="false"/>
+            <slot name="P407.CM4" secure="false"/>
             <slot name="P409.CM4" secure="false"/>
             <slot name="P410.CM4" secure="false"/>
             <slot name="P411.CM4" secure="false"/>

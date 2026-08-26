@@ -44,6 +44,10 @@ Words // system
 	up ramp_up // create a ramp up on DAC output
 	down ramp_down // create a ramp down on DAC output
 	dfu tud_dfu_runtime_reboot_to_dfu_cb // go into DFU mode for dfu-util on host to download
+	usbisr usb_cli_isr_count // print how many times usbfs_int_isr has fired — see Docs/usb-handoff.md
+	usbinit usb_cli_init_status // print whether tusb_init() succeeded and INTENB0 right after it returned
+	usbcrash usb_cli_crash_snapshot // print ISR count/INTSTS0:INTENB0/emitq depth captured before the last hang, if any
+	usbtrace usb_cli_trace_dump // dump the SET_ADDRESS/enumeration checkpoint log
 	adc@ cli_adc_read // ( - mv ) read AN00 (P000) and push millivolts (0-5000) onto stack
 	limbio limb_io_cli_status // show all 16 ADC/DAC channels, IMU, per-limb I2C health
 	limbio! limb_io_cli_dac_set // (code ch) write raw 12-bit code (0-4095) to DAC channel ch (0-15)

@@ -24,10 +24,13 @@
 #include "byteq.h"
 #include "printers.h"
 
+#include "cli_transport.h"
 #include "cli_transport_usart.h"
 
 static void usart_rx_action(void);
 static void usart_emit(void);
+
+static const cli_transport_hw_t usart_hw = { .emit = usart_emit };
 
 // ── CLI input queue — filled by cli_rxtx callback, consumed by usart_rx_action
 static BQUEUE(100, cliq);
@@ -138,10 +141,7 @@ void usart_drain(void) {
 
 // ── tea action: drain cliq into keyIn ──────────────────────────────────────
 static void usart_rx_action(void) {
-    when(EmitEvent, usart_emit);
-    autoEchoOff();
-
-    while (qbq(cliq)) keyIn(pullbq(cliq));
+    while (qbq(cliq)) cli_transport_rx_byte(&usart_hw, (uint8_t) pullbq(cliq));
     safe( if (qbq(cliq)) later(usart_rx_action); )
 }
 

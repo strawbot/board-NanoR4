@@ -10,10 +10,19 @@
             [3] = sci_uart_eri_isr, /* SCI2 ERI (Receive error) */
             [4] = rtc_carry_isr, /* RTC CARRY (Carry interrupt) */
             [5] = gpt_counter_overflow_isr, /* GPT2 COUNTER OVERFLOW (Overflow) */
-            [6] = usbfs_interrupt_handler, /* USBFS INT (USBFS interrupt) */
-            [7] = usbfs_resume_handler, /* USBFS RESUME (USBFS resume interrupt) */
-            [8] = usbfs_d0fifo_handler, /* USBFS FIFO 0 (DMA/DTC transfer request 0) */
-            [9] = usbfs_d1fifo_handler, /* USBFS FIFO 1 (DMA/DTC transfer request 1) */
+            [6] = usbfs_int_isr, /* USBFS INT (USBFS interrupt) — was usbfs_interrupt_handler
+                                     (r_usb_basic's own ISR, from the dead native USB stack
+                                     still configured in RASC's Stacks tab); that was silently
+                                     stealing every USB interrupt from TinyUSB's usbfs_int_isr
+                                     (Board/usb_init.c). Regenerating from RASC will put this
+                                     back unless that dead stack is also removed there — see
+                                     Docs/usb-handoff.md. */
+            /* [7]/[8]/[9] (USBFS RESUME / FIFO0 / FIFO1) removed: those are
+             * r_usb_basic-only interrupt lines (excluded from the build, see
+             * platformio.ini) that TinyUSB's RUSB2 port doesn't use — it
+             * handles resume via INTENB0.RSME on the combined USBFS_INT line
+             * (slot 6) instead. Leaving them unrouted (no g_interrupt_event_link_select
+             * entry below) means the ICU never fires them, so no vector is needed. */
             [10] = iic_master_rxi_isr, /* IIC1 RXI (Receive data full) */
             [11] = iic_master_txi_isr, /* IIC1 TXI (Transmit data empty) */
             [12] = iic_master_tei_isr, /* IIC1 TEI (Transmit end) */
@@ -29,9 +38,6 @@
             [4] = BSP_PRV_VECT_ENUM(EVENT_RTC_CARRY,GROUP4), /* RTC CARRY (Carry interrupt) */
             [5] = BSP_PRV_VECT_ENUM(EVENT_GPT2_COUNTER_OVERFLOW,GROUP5), /* GPT2 COUNTER OVERFLOW (Overflow) */
             [6] = BSP_PRV_VECT_ENUM(EVENT_USBFS_INT,GROUP6), /* USBFS INT (USBFS interrupt) */
-            [7] = BSP_PRV_VECT_ENUM(EVENT_USBFS_RESUME,GROUP7), /* USBFS RESUME (USBFS resume interrupt) */
-            [8] = BSP_PRV_VECT_ENUM(EVENT_USBFS_FIFO_0,GROUP0), /* USBFS FIFO 0 (DMA/DTC transfer request 0) */
-            [9] = BSP_PRV_VECT_ENUM(EVENT_USBFS_FIFO_1,GROUP1), /* USBFS FIFO 1 (DMA/DTC transfer request 1) */
             [10] = BSP_PRV_VECT_ENUM(EVENT_IIC1_RXI,GROUP2), /* IIC1 RXI (Receive data full) */
             [11] = BSP_PRV_VECT_ENUM(EVENT_IIC1_TXI,GROUP3), /* IIC1 TXI (Transmit data empty) */
             [12] = BSP_PRV_VECT_ENUM(EVENT_IIC1_TEI,GROUP4), /* IIC1 TEI (Transmit end) */

@@ -64,6 +64,7 @@
       <configSetting altId="p204.output.low" configurationId="p204"/>
       <configSetting altId="sci2.rxd.p301" configurationId="sci2.rxd" isUsedByDriver="true" peripheral="SCI2"/>
       <configSetting altId="sci2.txd.p302" configurationId="sci2.txd" isUsedByDriver="true" peripheral="SCI2"/>
+      <configSetting altId="usbfs0.vbus.p407" configurationId="usbfs0.vbus" isUsedByDriver="true" peripheral="USBFS0"/>
     </pincfg>
   </raPinConfiguration>
 </raConfiguration>

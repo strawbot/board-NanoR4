@@ -15,10 +15,9 @@
         void sci_uart_eri_isr(void);
         void rtc_carry_isr(void);
         void gpt_counter_overflow_isr(void);
-        void usbfs_interrupt_handler(void);
-        void usbfs_resume_handler(void);
-        void usbfs_d0fifo_handler(void);
-        void usbfs_d1fifo_handler(void);
+        void usbfs_int_isr(void); /* was usbfs_interrupt_handler — see vector_data.c */
+        /* usbfs_resume_handler/usbfs_d0fifo_handler/usbfs_d1fifo_handler removed
+         * along with their vector slots — see vector_data.c. */
         void iic_master_rxi_isr(void);
         void iic_master_txi_isr(void);
         void iic_master_tei_isr(void);
