@@ -155,4 +155,5 @@ void usart_transport_init(void) {
 
     when(EmitEvent, usart_emit);
     autoEchoOff();
+    namedAction(usart_rx_action);
 }
