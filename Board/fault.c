@@ -25,11 +25,14 @@
 //      VBTBKR[0..3] is the bootloader's double-tap magic - do not use it.
 //      This starts at byte offset 4, which the bootloader never touches.
 //
-//   2. Blinks 20 fast pulses, pauses, repeats — so a crash announces itself
-//      even with no console attached.
+//   2. Blinks 20 fast pulses, pauses, repeats for 3 cycles — so a crash
+//      announces itself even with no console attached — then resets the
+//      board so it can resume normal operation rather than hang forever.
 //
 // Setting VBTBER.VBAE first is what makes the stash survive; without it the
 // backup registers accept writes and read back correctly but retain nothing.
+// The stashed fault info survives the reset that follows, so it can still be
+// read out from the CLI after the board comes back up.
 //
 // Resolve a captured PC with:
 //     arm-none-eabi-addr2line -f -e .pio/build/nano_r4/firmware.elf <PC>
@@ -46,6 +49,7 @@ void fault_report(uint32_t *frame);   // called from the naked stubs below
 #define PRCR_PRC1_UNLOCK  0xA502U
 #define PRCR_LOCK         0xA500U
 #define VBTBER_VBAE       (1U << 3)
+#define FAULT_BLINK_CYCLES 3
 
 // Byte offset within VBTBKR[]. Offset 0 is the bootloader's magic.
 #define VBT_WORD(off)     (*(volatile uint32_t *) &R_SYSTEM->VBTBKR[(off)])
@@ -70,10 +74,12 @@ void fault_report(uint32_t *frame) {
 
     R_SYSTEM->PRCR = PRCR_LOCK;
 
-    for (;;) {
+    for (int cycle = 0; cycle < FAULT_BLINK_CYCLES; cycle++) {
         for (int i = 0; i < 20; i++) blink();
         for (volatile uint32_t w = 0; w < 8000000; w++) { __asm volatile ("nop"); }
     }
+
+    NVIC_SystemReset();
 }
 
 // Naked stubs: pick the stack the frame was pushed onto (MSP or PSP, per bit 2
