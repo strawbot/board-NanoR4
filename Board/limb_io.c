@@ -591,6 +591,11 @@ void limb_io_init(void) {
     in(msec(SWEEP_PERIOD_MS), sweep_tick);
 }
 
+void limb_io_shutdown(void) {
+    stop(sweep_tick);
+    stop(sweep_read);
+}
+
 void limb_io_pause_sweep(void) {
     // Cancel anything already scheduled, not just future ticks — a
     // paused-but-still-in-flight after() would still touch the bus.

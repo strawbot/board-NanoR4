@@ -130,7 +130,9 @@ void hal_entry(void)
     // limb_io_init() calls in() to arm its first sweep tick, so it must
     // come after init_tea() (unlike the peripheral opens above, which
     // don't touch the scheduler).
-    limb_io_init();
+
+    // disabled for running cli tests; look at cli enabler.
+    // limb_io_init();
 
     /* USB comes up LAST, immediately before the run loop, so the first USB
      * interrupt is serviced on the next scheduler pass rather than after a few

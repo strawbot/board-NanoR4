@@ -65,6 +65,9 @@ Words // system
 //	calibrate calibrate_muscle_wire // calibrate the muscle wire should take about 4s
 //	mw cli_set_muscle_wire // ( n ) set muscle wire to n% of its maximum
 //	pwm cli_pwm_pct // ( n ) set PWM duty to n% (0-100) directly, bypassing PI
+
+	limbon limb_io_init // start limb state machine
+	limboff limb_io_shutdown // stop limb state machine
 End
 
 Words // Nano FS (minimal ping-ponged-directory + append-log store on the RA4M1's 8K data flash)
