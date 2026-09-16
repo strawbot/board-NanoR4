@@ -91,9 +91,22 @@ void i2c1_init(void) {
 // rather than piling up into multi-hundred-millisecond freezes.
 #define I2C1_WAIT_TIMEOUT_US 2000U
 
-static bool i2c1_wait(void) {
+// i2c1_probe's own bound, tighter than I2C1_WAIT_TIMEOUT_US: a probe is
+// one byte with no retry, not a real multi-byte transaction, so it
+// doesn't need the same margin - and unlike i2c1_write/read, probe is
+// specifically the path that pays for every open/disconnected device on
+// the bus (limb_io's sweep_tick calls it once per limb per sweep to
+// avoid the full retry+recovery cost on hardware that likely isn't
+// there), so its worst case directly bounds how much an absent limb can
+// cost the cooperative scheduler. Still 5-10x the ~tens-of-microseconds
+// typical case, just not the ~20-40x margin i2c1_write/read carry - if a
+// real device turns out to need more than this under normal (non-stuck)
+// bus conditions, this is the number to loosen, not I2C1_WAIT_TIMEOUT_US.
+#define I2C1_PROBE_TIMEOUT_US 500U
+
+static bool i2c1_wait_timeout(Long timeout_us) {
     Long start = sysTicks();
-    Long limit = (Long)US_TO_SYS(I2C1_WAIT_TIMEOUT_US);
+    Long limit = (Long)US_TO_SYS(timeout_us);
     while (!g_i2c1_done) {
         if ((sysTicks() - start) > limit) {
             R_IIC_MASTER_Abort(&g_i2c1_ctrl);
@@ -101,6 +114,10 @@ static bool i2c1_wait(void) {
         }
     }
     return !g_i2c1_error;
+}
+
+static bool i2c1_wait(void) {
+    return i2c1_wait_timeout(I2C1_WAIT_TIMEOUT_US);
 }
 
 // On failure: bit-banged bus recovery, then reopen the FSP driver (Abort
@@ -153,5 +170,5 @@ bool i2c1_probe(uint8_t addr7) {
     if (FSP_SUCCESS != R_IIC_MASTER_Read(&g_i2c1_ctrl, &dummy, 1, false)) {
         return false;
     }
-    return i2c1_wait();
+    return i2c1_wait_timeout(I2C1_PROBE_TIMEOUT_US);
 }

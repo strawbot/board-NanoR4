@@ -84,7 +84,17 @@ static void advance_and_continue(void) {
             g_imu_fail++;
         }
         now(*limb_io_ready);
-        in(msec(SWEEP_PERIOD_MS), sweep_tick);
+        // after(), not in(): in() dispatches synchronously inside the
+        // GPT2 alarm ISR (see tea.c delta_alarm_handler/do_action - only
+        // after()-scheduled actions go through later() onto the
+        // cooperative queue). sweep_tick's whole body, including every
+        // I2C wait it does, was running at literal interrupt level once
+        // a sweep's 100ms gap elapsed - not genuinely time-critical
+        // (100ms sweep pacing has no hard deadline), so there was nothing
+        // buying its way onto the ISR path except this call. after() puts
+        // it back on the action queue where the rest of the sweep state
+        // machine already runs (see the later(sweep_tick) below).
+        after(msec(SWEEP_PERIOD_MS), sweep_tick);
         return;
     }
     later(sweep_tick);
@@ -148,6 +158,32 @@ static void sweep_tick(void) {
         g_sweep_step = SWEEP_STEPS_PER_LIMB - 1U;   // skip straight past this limb's steps
         advance_and_continue();
         return;
+    }
+    // Gated on step 0 only (once per limb per sweep, not once per
+    // channel). An open/disconnected limb is an ongoing, expected
+    // condition here, not just bring-up noise - including on the very
+    // first visit, before any fail history exists to back off on. The
+    // normal path below (ads1015_start_conversion -> i2c1_write) costs up
+    // to two ~2ms bounded spins plus bus recovery if the address never
+    // ACKs, which is exactly what happens on every single attempt against
+    // a limb that isn't there - including all of the ADC_FAIL_BACKOFF_-
+    // THRESHOLD attempts it takes just to notice and start backing off, so
+    // gating this on an already-established fail history missed the
+    // worst of it: mstats reports the max ever seen, and that first
+    // ramp-up spike sets it regardless of how cheap every later re-check
+    // becomes. i2c1_probe is the same one-attempt, no-retry, no-recovery
+    // primitive i2cscan uses for exactly this: cheap enough to run before
+    // every real conversion attempt, on every limb, unconditionally. Only
+    // once it ACKs - present from the start, or just plugged in - does
+    // this fall through to the real (and now warranted) conversion
+    // sequence.
+    if (g_sweep_step == 0U) {
+        if (!i2c1_probe(g_adc_addr[g_sweep_limb])) {
+            adc_note_fail(g_sweep_limb);
+            g_sweep_step = SWEEP_STEPS_PER_LIMB - 1U;
+            advance_and_continue();
+            return;
+        }
     }
     if (ads1015_start_conversion(g_adc_addr[g_sweep_limb], g_step_channel[g_sweep_step])) {
         g_sweep_poll_tries = 0U;
@@ -588,7 +624,7 @@ void limb_io_init(void) {
     namedAction(sweep_tick);
     g_sweep_limb = 0U;
     g_sweep_step = 0U;
-    in(msec(SWEEP_PERIOD_MS), sweep_tick);
+    after(msec(SWEEP_PERIOD_MS), sweep_tick);   // see advance_and_continue for why after(), not in()
 }
 
 void limb_io_shutdown(void) {

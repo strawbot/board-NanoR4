@@ -115,6 +115,14 @@ Long get_ticks(void) {
 
 // ── LED heartbeat ─────────────────────────────────────────────────────────
 // Yellow LED on P204. Double-blink: short-on · gap · short-on · long-gap.
+//
+// This is a liveness signal, not decoration: it conveys timeliness to
+// whoever is looking at the board. Exactly one double-flash per second is
+// the only correct output - a drifting rate, a missed flash, or an
+// uneven on-time IS the failure report, visible without a debugger or a
+// serial connection. That's why in() (true interrupt-level dispatch, see
+// below) is load-bearing here rather than an implementation detail to
+// optimize away.
 
 #define ON_TIME 2
 static inline void led_on (void) { R_IOPORT_PinWrite(&g_ioport_ctrl, LED_PIN, BSP_IO_LEVEL_HIGH); }
@@ -130,6 +138,22 @@ void blink_leds(void) {
     default:
     case SPACE2: led_off(); color = GREEN1; t = 800 - ON_TIME; break;
     }
+    // Deliberately in(), not after(): scheduler-queue jitter is exactly
+    // what this LED exists to make visible, so dispatching it through the
+    // cooperative queue would blind the one signal it's meant to carry.
+    // Switching this to after() was tried (it looked like the same
+    // "interrupt-level work that could be cooperative" pattern as
+    // limb_io.c's sweep_tick fix) and measurably regressed general CLI
+    // responsiveness instead - a plain pytest --transport=serial run with
+    // limbon not even engaged dropped from ~85 to 72 passed - because
+    // this reschedules as often as every ON_TIME=2ms during its short-on
+    // phase, up to ~500/sec, and routing that through later()/the queue
+    // added real system-wide cooperative-scheduler traffic. sweep_tick's
+    // after() change is unaffected by any of this: it only reschedules
+    // once per 100ms and only while limbon is engaged. In short: whether
+    // something belongs at interrupt level isn't only "is this
+    // time-critical", it's also "how often does this fire" and "is the
+    // timing itself the thing being measured" - this one is both.
     in(msec(t), blink_leds);
 }
 
