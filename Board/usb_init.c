@@ -95,6 +95,8 @@ void usb_trace(uint32_t checkpoint_id, uint32_t extra) {
 }
 
 // Checkpoint IDs, referenced from the patched TinyUSB files:
+//   0 = dcd_int_handler() entered -- EVERY ISR dispatch, extra = raw
+//       INTSTS0 before any clearing (dcd_rusb2.c)
 //   1 = process_set_address() entered (dcd_rusb2.c), extra = new address
 //   2 = process_set_address()'s synthetic dcd_event_setup_received() about
 //       to fire (dcd_rusb2.c)
@@ -244,7 +246,40 @@ void usb_cli_init_status(void) {
 // on every pass.  USB interrupts poke the RUSB2 driver; tud_task() drains
 // the resulting events and fires DFU callbacks.
 
+// Board patch: NVIC/ICU never re-delivers the USBFS interrupt past the
+// first two real entries (VBUS-attach, then Resume) -- confirmed
+// extensively live: INTSTS0 genuinely latches DVST/CTRT/SOFR for later
+// real bus events (device really reaches DVSQ=Address, a real SETUP
+// packet really arrives with VALID=1), yet NVIC ISPR0 and the ICU's own
+// IELSR[6].IR both read back 0 throughout -- no pending request ever
+// reaches the CPU for these. INTENB0 stays correctly 0xDD00, the vector
+// table correctly maps slot 6 to ELC_EVENT_USBFS_INT (0x33, matches
+// IELSR[6] exactly), NVIC's IABR0/ISER0 are clean, and nothing in this
+// codebase clears IELSR[6] except usbfs_int_isr() itself and the one-time
+// clear in usb_hw_reset() before tusb_init() even runs. The interrupt
+// REQUEST from the peripheral to the ICU for these later events is
+// genuinely not reaching the CPU, for reasons that need a working SWD
+// debugger or scope on the request line to pin down further (this
+// session's debugger attempts were abandoned -- see Docs/usb-handoff.md).
+//
+// Pragmatic fix: call tud_int_handler(0) directly from the scheduler,
+// exactly what usbfs_int_isr() would have done had the interrupt actually
+// fired. This drains and correctly dispatches ALL pending INTSTS0
+// conditions via the driver's own existing logic (DVST/DVSQ -> the
+// process_bus_reset/process_set_address switch already in dcd_int_handler,
+// CTRT -> process_setup_packet for a real GET_DESCRIPTOR etc., not just
+// the narrow SET_ADDRESS-only special case this replaces). Guarded with
+// dcd_int_disable/enable (NVIC_DisableIRQ/EnableIRQ under the hood) so a
+// genuine interrupt firing mid-call can't re-enter dcd_int_handler's
+// shared state concurrently, in the event NVIC delivery ever recovers.
+// See Docs/usb-handoff.md.
+extern void dcd_int_enable(uint8_t rhport);
+extern void dcd_int_disable(uint8_t rhport);
+
 static void usb_action(void) {
+    dcd_int_disable(0);
+    tud_int_handler(0);
+    dcd_int_enable(0);
     tud_task();
     later(usb_action);
 }

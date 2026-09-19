@@ -105,48 +105,78 @@ with the widened `usb_hw_reset()` settle delay from the open issue below.
 
 ---
 
-## Open issue: enumeration stalls at Address state
+## Bug #4 (found and fixed): NVIC never redelivers the USBFS interrupt
 
-With all three fixes above in place, the device reliably reaches USB
-Address state (`INTSTS0` = `0xA9`, i.e. `VBSTS`=1, `DVSQ`=2/`STATE_ADDR` —
-`SET_ADDRESS` completed) and then goes **completely silent**: `usbisr` stays
-flat (2-9 total fires for the whole reset→default→address sequence), no
-further interrupts ever fire, the host never retries anything. macOS shows
-the device only as a generic "USB Device" with a location ID — no
-vendor/product info, meaning the descriptor exchange the host needs never
-completes. `dfu-util -l` sees nothing.
+With the three fixes above in place, the device reliably reached USB
+Address state and then went **completely silent**: `usbisr` stuck flat at
+2 (VBUS-attach, then Resume — nothing else, ever), no further interrupts,
+host never retried anything, `dfu-util -l` saw nothing.
 
-**What's been ruled out:**
+Live register inspection (via the direct-serial CLI workflow, not a
+debugger — see "Debugging setup") eventually found the actual state:
+`INTSTS0` genuinely latches `DVST`/`CTRT`/`SOFR` for real, later bus
+events — the device really does reach `DVSQ`=Address, a real SETUP packet
+really does arrive with `VALID`=1 — but **NVIC never delivers an interrupt
+for any of it**. Checked and ruled out, all clean:
 
-- Not a hardware fault (`fault.c`'s marker at `0x4001E504` is never set
-  during this).
-- Not TinyUSB's OSAL-none event queue overflowing/blocking (confirmed
-  non-blocking, drops silently on overflow rather than hanging — and it
-  isn't overflowing anyway given the low interrupt counts).
-- Not the `usb_hw_reset()` module STOP/START settle delay (widened
-  1ms→20ms, no change — see "Debugging setup" for why that delay was
-  suspected).
-- RUSB2's `SET_ADDRESS` handling is architecturally unusual and worth
-  knowing before debugging further: `dcd_set_address()` in
-  `dcd_rusb2.c` is a no-op — the hardware auto-handles the status stage
-  and address latch itself. Once `DVSQ` autonomously reaches `STATE_ADDR`,
-  a `DVST` IRQ fires and `process_set_address()` (`dcd_rusb2.c:626`, a
-  small `static` function, likely inlined in release builds — break on
-  the enclosing `dcd_int_handler` instead if targeting it directly)
-  synthesizes a fake setup packet fed through `dcd_event_setup_received()`
-  purely to sync TinyUSB's internal `_usbd_dev.addressed` flag. That
-  fake event shares a counter (`_usbd_queued_setup` in `usbd.c`) with real
-  setup packets, and there's a `TU_ASSERT(_usbd_queued_setup > 0,)` at
-  `usbd.c:674` that silently drops the event (and everything downstream)
-  if that counter's ever inconsistent — a plausible next thing to break on,
-  though not yet confirmed as the cause.
+- `INTENB0` stays correctly `0xDD00` throughout.
+- The vector table correctly maps slot 6 to `ELC_EVENT_USBFS_INT` (`0x33`)
+  — confirmed against `IELSR[6]`, which reads exactly `0x33`.
+- NVIC's `ISER0` shows IRQ6 enabled; `ISPR0` (pending) and `IABR0` (active)
+  both read 0 — not stuck-pending, not stuck-active.
+- The ICU's own per-vector latch, `IELSR[6].IR`, reads 0 — nothing latched
+  at that level either.
+- Nothing in this codebase clears any of the above except
+  `usbfs_int_isr()` itself (on a real entry) and the one-time clear in
+  `usb_hw_reset()` before `tusb_init()` even runs.
 
-**Next step when picking this up:** a live debugger session stepping
-through `process_control_request`'s `TUSB_REQ_SET_ADDRESS` handling
-(`usbd.c:822`) forward from there, watching for whether the host's
-follow-up request (re-fetching the device descriptor at the new address)
-ever arrives at the hardware level at all, versus being received but
-mishandled by TinyUSB's internal state.
+In short: every software-visible configuration point is correct, and the
+interrupt *request* from the peripheral to the ICU for these later events
+genuinely isn't reaching the CPU. Pinning down why would need a working
+SWD debugger or a scope on the request line — this session's debugger
+attempts were abandoned (see "Debugging setup") in favor of a pragmatic
+fix.
+
+**Fix:** poll `tud_int_handler(0)` directly from the scheduler
+(`Board/usb_init.c`'s `usb_action()`), guarded by
+`dcd_int_disable(0)`/`dcd_int_enable(0)` so a real interrupt firing
+mid-call can't re-enter `dcd_int_handler`'s shared state concurrently, in
+case NVIC delivery ever recovers on its own:
+
+```c
+static void usb_action(void) {
+    dcd_int_disable(0);
+    tud_int_handler(0);
+    dcd_int_enable(0);
+    tud_task();
+    later(usb_action);
+}
+```
+
+This drains and dispatches whatever's pending in `INTSTS0` through the
+driver's own existing, correct logic — `DVST`/`DVSQ` through the
+`process_bus_reset`/`process_set_address` switch already in
+`dcd_int_handler`, `CTRT` through `process_setup_packet` for real control
+transfers — rather than the narrow SET_ADDRESS-only polling hack tried
+earlier in this investigation. `process_set_address()` (`dcd_rusb2.c`) is
+back to `static` and reached only through that normal dispatch; its one
+functional addition is an explicit `DCPCTR`=`PID_BUF` re-arm plus a
+`VALID`-bit clear, belt-and-suspenders in case usbd.c's own status-stage
+completion doesn't run for a request this hardware already answered
+autonomously at the wire level.
+
+Confirmed fixed: `usbfs_isr_count` climbs normally now (real BRDY/CTRT
+traffic), and the device fully enumerates — `dfu-util -l` reports
+`Found Runtime: [cafe:4003] ... name="TimbreOS DFU", serial="ActiveRobot"`,
+and `ioreg -p IOUSB -l` shows the complete device record (`idVendor` 51966
+= `0xCAFE`, `kUSBAddress` set, product/serial strings all read back
+correctly).
+
+**Still open:** why NVIC stops redelivering this specific interrupt after
+two real entries is unresolved. If CDC or another class needs tighter
+latency than scheduler-pass polling provides (the polling call runs once
+per `later()` cycle, not synchronously with bus events), revisit this with
+a working hardware debugger.
 
 ---
 
