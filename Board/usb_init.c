@@ -1,14 +1,16 @@
-// usb_init.c — TinyUSB task pump and DFU Runtime descriptor for Nano R4
+// usb_init.c — TinyUSB task pump and composite (DFU Runtime + CDC) descriptor
+// for Nano R4
 //
 // Hardware prerequisites (configured in RASC, NOT here):
-//   USBFS peripheral; USB_DM on PA11, USB_DP on PA12.
+//   USBFS peripheral; VBUS/D+/D- on P407/P914/P915 (see ra_gen/pin_data.c).
 //   USBFS_INT event wired to IRQ 6 in ra_gen/vector_data.h/.c.
 //
-// Composite evolution — this file is Phase 1 (DFU Runtime only).
-// When CDC + CDC-ECM are added in Phase 2:
-//   - Set CFG_TUD_CDC 1 and CFG_TUD_NCM 1 in tusb_config.h.
-//   - Extend the configuration descriptor to include the extra interfaces.
-//   - Add cli_transport_cdc.c (port from board-Discovery) for CLI over USB.
+// Composite evolution — this file is Phase 2 (DFU Runtime + CDC for the
+// CLI; Robot/cli/cli_transport_cdc.c has the board-agnostic CDC glue,
+// wired to the shared Robot/cli/cli_transport.c bridge exactly like this
+// board's own cli_transport_usart.c). CDC-ECM (Phase 3) still needs:
+//   - CFG_TUD_NCM 1 in tusb_config.h.
+//   - Extend the configuration descriptor with the NCM interfaces.
 //
 // DFU Runtime flow:
 //   $ dfu-util -l                      — lists device in Runtime mode
@@ -276,10 +278,23 @@ void usb_cli_init_status(void) {
 extern void dcd_int_enable(uint8_t rhport);
 extern void dcd_int_disable(uint8_t rhport);
 
+// Diagnostic only: `usbpoll` flips this so we can test, live, whether real
+// NVIC-delivered interrupts alone keep USB working once past whatever
+// initial condition stops NVIC from delivering them at boot -- without a
+// rebuild/reflash cycle for each try. See Docs/usb-handoff.md.
+static volatile bool usb_poll_enabled = true;
+
+void usb_cli_poll_toggle(void) {
+    usb_poll_enabled = !usb_poll_enabled;
+    print("usb scheduler poll: "); print(usb_poll_enabled ? "on" : "off"); printCr();
+}
+
 static void usb_action(void) {
-    dcd_int_disable(0);
-    tud_int_handler(0);
-    dcd_int_enable(0);
+    if (usb_poll_enabled) {
+        dcd_int_disable(0);
+        tud_int_handler(0);
+        dcd_int_enable(0);
+    }
     tud_task();
     later(usb_action);
 }
@@ -422,11 +437,22 @@ void tud_dfu_runtime_reboot_to_dfu_cb(void) {
 //
 // Sequence, in this order:
 //   1. START the module so its registers are writable at all.
-//   2. Drop DPRPU — the host sees a real detach and tears the old device down.
-//   3. Mask and clear every USB interrupt source, so nothing is left asserted
+//   2. Set SCKE and confirm it reads back 1 — the manual (27.2.1, Note 2)
+//      requires this before USBE may be changed at all; skipping it means
+//      step 4's USBE clear runs against SCKE in whatever state MSTP
+//      module-stop left it (0, the reset default), a documented
+//      sequencing violation. Every boot tested so far has been a DFU
+//      handoff, where SCKE was already 1 (inherited from the bootloader's
+//      own live USB session), which is almost certainly why this hasn't
+//      been observed to matter yet — a genuine cold boot is the
+//      untested case. Matches what TinyUSB's own dcd_init() and RASC's
+//      native r_usb_basic driver (hw_usb_pmodule_init()) both do
+//      explicitly. See Docs/usb-handoff.md.
+//   3. Drop DPRPU — the host sees a real detach and tears the old device down.
+//   4. Mask and clear every USB interrupt source, so nothing is left asserted
 //      to re-enter the ISR before tud_task() is running to service it.
-//   4. Clear USBE, then STOP the module — on RA this resets the block.
-//   5. START it again so TinyUSB inherits reset-default registers.
+//   5. Clear USBE, then STOP the module — on RA this resets the block.
+//   6. START it again so TinyUSB inherits reset-default registers.
 //
 // The delay after the detach matters: hosts need ~10 ms of SE0 to register a
 // disconnect. 20 ms was cheap insurance at boot; bumping it to 300 ms made
@@ -447,9 +473,13 @@ void tud_dfu_runtime_reboot_to_dfu_cb(void) {
 #define USB_DETACH_SETTLE_MS  300U
 #define USB_SYSCFG_USBE   (1U << 0)
 #define USB_SYSCFG_DPRPU  (1U << 4)
+#define USB_SYSCFG_SCKE   (1U << 10)
 
 static void usb_hw_reset(void) {
     R_BSP_MODULE_START(FSP_IP_USBFS, 0);
+
+    R_USB_FS0->SYSCFG |= USB_SYSCFG_SCKE;
+    while (!(R_USB_FS0->SYSCFG & USB_SYSCFG_SCKE)) {}
 
     bool was_attached = (R_USB_FS0->SYSCFG & USB_SYSCFG_DPRPU) != 0;
 
@@ -561,6 +591,19 @@ void usb_transport_init(void) {
     // Docs/usb-handoff.md.
     R_USB_FS0->USBMC |= R_USB_FS0_USBMC_VDCEN_Msk;
 
+    // Board patch: RASC's own generated config for this exact peripheral
+    // (g_basic0_cfg in ra_gen/hal_data.c, from the never-opened native
+    // r_usb_basic stack) sets IRQ priority 12 for the USB vector. Our
+    // hand-rolled TinyUSB integration never calls R_BSP_IrqCfgEnable() or
+    // NVIC_SetPriority() for it at all, leaving it at the NVIC register's
+    // reset value of 0 (highest priority) -- confirmed via a live IPR[6]
+    // read during this investigation. Matching RASC's own intended
+    // priority in case running the USB interrupt at the highest possible
+    // priority is itself contributing to the repeated wedging described
+    // in Docs/usb-handoff.md ("Interrupt delivery keeps wedging, not just
+    // once at boot") -- untested hypothesis, cheap and safe to try.
+    NVIC_SetPriority((IRQn_Type) 6, 12);
+
     later(usb_action);
     namedAction(usb_action);
 #else
@@ -580,26 +623,42 @@ enum {
     STRID_PRODUCT,
     STRID_SERIAL,
     STRID_DFU,
+    STRID_CDC,
 };
+
+// ── Endpoint addresses ────────────────────────────────────────────────────────
+//
+// DFU Runtime (interface 0) is control-transfer only, no endpoints of its
+// own. CDC (interfaces 1+2) gets a fresh notification + bulk pair; RUSB2
+// has 9 non-control pipes available, so there's no need to economize the
+// way board-Discovery does (it drops the notification endpoint to make
+// room for a second class).
+
+#define EP_CDC_NOTIF    0x81    // EP1 IN  — CDC line-state notifications
+#define EP_CDC_OUT      0x02    // EP2 OUT — CDC bulk data
+#define EP_CDC_IN       0x82    // EP2 IN  — CDC bulk data
 
 // ── Device descriptor ─────────────────────────────────────────────────────────
 //
-// Class 0/0/0: class defined at interface level.  Appropriate for a
-// DFU-Runtime-only device and leaves room for IAD when CDC is added later.
+// MISC/COMMON/IAD: required at the device level for CDC's own
+// control+data interface pair to be grouped by an Interface Association
+// Descriptor (TUD_CDC_DESCRIPTOR emits one automatically) — lets Windows
+// and macOS load a single composite driver without ambiguity. DFU Runtime
+// stays a single, ungrouped interface alongside it.
 
 static const tusb_desc_device_t device_desc = {
     .bLength            = sizeof(tusb_desc_device_t),
     .bDescriptorType    = TUSB_DESC_DEVICE,
     .bcdUSB             = 0x0200,
 
-    .bDeviceClass       = 0x00,
-    .bDeviceSubClass    = 0x00,
-    .bDeviceProtocol    = 0x00,
+    .bDeviceClass       = TUSB_CLASS_MISC,
+    .bDeviceSubClass    = MISC_SUBCLASS_COMMON,
+    .bDeviceProtocol    = MISC_PROTOCOL_IAD,
 
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
 
     .idVendor           = 0xCafe,
-    .idProduct          = 0x4003,   // distinct PID: Nano R4 DFU Runtime
+    .idProduct          = 0x4004,   // distinct PID: Nano R4 DFU Runtime + CDC
     .bcdDevice          = 0x0100,
 
     .iManufacturer      = STRID_MANUFACTURER,
@@ -615,7 +674,9 @@ uint8_t const *tud_descriptor_device_cb(void) {
 
 // ── Configuration descriptor ──────────────────────────────────────────────────
 //
-// 1 interface: DFU Runtime (no endpoints, control-transfer only)
+// 3 interfaces: DFU Runtime (0, no endpoints, control-transfer only), CDC
+// control (1) + CDC data (2) — TUD_CDC_DESCRIPTOR emits both from a single
+// itfnum plus the IAD grouping them.
 //
 // Attributes 0x0D:
 //   DFU_ATTR_WILL_DETACH       (0x08) — device resets on DETACH without host Reset
@@ -624,11 +685,12 @@ uint8_t const *tud_descriptor_device_cb(void) {
 //
 // xfer_size 4096 is advisory (the bootloader owns actual transfer sizing).
 
-#define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_DFU_RT_DESC_LEN)
+#define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_DFU_RT_DESC_LEN + TUD_CDC_DESC_LEN)
 
 static const uint8_t config_desc[] = {
-    TUD_CONFIG_DESCRIPTOR(1, 1, 0, CONFIG_TOTAL_LEN, 0x00, 100),
+    TUD_CONFIG_DESCRIPTOR(1, 3, 0, CONFIG_TOTAL_LEN, 0x00, 100),
     TUD_DFU_RT_DESCRIPTOR(0, STRID_DFU, 0x0D, 1000, 4096),
+    TUD_CDC_DESCRIPTOR(1, STRID_CDC, EP_CDC_NOTIF, 8, EP_CDC_OUT, EP_CDC_IN, 64),
 };
 
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
@@ -644,6 +706,7 @@ static const char *const string_desc_arr[] = {
     "ActiveRobot",                   // 2: product
     "ActiveRobot",                   // 3: serial → /dev/cu.usbmodemActiveRobot1 on macOS
     "TimbreOS DFU",                  // 4: DFU Runtime interface
+    "TimbreOS CDC",                  // 5: CDC interface
 };
 
 uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {

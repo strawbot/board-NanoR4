@@ -48,6 +48,9 @@ Words // system
 	usbinit usb_cli_init_status // print whether tusb_init() succeeded and INTENB0 right after it returned
 	usbcrash usb_cli_crash_snapshot // print ISR count/INTSTS0:INTENB0/emitq depth captured before the last hang, if any
 	usbtrace usb_cli_trace_dump // dump the SET_ADDRESS/enumeration checkpoint log
+	usbpoll usb_cli_poll_toggle // diagnostic: flip whether usb_action() polls tud_int_handler() directly
+	nusbisr usb_native_cli_isr_count // native-stack smoke test: how many times usbfs_interrupt_handler has fired
+	nusbevt usb_native_cli_event_count // native-stack smoke test: app-callback fire count and last usb_status_t event
 	adc@ cli_adc_read // ( - mv ) read AN00 (P000) and push millivolts (0-5000) onto stack
 	limbio limb_io_cli_status // show all 16 ADC/DAC channels, IMU, per-limb I2C health
 	limbio! limb_io_cli_dac_set // (code ch) write raw 12-bit code (0-4095) to DAC channel ch (0-15)

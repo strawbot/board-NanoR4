@@ -29,12 +29,17 @@
 // ── Class drivers ─────────────────────────────────────────────────────────────
 //
 // Phase 1: DFU Runtime only.
-// Phase 2: add CFG_TUD_CDC 1 and CFG_TUD_NCM 1 for composite CDC+ECM.
+// Phase 2 (current): CDC ACM for the CLI, alongside DFU Runtime.
+// Phase 3: add CFG_TUD_NCM 1 for composite CDC+ECM.
 
 #define CFG_TUD_DFU_RUNTIME         1       // DFU Runtime — host can trigger bootloader entry
 #define CFG_TUD_DFU                 0
 
-#define CFG_TUD_CDC                 0
+#define CFG_TUD_CDC                 1       // CDC ACM for the CLI, mirrors the UART transport
+#define CFG_TUD_CDC_RX_BUFSIZE      256     // RX FIFO — characters from host
+#define CFG_TUD_CDC_TX_BUFSIZE      256     // TX FIFO — characters to host
+#define CFG_TUD_CDC_EP_BUFSIZE      64      // USB packet size
+
 #define CFG_TUD_MSC                 0
 #define CFG_TUD_HID                 0
 #define CFG_TUD_MIDI                0

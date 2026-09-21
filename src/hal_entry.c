@@ -6,6 +6,7 @@
 #include "clocks.h"
 #include "cli_transport_usart.h"
 #include "usb_init.h"
+#include "usb_native_test.h"
 #include "canary.h"
 #include "board_cli.h"
 #include "i2c1.h"
@@ -143,8 +144,17 @@ void hal_entry(void)
      * performs the USBFS hardware reset and returns. That reset is required: the
      * bootloader hands over without detaching from the bus, so after a DFU
      * download USBFS is still live and the host still attached.
-     * See Docs/usb-handoff.md. */
+     * See Docs/usb-handoff.md.
+     *
+     * env:nano_r4_usbtest swaps this for usb_native_test_init(), which
+     * opens RASC's native r_usb_basic + r_usb_pcdc stack instead — a smoke
+     * test for whether the native driver's interrupt path is more reliable
+     * than TinyUSB's. See Docs/usb-handoff.md, "Native stack smoke test". */
+#ifdef USE_NATIVE_USB_STACK
+    usb_native_test_init();
+#else
     usb_transport_init();
+#endif
 
     while (1) {
         run();

@@ -5,6 +5,8 @@
 #include "timeout.h"
 #include "printers.h"
 
+#include "cli_transport.h"
+
 #include <reent.h>
 #include <sys/types.h>
 #include <stddef.h>
@@ -13,7 +15,10 @@ void system_failure(Long reason) { while (true); }
 
 static Long dropped_chars = 0;
 
-void show_cli() { print("\nDropped chars: "), printDec(dropped_chars); }
+void show_cli() {
+    print("\nDropped chars: ");    printDec(dropped_chars);           printCr();
+    print("Active transport: ");   print(cli_transport_active_name()); printCr();
+}
 
 void output() {
     Timeout box;

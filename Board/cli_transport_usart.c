@@ -30,7 +30,7 @@
 static void usart_rx_action(void);
 static void usart_emit(void);
 
-static const cli_transport_hw_t usart_hw = { .emit = usart_emit };
+static const cli_transport_hw_t usart_hw = { .emit = usart_emit, .name = "uart" };
 
 // ── CLI input queue — filled by cli_rxtx callback, consumed by usart_rx_action
 static BQUEUE(100, cliq);

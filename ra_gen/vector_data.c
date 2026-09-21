@@ -10,6 +10,13 @@
             [3] = sci_uart_eri_isr, /* SCI2 ERI (Receive error) */
             [4] = rtc_carry_isr, /* RTC CARRY (Carry interrupt) */
             [5] = gpt_counter_overflow_isr, /* GPT2 COUNTER OVERFLOW (Overflow) */
+#ifdef USE_NATIVE_USB_STACK
+            [6] = usbfs_native_isr, /* USBFS INT — native r_usb_basic smoke test build only
+                                        (env:nano_r4_usbtest). Wraps r_usb_basic's own
+                                        usbfs_interrupt_handler with an ISR-fire counter,
+                                        Board/usb_native_test.c. See Docs/usb-handoff.md,
+                                        "Native stack smoke test". */
+#else
             [6] = usbfs_int_isr, /* USBFS INT (USBFS interrupt) — was usbfs_interrupt_handler
                                      (r_usb_basic's own ISR, from the dead native USB stack
                                      still configured in RASC's Stacks tab); that was silently
@@ -17,6 +24,7 @@
                                      (Board/usb_init.c). Regenerating from RASC will put this
                                      back unless that dead stack is also removed there — see
                                      Docs/usb-handoff.md. */
+#endif
             /* [7]/[8]/[9] (USBFS RESUME / FIFO0 / FIFO1) removed: those are
              * r_usb_basic-only interrupt lines (excluded from the build, see
              * platformio.ini) that TinyUSB's RUSB2 port doesn't use — it

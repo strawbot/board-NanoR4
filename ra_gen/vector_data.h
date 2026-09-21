@@ -15,7 +15,11 @@
         void sci_uart_eri_isr(void);
         void rtc_carry_isr(void);
         void gpt_counter_overflow_isr(void);
+#ifdef USE_NATIVE_USB_STACK
+        void usbfs_native_isr(void); /* env:nano_r4_usbtest only — see vector_data.c */
+#else
         void usbfs_int_isr(void); /* was usbfs_interrupt_handler — see vector_data.c */
+#endif
         /* usbfs_resume_handler/usbfs_d0fifo_handler/usbfs_d1fifo_handler removed
          * along with their vector slots — see vector_data.c. */
         void iic_master_rxi_isr(void);

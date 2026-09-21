@@ -1,11 +1,16 @@
 # USB device stack — handoff
 
-**Status: enabled, mostly working, one open issue.** `USB_TRANSPORT_ENABLE` is
-`1` in `Board/usb_init.c`. The board-hanging interrupt storm that made this
-`0` for a long time is fixed and confirmed stable across many tests. What's
-left: the device reaches USB Address state cleanly and then goes silent —
-enumeration never completes, so nothing shows up as a named device on the
-host. See "Open issue" below before picking this back up.
+**Status: enumerating and working, root cause still open.** `USB_TRANSPORT_ENABLE`
+is `1` in `Board/usb_init.c`. The device fully enumerates (DFU Runtime + CDC
+composite, see bug #4 below) and the CLI is confirmed working over both
+UART and USB CDC, auto-switching output to whichever last sent input (see
+"CDC bring-up (Phase 2)"). The scheduler-poll workaround in bug #4 is
+confirmed to be genuinely load-bearing, not just a startup crutch — see
+"Interrupt delivery keeps wedging, not just once" — and a native-stack
+smoke test (below) found RASC's own `r_usb_basic` driver hits what looks
+like the same wall, which points away from this being a TinyUSB-integration
+bug specifically. See "Native stack smoke test" before assuming a stack
+switch would help.
 
 This note has been rewritten from scratch after a long debugging session
 that found and fixed three separate, real bugs. The original version's
@@ -178,6 +183,201 @@ latency than scheduler-pass polling provides (the polling call runs once
 per `later()` cycle, not synchronously with bus events), revisit this with
 a working hardware debugger.
 
+### Interrupt delivery keeps wedging, not just once at boot
+
+Live experiment (via a diagnostic `usbpoll` CLI word that flips whether
+`usb_action()` calls `tud_int_handler()` at all, added temporarily to test
+this — see `Board/usb_init.c`): with polling switched off mid-session,
+`usbfs_isr_count` climbed on its own (real NVIC-delivered interrupts), but
+the very next CDC command got no response and the count went flat again —
+wedged a second time. Switching polling back on immediately un-wedged it.
+
+So the earlier framing ("stuck forever after the first 2 events") was
+incomplete: it's not a one-time startup problem, it's a **recurring**
+stall that the scheduler poll has to keep clearing, for the life of the
+board. The poll is not a bootstrap crutch that becomes unnecessary once
+past enumeration — it is continuously load-bearing.
+
+### SCKE/USBE ordering fixed (real bug, likely not the cause of the above)
+
+Diffing our hand-rolled bring-up against RASC's native `r_usb_basic` driver
+(`hw_usb_pmodule_init()`, `ra/fsp/src/r_usb_basic/src/hw/r_usb_preg_access.c`)
+found `usb_hw_reset()` (`Board/usb_init.c`) clearing `SYSCFG.USBE` before
+`SYSCFG.SCKE` (USB clock enable) had ever been set this boot — the manual
+(27.2.1, Note 2) requires SCKE=1 before USBE may be changed at all. Fixed:
+`usb_hw_reset()` now sets and confirms SCKE right after
+`R_BSP_MODULE_START()`, before touching anything else in `SYSCFG`, matching
+both the native driver and TinyUSB's own `dcd_init()`.
+
+Caveat: every boot tested this session has been a DFU handoff (bootloader
+→ app), where SCKE was almost certainly already 1 (inherited from the
+bootloader's own live USB session) — so this bug likely hasn't been in
+effect in anything actually tested here. A genuine cold power-on boot is
+the untested case it would matter for. Worth having fixed regardless (it's
+a documented sequencing violation), but it did not change the wedging
+behavior above, tested only via DFU-handoff boots.
+
+Also found via the same diff: RASC's generated `g_basic0_cfg`
+(`ra_gen/hal_data.c`) configures IRQ priority **12** for the USB vector
+(`.ipl = 12`); our TinyUSB integration never calls `R_BSP_IrqCfgEnable()`
+or `NVIC_SetPriority()` for it at all, leaving it at the register's reset
+value of 0 (highest priority).
+
+**Tried and ruled out:** added `NVIC_SetPriority((IRQn_Type) 6, 12)` in
+`usb_transport_init()` (`Board/usb_init.c`), right after the VDCEN fix,
+matching RASC's intended priority exactly (confirmed live: `IPR[6]` reads
+`0xC0`, i.e. `12 << 4`, matching the other FSP-managed peripherals' own
+`0xC0` priority). Re-ran the same `usbpoll`-off wedge test: ISR count
+still climbed a few entries (58→62) then flat-lined, CDC still got no
+response, and re-enabling polling still immediately un-wedged it —
+identical behavior to before the fix. Priority was not the cause. Left the
+fix in place anyway (it's still correct — matches RASC's own intended
+config, and running the USB interrupt at the highest possible NVIC
+priority for no reason was never intentional), but it does not explain or
+fix the wedging.
+
+### Native stack smoke test
+
+Question: does RASC's native `r_usb_basic` + `r_usb_pcdc` driver have the
+same interrupt-delivery problem, or is it specific to our TinyUSB
+integration? Set up a standalone `[env:nano_r4_usbtest]` PlatformIO
+environment (`platformio.ini`) that swaps TinyUSB for the native stack via
+`-D USE_NATIVE_USB_STACK`:
+
+- `Board/usb_native_test.c`/`.h` — opens `g_basic0`-equivalent config
+  (RASC had already generated `g_basic0_cfg` in `ra_gen/hal_data.c` for
+  `USB_CLASS_PCDC`, just never called `R_USB_Open()` against it), with a
+  thin ISR wrapper (`usbfs_native_isr`, mirroring `usb_init.c`'s
+  `usbfs_int_isr`) counting real interrupt entries, and an app callback
+  counting state-transition events (`USB_STATUS_POWERED`/`DEFAULT`/
+  `ADDRESS`/`CONFIGURED`/...).
+- `Board/usb_native_test_descriptor.c` — RASC's own
+  `r_usb_pcdc_descriptor.c.template`, never previously instantiated,
+  copied in with a distinct VID/PID (`0xCafe`/`0x4005`).
+- `Board/usb_init_stubs.c` — stand-ins for `usb_init.c`'s CLI words
+  (`boardwords.txt` is shared between both environments) and for
+  `tud_dfu_runtime_reboot_to_dfu_cb` (the `dfu` CLI word), so this
+  environment can still be reflashed via `dfu-util` without a physical
+  double-tap reset.
+- `ra_gen/vector_data.c`/`.h` — vector slot 6 conditionally wired to
+  `usbfs_native_isr` instead of `usbfs_int_isr`.
+
+Needed the same `USBMC.VDCEN` fix TinyUSB's build needed (not set by
+`R_USB_Open()` any more than by TinyUSB's `dcd_init()`) before the native
+stack generated any interrupt activity at all — confirming VDCEN really is
+a board-level requirement, not something specific to either stack.
+
+**Result:** with VDCEN set, `usbfs_interrupt_handler` (the native ISR) fired
+in the same bursty, plateauing pattern TinyUSB showed (8 → 11 → *flat* → 14
+→ *flat*, sampled once a second) — not a clean, continuously-climbing
+count. The application callback (`p_usb_apl_callback`) never fired even
+once across multiple boots, despite over a dozen real ISR entries — the
+native driver's own internal state machine never reached even
+`USB_STATUS_POWERED`. The host never saw the device at all (no new
+`/dev/cu.usbmodem*`, nothing in `ioreg`/`dfu-util -l`).
+
+This is evidence **against** the bug being specific to our TinyUSB
+integration: two independently-written driver stacks, sharing only the
+silicon, the board bring-up (pins, clocks, VDCEN), and the physical
+USB connection, both show the same bursty/wedging interrupt behavior and
+both fail to reach host-visible enumeration reliably. That points at
+something more fundamental — signal integrity on the physical D+/D-/VBUS
+connection, a clock configuration issue upstream of both stacks, or a
+genuine RA4M1 erratum — rather than a fixable defect in either driver's
+software. **Do not expect switching to the native stack to solve this** on
+its own; the smoke test's own descriptor/glue is minimal, so it can't rule
+out a native-side bug in what wasn't exercised (real host requests beyond
+initial attach), but the ISR-level wedging is directly comparable and
+matches.
+
+Restored to the working TinyUSB build (`env:nano_r4`) after this test —
+the `env:nano_r4_usbtest` environment is left in the tree for whoever picks
+this up next, in case a hardware-level investigation (scope/logic analyzer
+on D+/D-/VBUS, or a genuine cold power-on boot rather than only
+DFU-handoff boots) is the next real step.
+
+### Scope investigation: D+/D-/VBUS look electrically healthy
+
+Followed up on "scope/logic analyzer on D+/D-/VBUS" above using a Digilent
+Analog Discovery 3 (2 analog channels on D+/D-, one digital channel on
+VBUS), probed inline via a USB-C breakout with common ground. Two short
+captures (triggered on a D+/D- edge, ~2 MS/s, a few ms to tens of ms
+window — see "Scripting the scope" below for how) around a board reboot
+found:
+
+- **Idle levels are clean and correct**: D+ sits at a stable ~3.3V, D- at
+  ~0V, both before and after the reboot event — proper USB Full-Speed idle
+  "J" state, no marginal/drooping voltage that would suggest a flaky
+  connector, bad solder joint, or underdriven pull-up.
+- **Real packet-like activity is visible right at the event**: two bursts
+  of rapid, aliased transitions (the scope's ~2 MS/s can't resolve
+  individual 12 Mbit/s NRZI bits, so real data shows as chaotic
+  intermediate voltages rather than clean edges) about 125 µs apart,
+  consistent with a genuine token/data exchange on the wire, with a clean
+  return to idle afterward.
+- **Could not get a long enough capture to see the repeated wedge/recovery
+  pattern**: WaveForms' Record mode, on this device, capped every attempt
+  (scripted or manual, analog+digital or analog-only) at ~1.5 ms regardless
+  of the configured duration/rate — a real constraint in this device/mode
+  combination, not a scripting mistake. Confirming whether a *second*
+  reset/retry cycle correlates with the firmware-side wedging above would
+  need either a different capture strategy (e.g. an external trigger pulse
+  from a spare GPIO at the moment `usbfs_int_isr` fires, single-shot
+  triggered on that instead of free-running Record) or different
+  instrumentation entirely (dedicated USB protocol analyzer).
+
+Net effect: no electrical/signal-integrity red flags found in what we could
+capture, which is mild further evidence (not proof) that this is a
+software/interrupt-delivery problem rather than a hardware one — consistent
+with the native-stack finding above.
+
+### Scripting the scope (WaveForms, for next time)
+
+WaveForms has a real, documented JavaScript scripting engine built into the
+app itself (Instruments menu → Script; `Contents/Resources/digilent/
+waveforms/doc/script.html` in the app bundle has the API reference).
+Running scripts through it — rather than Digilent's separate DWF SDK
+(`Contents/Frameworks/dwf.framework`, with Python/C#/VB samples under
+`Contents/Resources/SDK/samples/`) called from an external process — matters
+on macOS specifically: the device requires a DriverKit USB transport
+entitlement (`com.apple.developer.driverkit.transport.usb`) that only a
+properly signed, entitled app (WaveForms.app itself) can obtain. An
+external script (Python via `ctypes`, or the SDK's own `dwfcmd` CLI tool)
+loading the same library gets `FDwfEnum` returning 0 devices no matter how
+many times the cable is replugged — not a timing issue, a hard platform
+restriction. The in-app Script tool sidesteps this entirely since it runs
+inside the already-entitled process.
+
+Gotchas hit getting a script working, for next time:
+
+- **Property names don't always match the docs' shorthand.** `.DigitalChannels`
+  needs the actual DIO number as the child property (`Scope1.DigitalChannels.DIO6`,
+  not `.channel6`) — found via the Script tool's **Picker** (hover the GUI
+  element, press a key, it inserts the real property path). Picker is the
+  reliable way to resolve any property-name mismatch; guessing from the doc
+  text alone got this one wrong.
+- **Config changes need an explicit `.config()` to take effect before
+  dependent child objects exist** — e.g. `Scope1.DigitalChannels` is
+  `undefined` until *after* `Scope1.Digital.checked = true; Scope1.config();`
+  has actually run, not just been assigned.
+- **`Time.Base` is time-*per-division*, not total span**, and only accepts
+  values from `Scope1.Time.Base.preset`'s list (e.g. `"100 ms/div"`) — an
+  arbitrary number or an unlisted value is silently ignored, keeping
+  whatever the previous setting was. Print `.preset` before guessing a
+  value.
+- **macOS's per-folder privacy protection (Desktop/Documents/Downloads)
+  blocks Terminal-level file reads even after `Scope1.Export()` succeeds.**
+  Export directly to a path outside those protected folders (e.g. the
+  project directory) to avoid it entirely.
+- **10x probes need WaveForms' probe-attenuation setting to actually say
+  10x** — left at the default 1x, every voltage reading is 10x too low
+  (e.g. a real 3.3V line reads as ~0.33V), which looks exactly like a
+  hardware signal problem until you notice it's a probe setting.
+- **Record mode capped at ~1.5 ms** in this device/channel configuration no
+  matter what duration or rate was requested (scripted or via the GUI
+  directly) — a real constraint on this hardware/software combination worth
+  knowing about before planning a long capture around it.
+
 ---
 
 ## Retracted: the original "output() masks interrupts" theory
@@ -198,6 +398,53 @@ consistent with bug #3 above (the ICU latch storm) — a real, fast,
 CPU-monopolizing storm produces the same "no console, no LED, no fault"
 symptom the original investigation saw, without needing an interrupt-masked
 deadlock to explain it.
+
+---
+
+## CDC bring-up (Phase 2)
+
+With enumeration fixed (bug #4), added CDC ACM alongside DFU Runtime so
+the CLI is available over USB, duplicating the existing UART transport.
+
+- `Board/tusb_config.h`: `CFG_TUD_CDC 1`, 256-byte RX/TX FIFOs, 64-byte
+  USB packet size.
+- `Board/usb_init.c`: device class changed to MISC/COMMON/IAD (`0xEF`/
+  `0x02`/`0x01`) so CDC's control+data interface pair gets a proper IAD
+  grouping for Windows/macOS composite-driver loading; PID bumped to
+  `0x4004` (new interface set, avoid host driver-cache confusion); config
+  descriptor now declares 3 interfaces (0 = DFU Runtime, 1+2 = CDC via
+  `TUD_CDC_DESCRIPTOR`); fresh endpoints `EP_CDC_NOTIF`/`OUT`/`IN`
+  (`0x81`/`0x02`/`0x82` — RUSB2 has 9 non-control pipes, no need to drop
+  the notification endpoint the way board-Discovery does for its
+  CDC+NCM combo).
+- `platformio.ini`: added `tinyusb/src/class/cdc/cdc_device.c` to the
+  explicit TinyUSB file list (linker fails with undefined `cdcd_*`
+  references without it — `usbd.c`'s driver table references the CDC
+  class driver unconditionally once `CFG_TUD_CDC` is set).
+- `Robot/cli/cli_transport_cdc.c` (new, board-agnostic — talks only to
+  `tud_cdc_*` and the existing `Robot/cli/cli_transport.c` bridge, no
+  board registers): ported from `board-Discovery/Board/cli_transport_cdc.c`
+  but adapted to route received bytes through `cli_transport_rx_byte()`
+  instead of calling `keyIn()`/`when(EmitEvent, ...)` directly, matching
+  the pattern this board's own `cli_transport_usart.c` already
+  established. Per this board's `CLAUDE.md` ("factor into Robot/ first,
+  then adopt it here"), this lives in `Robot/cli/` rather than as a
+  Nano-local file, since the TinyUSB CDC glue itself has no
+  board-specific content — `board-Discovery` was not migrated to it in
+  this pass (out of scope, untested here), so it still has its own local
+  copy.
+
+Confirmed working: `dfu-util -l` and `ioreg` both show the composite
+device (`cafe:4004`, DFU Runtime + CDC); a new `/dev/cu.usbmodemActiveRobot*`
+port appears; the CLI responds correctly over it (`show-sys`, `usbisr`
+etc. tested); and the auto-switch-to-last-transport mechanism (already
+implemented in `Robot/cli/cli_transport.c`, unchanged here) correctly
+routes each reply back through whichever of UART/CDC most recently sent a
+byte — verified by ping-ponging commands between both ports in the same
+session.
+
+**Not done:** CDC-ECM (Phase 3, IP over USB) — still needs `CFG_TUD_NCM 1`
+and the NCM interface descriptors, deferred per the original plan.
 
 ---
 
