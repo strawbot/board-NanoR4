@@ -13,6 +13,12 @@
 
 void system_failure(Long reason) { while (true); }
 
+// newlib's setjmp.o (used by cli.c stack-fault recovery) carries an EHABI
+// unwind entry naming this personality routine. Without a local definition
+// the linker pulls libgcc's C++ unwinder -> abort -> raise -> _kill/_getpid
+// (~3.5KB dead code plus "not implemented" warnings). Pure C never unwinds.
+void __aeabi_unwind_cpp_pr0(void) { system_failure(0); }
+
 static Long dropped_chars = 0;
 
 void show_cli() {
