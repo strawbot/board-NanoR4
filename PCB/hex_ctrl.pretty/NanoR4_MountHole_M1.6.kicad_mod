@@ -1,0 +1,84 @@
+(footprint "NanoR4_MountHole_M1.6"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "Unplated 1.7 mm hole matching an Arduino Nano R4 1.65 mm corner hole; M1.6 screw or alignment pin. F.CrtYd covers an M1.6 screw head.")
+	(property "Reference" "REF**"
+		(at 0 -2.4 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "a0dd7ab1-bbd3-48d0-aea0-cdd2c234f6eb")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Value" "NanoR4_MountHole_M1.6"
+		(at 0 2.4 0)
+		(layer "F.Fab")
+		(uuid "3ea72bfb-0bb5-43af-bb58-2d4c8d1a5a0d")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "2907dd2a-c13e-43fa-9dea-5108f5116709")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Description" "Unplated 1.7 mm hole matching an Arduino Nano R4 1.65 mm corner hole; M1.6 screw or alignment pin. F.CrtYd covers an M1.6 screw head."
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "11fad980-3fff-4cc1-829d-5dd1d83a4729")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(attr exclude_from_pos_files exclude_from_bom)
+	(pad "" np_thru_hole circle
+		(at 0 0)
+		(size 1.7 1.7)
+		(drill 1.7)
+		(layers "*.Cu" "*.Mask")
+		(uuid "1e59d664-41fa-4849-82a0-cdb469bdaca3")
+	)
+	(fp_circle
+		(center 0 0)
+		(end 1.7 0)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "62c253c3-43de-4e47-b089-047948b3dd89")
+	)
+	(fp_circle
+		(center 0 0)
+		(end 1.6 0)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "6e096166-b453-4264-b397-d412f8c6cdb4")
+	)
+)

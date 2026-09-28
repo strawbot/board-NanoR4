@@ -1,0 +1,92 @@
+
+(rules PCB hex_ctrl
+  (snap_angle 
+    fortyfive_degree
+  )
+  (autoroute_settings
+    (fanout off)
+    (autoroute on)
+    (postroute on)
+    (vias on)
+    (via_costs 50)
+    (plane_via_costs 5)
+    (start_ripup_costs 100)
+    (start_pass_no 4)
+    (layer_rule F.Cu
+      (active on)
+      (preferred_direction vertical)
+      (preferred_direction_trace_costs 1.0)
+      (against_preferred_direction_trace_costs 2.1)
+    )
+    (layer_rule B.Cu
+      (active on)
+      (preferred_direction horizontal)
+      (preferred_direction_trace_costs 1.0)
+      (against_preferred_direction_trace_costs 1.9)
+    )
+  )
+  (rule
+    (width 200.0)
+    (clearance 200.0)
+    (clearance 100.0 (type smd_to_turn_gap))
+    (clearance 50.0 (type smd))
+    (clearance 200.0 (type "kicad_default"))
+  )
+  (padstack "Via[0-1]_600:300_um"
+    (shape
+      (circle F.Cu 600.0 0.0 0.0)
+    )
+    (shape
+      (circle B.Cu 600.0 0.0 0.0)
+    )
+    (attach off)
+  )
+  (via 
+    "Via[0-1]_600:300_um" "Via[0-1]_600:300_um" default
+  )
+  (via 
+    "Via[0-1]_600:300_um-kicad_default" "Via[0-1]_600:300_um" "kicad_default"
+  )
+  (via_rule
+    default "Via[0-1]_600:300_um"
+  )
+  (via_rule
+    "kicad_default" "Via[0-1]_600:300_um-kicad_default"
+  )
+  (class default
+    (clearance_class default)
+    (via_rule default)
+    (rule
+      (width 200.0)
+    )
+    (circuit 
+      (use_layer F.Cu B.Cu)
+    )
+  )
+  (class "kicad_default"
+    "unconnected-(A1-A4-Pad23)" "unconnected-(A1-D8-Pad11)" "SCK_MCU" "unconnected-(A1-D7-Pad10)" "unconnected-(A1-A5-Pad24)" "ISNS_C" "unconnected-(A1-D12-Pad15)" "unconnected-(A1-D2-Pad5)"
+    "unconnected-(A1-3V3-Pad17)" "ISNS_B" "ISNS_A" "unconnected-(A1-A6-Pad25)" "unconnected-(A1-D1{slash}TX-Pad1)" "unconnected-(A1-D4-Pad7)" SER "unconnected-(A1-D0{slash}RX-Pad2)"
+    "unconnected-(A1-D10-Pad13)" "RCLK_MCU" GND +10V "unconnected-(A1-~{RESET}-Pad3)" "unconnected-(A1-D3-Pad6)" "unconnected-(A1-A7-Pad26)" "VIN_S"
+    KA "unconnected-(A1-D5-Pad8)" +5V "unconnected-(A1-~{RESET}-Pad28)" "unconnected-(A1-AREF-Pad18)" /logic/KX /logic/KY "/imu/VDD_IMU"
+    "/group_A/limb_a/W1" "/group_A/limb_a/W2" "/group_A/limb_a/W3" "/group_A/limb_a/W4" "/group_A/limb_b/W1" "/group_A/limb_b/W2" "/group_A/limb_b/W3" "/group_A/limb_b/W4"
+    "/group_B/limb_a/W1" "/group_B/limb_a/W2" "/group_B/limb_a/W3" "/group_B/limb_a/W4" "/group_B/limb_b/W1" "/group_B/limb_b/W2" "/group_B/limb_b/W3" "/group_B/limb_b/W4"
+    "/group_C/limb_a/W1" "/group_C/limb_a/W2" "/group_C/limb_a/W3" "/group_C/limb_a/W4" "/group_C/limb_b/W1" "/group_C/limb_b/W2" "/group_C/limb_b/W3" "/group_C/limb_b/W4"
+    "/power/VIN_RAW" /power/PG +3V3 /imu/SCL /imu/SDA "/logic/OE_N" "/group_A/SRC" "Net-(Q101-G)"
+    "Net-(Q102-G)" "Net-(Q103-G)" "Net-(Q104-G)" "Net-(Q201-G)" "Net-(Q202-G)" "Net-(Q203-G)" "Net-(Q204-G)" "Net-(Q301-G)"
+    "/group_B/SRC" "Net-(Q302-G)" "Net-(Q303-G)" "Net-(Q304-G)" "Net-(Q401-G)" "Net-(Q402-G)" "Net-(Q403-G)" "Net-(Q404-G)"
+    "/group_C/SRC" "Net-(Q501-G)" "Net-(Q502-G)" "Net-(Q503-G)" "Net-(Q504-G)" "Net-(Q601-G)" "Net-(Q602-G)" "Net-(Q603-G)"
+    "Net-(Q604-G)" "G_A1" "G_A2" "G_A3" "G_A4" "G_A5" "G_A6" "G_A7"
+    "G_A8" "G_B1" "G_B2" "G_B3" "G_B4" "G_B5" "G_B6" "G_B7"
+    "G_B8" "G_C1" "G_C2" "G_C3" "G_C4" "G_C5" "G_C6" "G_C7"
+    "G_C8" /logic/SCK /logic/RCLK "/imu/IMU_INT" /logic/SR1 /logic/SR2 "unconnected-(U1103-QH'-Pad9)" "unconnected-(U1201-INT2{slash}FSYNC-Pad9)"
+    "unconnected-(U1201-RESV-Pad2)" "unconnected-(U1201-RESV-Pad7)" "unconnected-(U1201-RESV-Pad3)" "unconnected-(U1201-RESV-Pad10)" "unconnected-(U1201-RESV-Pad11)"
+    (clearance_class "kicad_default")
+    (via_rule "kicad_default")
+    (rule
+      (width 200.0)
+    )
+    (circuit 
+      (use_layer F.Cu B.Cu)
+    )
+  )
+)

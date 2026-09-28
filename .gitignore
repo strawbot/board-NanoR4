@@ -11,3 +11,11 @@ Board/help.c
 memory_regions.ld
 Docs/fs output.txt
 Docs/limb output.txt
+test
+PCB/.history
+PCB/_backup
+PCB/_*
+*.rpt
+*.ses
+*.lck
+*.dsn

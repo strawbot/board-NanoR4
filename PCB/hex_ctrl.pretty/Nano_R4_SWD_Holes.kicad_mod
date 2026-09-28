@@ -1,0 +1,93 @@
+(footprint "Nano_R4_SWD_Holes"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "Plated holes under the Nano R4 SWDIO/SWCLK bottom test points; solder through from the top. Origin = Arduino_Nano_R4_Castellated origin.")
+	(property "Reference" "REF**"
+		(at 1.3 16.4 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "0d675c26-7ec4-41b0-a4c4-2b1963378f85")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Value" "Nano_R4_SWD_Holes"
+		(at 1.3 21.8 0)
+		(layer "F.Fab")
+		(uuid "541ea00e-0fa7-449b-b0c5-c0fe5fe980bb")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "03644501-22f3-4c5b-926d-47938e5939f6")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Description" "Plated holes under the Nano R4 SWDIO/SWCLK bottom test points; solder through from the top. Origin = Arduino_Nano_R4_Castellated origin."
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "c905249d-77f5-4e78-8d0a-337df949b369")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(attr through_hole)
+	(pad "1" thru_hole circle
+		(at 2.549 20.213)
+		(size 1.2 1.2)
+		(drill 0.7)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "01d63955-7f82-4ee0-a7c7-f0a645bc66f6")
+	)
+	(pad "2" thru_hole circle
+		(at 0.009 17.673)
+		(size 1.2 1.2)
+		(drill 0.7)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "69197fec-540c-48a1-a102-a5fcf1467b88")
+	)
+	(fp_circle
+		(center 2.549 20.213)
+		(end 3.499 20.213)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "5cb03cfe-72b8-46d8-908d-dc7779b9e05d")
+	)
+	(fp_circle
+		(center 0.009 17.673)
+		(end 0.959 17.673)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "5ff56477-a3a9-4c6b-9b86-4f7114ee0fc0")
+	)
+)

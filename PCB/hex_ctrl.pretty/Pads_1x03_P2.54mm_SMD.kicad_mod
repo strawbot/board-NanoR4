@@ -1,0 +1,167 @@
+(footprint "Pads_1x03_P2.54mm_SMD"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "Three SMD solder pads, 2.54 mm pitch, for wires or an SMD pin header (UART: 1 GND, 2 RX0, 3 TX1)")
+	(property "Reference" "REF**"
+		(at 0 -4.6 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "d196268a-1b00-4022-8918-986b58eb3c1a")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Value" "Pads_1x03_P2.54mm_SMD"
+		(at 0 4.6 0)
+		(layer "F.Fab")
+		(uuid "0c0c10db-09bf-4402-adba-3b45b59e88c4")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "5b1a4839-2dcd-4fef-b0ac-b32b9f668360")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Description" "Three SMD solder pads, 2.54 mm pitch, for wires or an SMD pin header (UART: 1 GND, 2 RX0, 3 TX1)"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "26b9e298-9983-4577-94be-c3cccad57b69")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(attr smd)
+	(pad "1" smd roundrect
+		(at 0 -2.54)
+		(size 3 1.7)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.25)
+		(uuid "a30ccfb8-b354-4a50-adcf-89b55e06302c")
+	)
+	(pad "2" smd roundrect
+		(at 0 0)
+		(size 3 1.7)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.25)
+		(uuid "3402e5b6-e1db-4003-b92e-54ad1a052ead")
+	)
+	(pad "3" smd roundrect
+		(at 0 2.54)
+		(size 3 1.7)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.25)
+		(uuid "554cd9bf-3a9a-4331-b31f-646e0f8c512a")
+	)
+	(fp_line
+		(start -1.9 -4)
+		(end 1.9 -4)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "d790a5e0-36dd-45c6-b47f-ef643b878a5a")
+	)
+	(fp_line
+		(start 1.9 -4)
+		(end 1.9 4)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "7b28dd4d-5bbc-429d-a478-96924b754fc7")
+	)
+	(fp_line
+		(start 1.9 4)
+		(end -1.9 4)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "6eb46590-8aa1-43ca-ac49-0abd71febf37")
+	)
+	(fp_line
+		(start -1.9 4)
+		(end -1.9 -4)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "e5502cc7-64e9-49da-900f-96331fa9d235")
+	)
+	(fp_line
+		(start -1.5 -3.81)
+		(end 1.5 -3.81)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "fd126982-bcbb-44ed-a95d-14e17fcc02b5")
+	)
+	(fp_line
+		(start 1.5 -3.81)
+		(end 1.5 3.81)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "dfb3ba40-d338-49dd-a82d-9b35ebeb3d68")
+	)
+	(fp_line
+		(start 1.5 3.81)
+		(end -1.5 3.81)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "60fea04a-492d-4007-9133-50304bf286d4")
+	)
+	(fp_line
+		(start -1.5 3.81)
+		(end -1.5 -3.81)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "08499a92-9e10-4b6e-aa11-449a895c1e7a")
+	)
+	(fp_circle
+		(center 2.2 -2.54)
+		(end 2.35 -2.54)
+		(stroke
+			(width 0.3)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "33106de3-52e2-4e23-b88e-209cad98504f")
+	)
+)

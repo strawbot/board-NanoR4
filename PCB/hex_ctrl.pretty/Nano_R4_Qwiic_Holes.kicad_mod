@@ -1,0 +1,93 @@
+(footprint "Nano_R4_Qwiic_Holes"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "Plated holes matching the Nano R4 Qwiic SDA/SCL through-holes (1 SDA, 2 SCL). Origin = Arduino_Nano_R4_Castellated origin.")
+	(property "Reference" "REF**"
+		(at 0 18.6 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "0ad87cb1-6065-421b-8121-891a107e74e9")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Value" "Nano_R4_Qwiic_Holes"
+		(at 0 22.2 0)
+		(layer "F.Fab")
+		(uuid "6c1f4c51-4231-42f3-89ff-5f413fae4622")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "e9c98473-2ba2-40c0-b478-135b96f52475")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(property "Description" "Plated holes matching the Nano R4 Qwiic SDA/SCL through-holes (1 SDA, 2 SCL). Origin = Arduino_Nano_R4_Castellated origin."
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "2c8ba52f-96a6-4eb3-ac6c-d1cabdb5f299")
+		(effects
+			(font
+				(size 0.6 0.6)
+				(thickness 0.09)
+			)
+		)
+	)
+	(attr through_hole)
+	(pad "1" thru_hole circle
+		(at 5.08 20.305)
+		(size 1.7 1.7)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "8e0fa16c-7aa0-4e79-bf45-608e2bbadee9")
+	)
+	(pad "2" thru_hole circle
+		(at -5.08 20.305)
+		(size 1.7 1.7)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "c6ab9709-1e36-4c2d-b16d-596d7cbbe88b")
+	)
+	(fp_circle
+		(center 5.08 20.305)
+		(end 6.18 20.305)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "d5b9c08c-8571-448a-bbf0-8b81e5b6d15e")
+	)
+	(fp_circle
+		(center -5.08 20.305)
+		(end -3.98 20.305)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "c43ef9ec-683b-4efe-b547-740e6a93c52a")
+	)
+)
