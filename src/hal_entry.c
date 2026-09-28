@@ -12,6 +12,9 @@
 #include "i2c1.h"
 #include "limb_io.h"
 #include "fs_hw_flash.h"
+#include "muscle.h"
+#include "gait.h"
+#include "posture.h"
 #include "printers.h"
 
 void muscle_wire_init(void);
@@ -127,6 +130,15 @@ void hal_entry(void)
     fs_hw_flash_init();    // mount (formatting once if blank/unreadable) before
                             // anything might want to read/write a file
     usart_drain();
+
+    // 4-limb build: the middle shift register (limbs 3, 4) stays zero.
+    // No muscle_bind_hw() yet — the PWM drive board is still to be
+    // prototyped, so the scheduler runs as a simulation (see `muscles`).
+    // Likewise no posture_bind_hw() until the new board's ICM-42688-P is
+    // up; until then the gait runs without IMU feedback.
+    muscle_init(MUSCLE_LIMBS_4);
+    posture_init();
+    gait_init();
 
     // limb_io_init() calls in() to arm its first sweep tick, so it must
     // come after init_tea() (unlike the peripheral opens above, which

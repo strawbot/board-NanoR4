@@ -83,3 +83,21 @@ Words // Nano FS (minimal ping-ponged-directory + append-log store on the RA4M1'
 	cat fs_cli_cat // <name> print a file's contents as raw text
 	hexdump fs_cli_hexdump // <name> print a file's contents as an offset/hex/ASCII dump
 End
+
+Words // Muscles and gaits (Robot/limbs) — 4-limb build, simulated until the PWM drive board exists
+	muscle! muscle_cli_set // (pct muscle) set muscle 1-24 to pct 0-100; releases its antagonist
+	limb! muscle_cli_limb // (pct limb m) set limb 1-6 muscle 1-4 (1 fwd, 2 back, 3 lift, 4 bend) to pct
+	muscles muscle_show // show every fitted muscle's activation and scheduled frame window
+	relax muscle_relax // set every muscle to 0%
+	crawl gait_cli_crawl // start (or smoothly switch to) the crawl gait: one leg lifted at a time
+	trot gait_cli_trot // start the trot gait: diagonal pairs
+	pace gait_cli_pace // start the pace gait: same-side pairs
+	bound gait_cli_bound // start the bound gait: front pair then rear pair
+	halt gait_stop // stop the gait and relax every muscle
+	speed gait_cli_speed // (pct) walking desire: 0 stands still, 100 = fastest cycle
+	effort gait_cli_effort // (pct) set the activation each gait muscle gets
+	gait gait_show // show gait state, each leg's phase, and the gait tables
+	gait-trace gait_cli_trace // toggle printing each leg lift-off, touchdown, wait and reach
+	level gait_cli_level // toggle IMU leveling of the stance legs
+	posture posture_show // show IMU roll/pitch estimate and tip-over state
+End
