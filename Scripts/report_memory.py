@@ -53,15 +53,23 @@ def report_memory(bound_env, **kwargs):
         parts = line.split()
         if len(parts) < 3:
             continue
+        name = parts[0]
         try:
             size = int(parts[1])
             addr = int(parts[2])
         except ValueError:
             continue
-        if 0x00000000 <= addr < 0x20000000:
+        # Non-alloc sections (.debug_*, .comment, .ARM.attributes) have
+        # addr 0 and are not loaded -- skip them.
+        if addr == 0:
+            continue
+        if addr < 0x20000000:
             flash_used += size
-        elif addr >= 0x20000000:
+        elif addr < 0x40000000:
             ram_used += size
+            # Initialised data lives in RAM but its load image sits in flash.
+            if name.startswith("__ram_from_flash"):
+                flash_used += size
 
     flash_pct = 100.0 * flash_used / FLASH_TOTAL
     ram_pct   = 100.0 * ram_used   / RAM_TOTAL
