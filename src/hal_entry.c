@@ -13,6 +13,10 @@
 #include "limb_io.h"
 #include "fs_hw_flash.h"
 #include "muscle.h"
+#include "muscle_sr.h"
+#include "sr595_hw.h"
+#include "calib.h"
+#include "vin_sense.h"
 #include "gait.h"
 #include "posture.h"
 #include "printers.h"
@@ -114,11 +118,14 @@ void hal_entry(void)
      * it and the wait never ends. usart_drain() calls usart_emit() directly,
      * which re-arms it. See Docs/output-backpressure-design.md; the proper fix
      * is for output() to kick the transport itself, after which this goes away. */
-    dac_init();
+    // dac_init() deliberately not called: P014 is A0/ISNS_A (see board_cli.c).
     adc_init();
     muscle_wire_init();   // open GPT3 PWM on P003 before scheduler starts
+    sr595_hw_init(3);     // hex PCB chain; one physical chip on the breadboard is chip 0
     i2c1_init();          // IIC1: SCL=P100, SDA=P101, 400 kHz — limb array bus
     init_tea();
+    vin_sense_init();     // register the divider calibration for the calib file
+    adc_vref_start();     // track AVCC0 from the internal reference (needs the scheduler)
     usart_transport_init();
 
     print_build_banner();
@@ -131,12 +138,14 @@ void hal_entry(void)
                             // anything might want to read/write a file
     usart_drain();
 
+    calib_load();          // restore saved calibrations; deferred with later(), runs once the scheduler turns
+
     // 4-limb build: the middle shift register (limbs 3, 4) stays zero.
-    // No muscle_bind_hw() yet — the PWM drive board is still to be
-    // prototyped, so the scheduler runs as a simulation (see `muscles`).
-    // Likewise no posture_bind_hw() until the new board's ICM-42688-P is
+    // Muscle windows go out through the 74HC595 chain (Robot/limbs/muscle/
+    // muscle_sr). No posture_bind_hw() until the new board's ICM-42688-P is
     // up; until then the gait runs without IMU feedback.
     muscle_init(MUSCLE_LIMBS_4);
+    muscle_sr_init();
     posture_init();
     gait_init();
 

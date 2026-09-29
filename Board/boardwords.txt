@@ -84,8 +84,22 @@ Words // Nano FS (minimal ping-ponged-directory + append-log store on the RA4M1'
 	hexdump fs_cli_hexdump // <name> print a file's contents as an offset/hex/ASCII dump
 End
 
-Words // Muscles and gaits (Robot/limbs) — 4-limb build, simulated until the PWM drive board exists
+Words // Muscles and gaits (Robot/limbs) — 4-limb build, windows drive the 74HC595 chain (Robot/limbs/muscle/muscle_sr)
 	muscle! muscle_cli_set // (pct muscle) set muscle 1-24 to pct 0-100; releases its antagonist
+	dactest dactest_cli // DAC0 -> ADC A0 loopback sanity check at 5 codes; disconnect any sense resistor on A0 first
+	dac-off dac_release // stop the DAC0 output so P014/A0 reads as an ADC input again
+	adcexp adc_cli_experiment // rerun the internal-reference/temperature reads under several scan and sample-time settings
+	vref! adc_cli_vref_set // (mv) fix the ADC reference voltage (AVCC0) by hand and stop tracking
+	vref-auto adc_cli_vref_auto // toggle tracking AVCC0 from the internal reference (default on)
+	vref-cal adc_cli_vref_cal // (mv) calibrate the internal reference against a metered AVCC0 and save it to the calib file
+	vint! adc_cli_vint_set // (mv) set the internal reference calibration directly; the calib file runs this at boot
+	vin@ vin_cli_read // ( - mv ) supply voltage in mV through the calibrated A3 divider
+	vin-cal vin_cli_cal // (mv) solve the divider's bottom resistor from a metered VIN and save it to the calib file
+	rbot! vin_cli_rbot_set // (ohms) set the divider's bottom resistor directly; the calib file runs this at boot
+	calib-save calib_cli_save // write every registered calibration value to the calib file now
+	status status_cli // read every connection: 595 pins and outputs, ISNS/VIN analog taps, muscle windows
+	sr! sr595_cli_write // (value chip) write byte to shift register chip 0-2 and latch; bit0=QA .. bit7=QH
+	sr@ sr595_cli_read // (chip - value) shadow byte last written to shift register chip
 	limb! muscle_cli_limb // (pct limb m) set limb 1-6 muscle 1-4 (1 fwd, 2 back, 3 lift, 4 bend) to pct
 	muscles muscle_show // show every fitted muscle's activation and scheduled frame window
 	relax muscle_relax // set every muscle to 0%

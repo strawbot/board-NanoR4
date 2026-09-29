@@ -170,6 +170,9 @@ static const dac_extended_cfg_t g_board_dac_cfg_extend = {
     .output_amplifier_enabled = false,
     .internal_output_enabled  = false,
     .data_format              = DAC_DATA_FORMAT_FLUSH_RIGHT,
+    // RA4M1 has DAVREFCR: with ref_volt_sel left at 0 (DAC_VREF_NONE) the DAC
+    // has no reference and its output never leaves ~0 V.
+    .ref_volt_sel             = DAC_VREF_AVCC0_AVSS0,
 };
 
 static const dac_cfg_t g_board_dac_cfg = {
@@ -178,13 +181,40 @@ static const dac_cfg_t g_board_dac_cfg = {
     .p_extend          = &g_board_dac_cfg_extend,
 };
 
+// Not opened at boot: P014 is also Nano A0 (ISNS_A, the sense-resistor tap
+// on the hex board), and an active DAC0 output would hold it at 0 V. The
+// dac!/up/down words start it on first use — after that A0 is the DAC's
+// until dac_release() (`dac-off`) stops the output again.
+static bool dac_opened;
+static bool dac_running;
+
 void dac_init(void) {
-    R_DAC_Open(&g_board_dac_ctrl, &g_board_dac_cfg);
-    R_DAC_Write(&g_board_dac_ctrl, 0);
-    R_DAC_Start(&g_board_dac_ctrl);
+    if (!dac_opened) {
+        dac_opened = true;
+        R_DAC_Open(&g_board_dac_ctrl, &g_board_dac_cfg);
+    }
+    if (!dac_running) {
+        dac_running = true;
+        R_DAC_Write(&g_board_dac_ctrl, 0);
+        R_DAC_Start(&g_board_dac_ctrl);
+    }
+}
+
+// Stop the DAC0 output (DAOE0 = 0) so P014/A0 is a plain analog input again.
+void dac_release(void) {
+    if (!dac_running) return;
+    dac_running = false;
+    R_DAC_Stop(&g_board_dac_ctrl);
+}
+
+// Write a 12-bit code, starting the output first if needed.
+void dac_write_code(uint16_t code) {
+    dac_init();
+    R_DAC_Write(&g_board_dac_ctrl, code > 4095U ? 4095U : code);
 }
 
 void dac_set(void) {
+    dac_init();
     Cell v = ret();
     if (v < 0)    v = 0;
     if (v > 4095) v = 4095;
@@ -201,6 +231,7 @@ Short dac_get () {
 }
 
 void ramp_up() {
+    dac_init();
     Cell v = 0;
     do {
         R_DAC_Write(&g_board_dac_ctrl, v);
@@ -209,6 +240,7 @@ void ramp_up() {
 }
 
 void ramp_down() {
+    dac_init();
     Cell v = 0xFFF;
     do {
         R_DAC_Write(&g_board_dac_ctrl, v);
