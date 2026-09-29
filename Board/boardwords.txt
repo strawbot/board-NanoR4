@@ -96,6 +96,10 @@ Words // Muscles and gaits (Robot/limbs) — 4-limb build, windows drive the 74H
 	vin@ vin_cli_read // ( - mv ) supply voltage in mV through the calibrated A3 divider
 	vin-cal vin_cli_cal // (mv) solve the divider's bottom resistor from a metered VIN and save it to the calib file
 	rbot! vin_cli_rbot_set // (ohms) set the divider's bottom resistor directly; the calib file runs this at boot
+	wirecal wirecal_cli // (muscle) calibrate one wire (run halt first): ramp its drive, find where its resistance changes, save the result
+	wirecal-stop wirecal_cli_stop // abort a running wire calibration and relax
+	wires wirecal_cli_show // show each calibrated wire: cold resistance and onset/mid/full duty (percent of the frame)
+	wire! wirecal_cli_set // (muscle rcold onset mid full) set a wire's calibration directly (duty in tenths of a percent); the calib file runs this at boot
 	calib-save calib_cli_save // write every registered calibration value to the calib file now
 	status status_cli // read every connection: 595 pins and outputs, ISNS/VIN analog taps, muscle windows
 	sr! sr595_cli_write // (value chip) write byte to shift register chip 0-2 and latch; bit0=QA .. bit7=QH

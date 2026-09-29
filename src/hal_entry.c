@@ -14,6 +14,7 @@
 #include "fs_hw_flash.h"
 #include "muscle.h"
 #include "muscle_sr.h"
+#include "wirecal_hw.h"
 #include "sr595_hw.h"
 #include "calib.h"
 #include "vin_sense.h"
@@ -146,6 +147,7 @@ void hal_entry(void)
     // up; until then the gait runs without IMU feedback.
     muscle_init(MUSCLE_LIMBS_4);
     muscle_sr_init();
+    wirecal_hw_init();     // per-wire self-calibration (`wirecal`)
     posture_init();
     gait_init();
 
