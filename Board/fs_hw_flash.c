@@ -8,6 +8,8 @@
 #include "hal_data.h"
 #include "printers.h"
 
+// Only failures are reported; a successful mount is silent.
+
 // usart_drain isn't declared in cli_transport_usart.h — forward declare
 // it locally, same as hal_entry.c does.
 void usart_drain(void);
@@ -43,12 +45,10 @@ static const fs_hw_t g_fs_hw = {
 };
 
 void fs_hw_flash_init(void) {
-    step("opening g_flash0");
     if (g_flash0.p_api->open(g_flash0.p_ctrl, g_flash0.p_cfg) != FSP_SUCCESS) {
         step("g_flash0 open failed");
         return;
     }
 
     fs_bind_hw(&g_fs_hw);
-    step("fs ready");
 }
