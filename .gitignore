@@ -9,6 +9,8 @@ Board/wordlist.c
 Board/wordlist.txt
 Board/help.c
 memory_regions.ld
+# Generated on every build by Scripts/gen_build_timestamp.py
+src/build_timestamp.c
 Docs/fs output.txt
 Docs/limb output.txt
 test
