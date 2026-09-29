@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Standalone copy of the Muscle-Wire Gait Lab artifact; open directly in a browser. -->
+<title>Muscle-Wire Gait Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<style>
+:root {
+  --bg: #eef0ec;
+  --panel: #f9faf7;
+  --ink: #18201c;
+  --muted: #5f6a64;
+  --line: #d3d9d1;
+  --grid: #e3e7e1;
+  --earth: #9c8f73;
+  --earth-fill: #ddd5c2;
+  --leg: #33423a;
+  --hot: #e0552b;
+  --accent: #1f6f78;
+  --accent-ink: #ffffff;
+  --ok: #2e7d4f;
+  --warn: #b7791f;
+  --bad: #c0392b;
+  --lf: #1f6f78;
+  --rf: #7453a8;
+  --lr: #b8741a;
+  --rr: #4b8a3c;
+  --sans: "IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #101412; --panel: #171c19; --ink: #e3e9e5; --muted: #97a39c;
+    --line: #2b332e; --grid: #1f2622; --earth: #8f846d; --earth-fill: #2a261f;
+    --leg: #c3cec7; --hot: #ff6a3d; --accent: #4fb3bf; --accent-ink: #0d1413;
+    --ok: #5cbf83; --warn: #e0a64a; --bad: #ef6b5b;
+    --lf: #4fb3bf; --rf: #a888db; --lr: #e0a04a; --rr: #7fbf6b;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #101412; --panel: #171c19; --ink: #e3e9e5; --muted: #97a39c;
+  --line: #2b332e; --grid: #1f2622; --earth: #8f846d; --earth-fill: #2a261f;
+  --leg: #c3cec7; --hot: #ff6a3d; --accent: #4fb3bf; --accent-ink: #0d1413;
+  --ok: #5cbf83; --warn: #e0a64a; --bad: #ef6b5b;
+  --lf: #4fb3bf; --rf: #a888db; --lr: #e0a04a; --rr: #7fbf6b;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--sans);
+  font-size: 15px; line-height: 1.45; margin: 0;
+  padding-inline: 16px; padding-block: 20px 32px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+h1 { font-size: 26px; font-weight: 600; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 70ch; }
+.label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; }
+.main { display: grid; gap: 16px; min-width: 0; }
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px 14px 14px; display: grid; gap: 8px; min-width: 0;
+}
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.panel-head .note { font-size: 13px; color: var(--muted); }
+canvas { display: block; width: 100%; }
+#side { height: 280px; }
+.pair { display: grid; gap: 16px; grid-template-columns: 300px minmax(0, 1fr); }
+#top { height: 280px; }
+#timeline { height: 300px; }
+#frame { height: 44px; }
+
+.controls { display: grid; gap: 16px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+.control { display: grid; gap: 6px; }
+.control-row { display: flex; justify-content: space-between; align-items: baseline; }
+.value { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.seg.two { grid-template-columns: repeat(2, 1fr); }
+.seg button {
+  font: 500 14px var(--sans); padding: 7px 4px; border: 0; background: transparent; color: var(--ink);
+  cursor: pointer; border-right: 1px solid var(--line);
+}
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { font-size: 13px; color: var(--muted); margin: 0; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.toggle { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.toggle input { margin-top: 3px; accent-color: var(--accent); }
+.toggle span { display: grid; }
+.toggle small { color: var(--muted); font-size: 13px; }
+.buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn {
+  font: 500 14px var(--sans); padding: 7px 12px; border-radius: 5px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+}
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+.readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px 16px; }
+.readout { display: grid; gap: 2px; }
+.readout b { font: 500 18px var(--mono); font-variant-numeric: tabular-nums; }
+.readout small { font-size: 12px; color: var(--muted); }
+.chip {
+  display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+  padding: 1px 8px; border-radius: 10px; border: 1px solid currentColor;
+}
+.chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
+#events { font: 13px var(--mono); color: var(--muted); display: grid; gap: 2px; min-height: 7.5em; margin: 0; padding: 0; list-style: none; }
+#events li b { color: var(--ink); font-weight: 500; }
+.caption {
+  display: flex; gap: 12px; align-items: baseline;
+  border-left: 3px solid var(--accent); padding: 6px 10px; background: var(--bg);
+  font-size: 17px; font-weight: 500; line-height: 1.35;
+}
+.caption .step { font: 500 13px var(--mono); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.banner {
+  display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  border: 1px solid var(--bad); color: var(--bad); border-radius: 6px; padding: 8px 12px; background: var(--panel);
+}
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -2px; margin-right: 5px; }
+.about { font-size: 14px; color: var(--muted); max-width: 80ch; margin: 0; }
+.about code { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+
+@media (max-width: 980px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .controls { position: static; order: -1; }
+}
+@media (max-width: 640px) {
+  .pair { grid-template-columns: minmax(0, 1fr); }
+  #side { height: 220px; }
+  h1 { font-size: 22px; }
+}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Muscle-Wire Gait Lab</h1>
+    <p>The 4-limb gait engine from <code>Robot/limbs/gait</code>, running on a simulated body. Set a desire with speed, change the ground, and watch the feet decide when to step.</p>
+  </header>
+
+  <div id="tip-banner" class="banner" hidden>
+    <span><b>Tipped over.</b> Tilt passed 45°, so the gait halted and every muscle relaxed.</span>
+    <button class="btn" id="stand" type="button">Stand up and restart</button>
+  </div>
+
+  <div class="grid">
+    <div class="main">
+      <section class="panel" aria-label="Side view">
+        <div class="panel-head">
+          <span class="label">Side view · left legs in front</span>
+          <span class="note">Wire colour shows heat: dark is cool, orange is fully activated</span>
+        </div>
+        <div class="caption" id="caption" aria-live="polite" hidden><span class="step" id="caption-step"></span><span id="caption-text"></span></div>
+        <canvas id="side" role="img" aria-label="Side view of the robot walking over the terrain"></canvas>
+      </section>
+
+      <div class="pair">
+        <section class="panel" aria-label="Top view">
+          <div class="panel-head"><span class="label">Top view · support</span></div>
+          <canvas id="top" role="img" aria-label="Top view of the legs and the support polygon"></canvas>
+          <div class="legend">
+            <span><i style="background:var(--ink)"></i>foot down</span>
+            <span><i style="border:2px solid var(--ink)"></i>foot in the air</span>
+          </div>
+        </section>
+        <section class="panel" aria-label="State">
+          <div class="panel-head"><span class="label">Body</span><span id="stability" class="chip ok">stable</span></div>
+          <div class="readouts">
+            <div class="readout"><small>Ground speed</small><b id="r-speed">0.0</b><small>body lengths / min</small></div>
+            <div class="readout"><small>Step cycle</small><b id="r-cycle">0.00</b><small>Hz desired</small></div>
+            <div class="readout"><small>Roll</small><b id="r-roll">0.0°</b><small>+ right side down</small></div>
+            <div class="readout"><small>Pitch</small><b id="r-pitch">0.0°</b><small>+ nose down</small></div>
+            <div class="readout"><small>Stability margin</small><b id="r-margin">0%</b><small>of body length</small></div>
+            <div class="readout"><small>Distance</small><b id="r-dist">0.0</b><small>body lengths</small></div>
+          </div>
+          <span class="label">Leg events</span>
+          <ul id="events" aria-live="off"></ul>
+        </section>
+      </div>
+
+      <section class="panel" aria-label="Footfall and muscle timeline">
+        <div class="panel-head">
+          <span class="label">Footfalls and muscle commands · last 8 s</span>
+          <div class="legend">
+            <span><i style="background:var(--muted)"></i>stance</span>
+            <span><i style="background:var(--warn)"></i>waiting to lift</span>
+            <span><i style="background:var(--hot)"></i>reaching for ground</span>
+          </div>
+        </div>
+        <canvas id="timeline" role="img" aria-label="Footfall diagram and shoulder and knee activation traces for each leg"></canvas>
+        <p class="hint">Under each leg's bar: shoulder command (above the line is forward, below is back) and knee command (above is bend/support, below is lift), as % activation.</p>
+      </section>
+
+      <section class="panel" aria-label="PWM frame">
+        <div class="panel-head">
+          <span class="label">PWM frame · 4096 counts</span>
+          <span class="note" id="frame-note">512 counts per muscle at 100%</span>
+        </div>
+        <canvas id="frame" role="img" aria-label="Scheduled on-windows for each muscle within one PWM frame"></canvas>
+      </section>
+    </div>
+
+    <aside class="panel controls" aria-label="Controls">
+      <div class="control">
+        <span class="label">Gait</span>
+        <div class="seg" id="gait-seg" role="group" aria-label="Gait">
+          <button type="button" id="g-crawl" data-gait="crawl" aria-pressed="true">Crawl</button>
+          <button type="button" id="g-trot" data-gait="trot" aria-pressed="false">Trot</button>
+          <button type="button" id="g-pace" data-gait="pace" aria-pressed="false">Pace</button>
+          <button type="button" id="g-bound" data-gait="bound" aria-pressed="false">Bound</button>
+        </div>
+        <p class="hint" id="gait-hint"></p>
+      </div>
+
+      <div class="control">
+        <div class="control-row"><label class="label" for="speed">Speed (desire)</label><span class="value" id="speed-v"></span></div>
+        <input type="range" id="speed" min="0" max="100" value="60">
+        <p class="hint">0 stands still. Sets the rhythm; the ground sets the actual steps.</p>
+      </div>
+
+      <div class="control">
+        <div class="control-row"><label class="label" for="rough">Terrain roughness</label><span class="value" id="rough-v"></span></div>
+        <input type="range" id="rough" min="0" max="100" value="0">
+      </div>
+
+      <div class="control">
+        <div class="control-row"><label class="label" for="effort">Effort</label><span class="value" id="effort-v"></span></div>
+        <input type="range" id="effort" min="30" max="100" value="70">
+        <p class="hint">Support and swing activation. Above 70% leaves little room to level or reach.</p>
+      </div>
+
+      <label class="toggle"><input type="checkbox" id="level" checked><span>Leveling from IMU<small>Low corners push harder</small></span></label>
+      <label class="toggle"><input type="checkbox" id="contact" checked><span>Foot contact sensing<small>Off: touchdown is assumed at the end of each swing</small></span></label>
+
+      <div class="control">
+        <span class="label">Muscle commands</span>
+        <div class="seg two" id="mode-seg" role="group" aria-label="Muscle commands">
+          <button type="button" id="m-smooth" data-mode="smooth" aria-pressed="true">Smooth</button>
+          <button type="button" id="m-onoff" data-mode="onoff" aria-pressed="false">On/off</button>
+        </div>
+        <p class="hint">On/off drives each muscle fully on or off, like the first beat-based version.</p>
+      </div>
+
+      <p class="hint">Play demo walks through the gaits and controls in about 90 s, with captions. Touching any control stops it.</p>
+      <div class="buttons">
+        <button class="btn primary" type="button" id="demo">Play demo</button>
+        <button class="btn" type="button" id="run">Pause</button>
+        <button class="btn" type="button" id="terrain">New terrain</button>
+        <button class="btn" type="button" id="reset">Reset</button>
+      </div>
+    </aside>
+  </div>
+
+  <p class="about">The gait engine here is a direct port of <code>gait.c</code>: the same phase clock, coupling, lift-off and touchdown rules, slew limit and leveling. The body is a simple model for illustration. The shoulder turns the upper segment ±30° in the plane of the body, so the knee always sits at body height. The knee swings the lower segment 0–80° from vertical: relaxed it folds up to 80°, and full bend pulls it toward vertical. Each wire heats in about 0.15 s and cools in about 0.35 s, and when fewer than three feet hold the body up it sags toward the unsupported side. Treat the numbers as qualitative until the PWM board is measured.</p>
+</div>
+
+<script>
+(() => {
+  // ── Gait engine: port of Robot/limbs/gait/gait.c ─────────────────────────
+  const TICK_MS = 20, MAX_HZ = 0.5, SWING_MS = 500, REACH_MS = 1000, STEADY_DEG = 15;
+  const COUPLING = 2, SLEW = 0.15, REACH_EXTRA = 0.6, LEVEL_GAIN = 2, LEVEL_MAX = 30;
+  const STANCE = 0, WAIT = 1, SWING = 2, REACH = 3;
+  const MODE_NAMES = ['down', 'wait', 'up', 'reach'];
+
+  const LEGS = [
+    { name: 'LF', limb: 1, mirror: false, side: -1, hx:  0.5, hy:  0.3, psi0:   60, color: '--lf' },
+    { name: 'RF', limb: 2, mirror: false, side: +1, hx:  0.5, hy: -0.3, psi0:  -60, color: '--rf' },
+    { name: 'LR', limb: 5, mirror: true,  side: -1, hx: -0.5, hy:  0.3, psi0:  120, color: '--lr' },
+    { name: 'RR', limb: 6, mirror: true,  side: +1, hx: -0.5, hy: -0.3, psi0: -120, color: '--rr' },
+  ];
+  const GAITS = {
+    crawl: { offset: [0.50, 0.00, 0.75, 0.25], duty: 0.75, support: 3,
+             hint: 'One leg in the air at a time (LR, LF, RR, RF). Three feet always hold the body.' },
+    trot:  { offset: [0.00, 0.50, 0.50, 0.00], duty: 0.50, support: 2,
+             hint: 'Diagonal pairs swing together. Balanced on a line, so it needs speed or good leveling.' },
+    pace:  { offset: [0.00, 0.50, 0.00, 0.50], duty: 0.50, support: 2,
+             hint: 'Same-side pairs swing together. The body is unsupported on one side each half cycle.' },
+    bound: { offset: [0.00, 0.00, 0.50, 0.50], duty: 0.50, support: 2,
+             hint: 'Front pair, then rear pair. The body rocks nose to tail.' },
+  };
+
+  const clamp = (x, lo, hi) => x < lo ? lo : x > hi ? hi : x;
+  const wrap = x => x - Math.floor(x);
+  const sinpi = x => { const a = Math.abs(x), p = a * (1 - a), y = 16 * p / (5 - 4 * p); return x < 0 ? -y : y; };
+  const slew = (from, to) => from + clamp(to - from, -SLEW, SLEW);
+  const pct = x => x <= 0 ? 0 : x >= 100 ? 100 : Math.round(x);
+
+  const eng = {
+    gait: null, master: 0, speed: 60, effort: 70, level: true, sensing: true,
+    st: LEGS.map(() => ({ mode: STANCE, phase: 0, reach: 0, lifted: false, shoulder: 0, knee: 1 })),
+    out: LEGS.map(() => ({ fwd: 0, back: 0, bend: 0, lift: 0 })),   // logical, body frame
+  };
+  let posture = { valid: true, roll: 0, pitch: 0 };
+  let contactFn = () => false;
+  let onEvent = () => {};
+
+  function cornerDrop(leg) {
+    const end = leg.mirror ? -1 : 1;
+    return leg.side * posture.roll + end * posture.pitch;
+  }
+  function stanceEffort(leg) {
+    if (!eng.level || !posture.valid) return eng.effort;
+    return clamp(eng.effort + clamp(LEVEL_GAIN * cornerDrop(leg), -LEVEL_MAX, LEVEL_MAX), 0, 100);
+  }
+  const steady = () => !posture.valid || (Math.abs(posture.roll) < STEADY_DEG && Math.abs(posture.pitch) < STEADY_DEG);
+  const legsDown = () => eng.st.filter(s => s.mode === STANCE || s.mode === WAIT).length;
+  const canLift = () => legsDown() - 1 >= eng.gait.support && steady();
+
+  function touchdown(i) {
+    const s = eng.st[i];
+    s.mode = STANCE;
+    s.phase = clamp(0.5 * (1 - s.shoulder), 0, 0.9) * eng.gait.duty;
+    onEvent(i, 'down');
+  }
+
+  function stepLeg(i, hz, dt) {
+    const s = eng.st[i], duty = eng.gait.duty;
+    const err = wrap(eng.master + eng.gait.offset[i] - s.phase + 0.5) - 0.5;
+    const rate = hz * clamp(1 + COUPLING * err, 0, 2);
+    const foot = eng.sensing && contactFn(i);
+    switch (s.mode) {
+      case STANCE: case WAIT:
+        s.phase += rate * dt;
+        if (s.phase >= duty) {
+          s.phase = duty;
+          if (canLift()) { s.mode = SWING; s.lifted = false; onEvent(i, 'up'); }
+          else if (s.mode !== WAIT) { s.mode = WAIT; onEvent(i, 'wait'); }
+        }
+        break;
+      case SWING:
+        s.phase += Math.max(rate, (1 - duty) * 1000 / SWING_MS) * dt;
+        if (!foot) s.lifted = true;
+        if (foot && s.lifted && s.phase > duty + 0.5 * (1 - duty)) touchdown(i);
+        else if (s.phase >= 1) {
+          s.phase = 1;
+          if (!eng.sensing || foot) touchdown(i);
+          else { s.mode = REACH; s.reach = 0; onEvent(i, 'reach'); }
+        }
+        break;
+      case REACH:
+        s.reach += TICK_MS;
+        if (foot || s.reach >= REACH_MS) touchdown(i);
+        break;
+    }
+    let shoulder, knee;
+    if (s.mode === REACH) { shoulder = 1; knee = 1 + REACH_EXTRA * s.reach / REACH_MS; }
+    else if (s.phase < duty) { shoulder = 1 - 2 * s.phase / duty; knee = 1; }
+    else { const sw = (s.phase - duty) / (1 - duty); shoulder = -sinpi(0.5 - sw); knee = 1 - 2 * sinpi(sw); }
+    s.shoulder = slew(s.shoulder, shoulder);
+    s.knee = slew(s.knee, knee);
+  }
+
+  function driveLeg(i) {
+    const s = eng.st[i], o = eng.out[i], leg = LEGS[i];
+    o.fwd  = pct(eng.effort * Math.max(s.shoulder, 0));
+    o.back = pct(eng.effort * Math.max(-s.shoulder, 0));
+    o.bend = pct(stanceEffort(leg) * Math.max(s.knee, 0));
+    o.lift = pct(eng.effort * Math.max(-s.knee, 0));
+  }
+
+  function engineTick() {
+    if (!eng.gait) { eng.out.forEach(o => { o.fwd = o.back = o.bend = o.lift = 0; }); return; }
+    const dt = TICK_MS / 1000, hz = MAX_HZ * eng.speed / 100;
+    eng.master = wrap(eng.master + hz * dt);
+    for (let i = 0; i < 4; i++) { stepLeg(i, hz, dt); driveLeg(i); }
+  }
+
+  function engineStart(name) {
+    const g = GAITS[name];
+    if (!eng.gait) {
+      eng.master = 0;
+      eng.st.forEach((s, i) => Object.assign(s, { mode: STANCE, phase: Math.min(g.offset[i], g.duty), reach: 0, lifted: false, shoulder: 0, knee: 0 }));
+    }
+    eng.gait = g;
+  }
+
+  // ── Body and terrain model (illustration only) ──────────────────────────
+  const TAU_HEAT = 0.15, TAU_COOL = 0.35;
+  // Leg: the shoulder yaws the upper segment in the body plane (±30°); the knee
+  // swings the lower segment 0-80° from vertical, in the leg's vertical plane.
+  // Knee angle: relaxed folds up to 80°, bend pulls toward 0° (foot down), lift back up.
+  const UPPER = 0.25, LOWER = 0.9;
+  const kneeAngle = c => clamp(80 - 64 * c.bend + 64 * c.lift, 0, 80);
+  const SAG = 1.2;                       // tilt rate per unit of negative margin
+  let seed = 7, rough = 0;
+
+  function hash(i, track) {
+    let h = (i * 374761393 + track * 668265263 + seed * 2147483647) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return ((h >>> 0) / 4294967295) * 2 - 1;
+  }
+  function noise(x, track, cell) {
+    const f = x / cell, i = Math.floor(f), t = f - i, u = t * t * (3 - 2 * t);
+    return hash(i, track + cell * 97) * (1 - u) + hash(i + 1, track + cell * 97) * u;
+  }
+  function ground(x, y) {
+    if (rough <= 0) return 0;
+    const track = y >= 0 ? 1 : 2;
+    const h = 0.65 * noise(x, track, 0.9) + 0.35 * noise(x, track, 0.3);
+    return 0.24 * (rough / 100) * h;
+  }
+
+  const body = { x: 0, z: 0, a: 0, b: 0, lastX: 0, v: 0, dist: 0 };   // plane z = z + a*hx + b*hy
+  const legs = LEGS.map(() => ({
+    c: { fwd: 0, back: 0, bend: 0, lift: 0 },   // contraction 0-1
+    theta: 0, alpha: 80, E: 0, kx: 0, ky: 0, fx: 0, fy: 0, footZ: 0, kneeZ: 0,
+    anchorX: 0, groundZ: 0, supporting: true, contact: false,
+  }));
+
+  // Joint angles from muscle contraction -> knee and foot positions (body frame)
+  function legPose(i) {
+    const leg = LEGS[i], L = legs[i];
+    L.theta = 30 * (L.c.fwd - L.c.back);
+    L.alpha = kneeAngle(L.c);
+    const a = L.alpha * Math.PI / 180;
+    L.E = LOWER * Math.cos(a);                        // knee-to-foot drop
+    const reach = UPPER + LOWER * Math.sin(a);        // hip-to-foot, horizontal
+    const psi = (leg.psi0 - (leg.hy > 0 ? L.theta : -L.theta)) * Math.PI / 180;
+    L.kx = leg.hx + UPPER * Math.cos(psi);  L.ky = leg.hy + UPPER * Math.sin(psi);
+    L.fx = leg.hx + reach * Math.cos(psi);  L.fy = leg.hy + reach * Math.sin(psi);
+  }
+  const planeZ = (x, y) => body.z + body.a * x + body.b * y;
+
+  function commanded(i) {       // activations after the chosen command style
+    const o = eng.out[i];
+    if (!onoff) return o;
+    const q = v => (v >= eng.effort * 0.5 ? Math.max(v, eng.effort) : 0);
+    return { fwd: q(o.fwd), back: q(o.back), bend: q(o.bend), lift: q(o.lift) };
+  }
+
+  function supportMargin() {
+    const pts = [];
+    legs.forEach(L => { if (L.supporting) pts.push([L.fx, L.fy]); });
+    if (pts.length === 0) return { margin: -1, ux: 0, uy: -1, pts };
+    if (pts.length === 1) {
+      const d = Math.hypot(pts[0][0], pts[0][1]) || 1e-6;
+      return { margin: -d, ux: -pts[0][0] / d, uy: -pts[0][1] / d, pts };
+    }
+    const hull = convexHull(pts);
+    if (hull.length >= 3 && inside(hull)) {
+      let m = Infinity;
+      for (let k = 0; k < hull.length; k++) m = Math.min(m, segDist(hull[k], hull[(k + 1) % hull.length]).d);
+      return { margin: m, ux: 0, uy: 0, pts: hull };
+    }
+    let best = { d: Infinity, px: 0, py: 0 };
+    for (let k = 0; k < hull.length; k++) {
+      const r = segDist(hull[k], hull[(k + 1) % hull.length]);
+      if (r.d < best.d) best = r;
+    }
+    const d = best.d || 1e-6;
+    return { margin: -best.d, ux: -best.px / d, uy: -best.py / d, pts: hull };
+  }
+  function segDist(p, q) {          // distance from origin (the centre of mass) to segment pq
+    const dx = q[0] - p[0], dy = q[1] - p[1], len2 = dx * dx + dy * dy || 1e-9;
+    const t = clamp(-(p[0] * dx + p[1] * dy) / len2, 0, 1);
+    const px = p[0] + t * dx, py = p[1] + t * dy;
+    return { d: Math.hypot(px, py), px, py };
+  }
+  function inside(h) {
+    let sign = 0;
+    for (let k = 0; k < h.length; k++) {
+      const p = h[k], q = h[(k + 1) % h.length];
+      const cr = (q[0] - p[0]) * (-p[1]) - (q[1] - p[1]) * (-p[0]);
+      if (Math.abs(cr) < 1e-9) continue;
+      if (sign === 0) sign = Math.sign(cr); else if (Math.sign(cr) !== sign) return false;
+    }
+    return true;
+  }
+  function convexHull(pts) {
+    const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    if (p.length < 3) return p;
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], hi = [];
+    for (const q of p) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+    for (const q of p.slice().reverse()) { while (hi.length >= 2 && cross(hi[hi.length - 2], hi[hi.length - 1], q) <= 0) hi.pop(); hi.push(q); }
+    return lo.slice(0, -1).concat(hi.slice(0, -1));
+  }
+
+  let support = { margin: 0.3, ux: 0, uy: 0, pts: [] };
+  let tipped = false;
+
+  function physicsTick(dt) {
+    // 1. muscles heat and cool toward their commands
+    for (let i = 0; i < 4; i++) {
+      const L = legs[i], a = commanded(i);
+      for (const k of ['fwd', 'back', 'bend', 'lift']) {
+        const target = a[k] / 100, tau = target > L.c[k] ? TAU_HEAT : TAU_COOL;
+        L.c[k] += (target - L.c[k]) * (1 - Math.exp(-dt / tau));
+      }
+      legPose(i);
+    }
+    // 2. body slides over the planted feet
+    const xs = [];
+    legs.forEach(L => { if (L.supporting) xs.push(L.anchorX - L.fx); });
+    if (xs.length) body.x = xs.reduce((s, v) => s + v, 0) / xs.length;
+    // 3. body plane: least squares over supporting hips, held toward the last pose
+    support = supportMargin();
+    let pa = body.a, pb = body.b;
+    if (support.margin < 0) {
+      const fall = SAG * -support.margin * dt;
+      pa -= fall * support.ux;         // centre of mass ahead of support: nose drops
+      pb -= fall * support.uy;         // centre of mass right of support (uy < 0): right drops
+    }
+    const lam = 0.02;
+    const M = [[lam, 0, 0], [0, lam, 0], [0, 0, lam]], r = [lam * body.z, lam * pa, lam * pb];
+    legs.forEach((L, i) => {
+      if (!L.supporting) return;
+      const row = [1, L.kx, L.ky], z = L.groundZ + L.E;    // knee sits in the body plane
+      for (let m = 0; m < 3; m++) { r[m] += row[m] * z; for (let n = 0; n < 3; n++) M[m][n] += row[m] * row[n]; }
+    });
+    const sol = solve3(M, r);
+    const k = 1 - Math.exp(-dt / 0.06);
+    body.z += (sol[0] - body.z) * k;
+    body.a += (sol[1] - body.a) * k;
+    body.b += (sol[2] - body.b) * k;
+    // 4. feet heights and contact
+    for (let i = 0; i < 4; i++) {
+      const L = legs[i];
+      L.kneeZ = planeZ(L.kx, L.ky);
+      const g = ground(body.x + L.fx, L.fy);
+      const planted = eng.gait && (eng.st[i].mode === STANCE || eng.st[i].mode === WAIT);
+      if (planted && !L.supporting && L.kneeZ - L.E <= g + 0.01) {   // body settled onto it
+        L.supporting = true; L.anchorX = body.x + L.fx; L.groundZ = g;
+      }
+      L.footZ = L.supporting ? L.groundZ : Math.max(L.kneeZ - L.E, g);
+      L.contact = L.supporting || (L.kneeZ - L.E) <= g + 0.01;
+    }
+    // 5. posture as the IMU would see it
+    posture.roll = Math.atan(body.b) * 180 / Math.PI;
+    posture.pitch = -Math.atan(body.a) * 180 / Math.PI;
+    if (!tipped && (Math.abs(posture.roll) > 45 || Math.abs(posture.pitch) > 45)) tip();
+    const dx = body.x - body.lastX; body.lastX = body.x;
+    body.dist += dx;
+    body.v += (dx / dt - body.v) * (1 - Math.exp(-dt / 1.0));
+  }
+
+  function solve3(M, r) {
+    const a = M.map((row, i) => [...row, r[i]]);
+    for (let c = 0; c < 3; c++) {
+      let p = c; for (let i = c + 1; i < 3; i++) if (Math.abs(a[i][c]) > Math.abs(a[p][c])) p = i;
+      [a[c], a[p]] = [a[p], a[c]];
+      for (let i = 0; i < 3; i++) if (i !== c) { const f = a[i][c] / a[c][c]; for (let j = c; j < 4; j++) a[i][j] -= f * a[c][j]; }
+    }
+    return [a[0][3] / a[0][0], a[1][3] / a[1][1], a[2][3] / a[2][2]];
+  }
+
+  contactFn = i => legs[i].contact;
+
+  // leg transitions from the engine drive the body model
+  const events = [];
+  let simTime = 0;
+  onEvent = (i, what) => {
+    const L = legs[i];
+    if (what === 'up') L.supporting = false;
+    if (what === 'down') {
+      const g = ground(body.x + L.fx, L.fy);
+      L.anchorX = body.x + L.fx;
+      L.groundZ = g;
+      L.supporting = (L.kneeZ - L.E) <= g + 0.03;      // assumed touchdown in mid-air does not hold weight
+      if (!L.supporting) what = 'down in the air';
+    }
+    events.unshift({ t: simTime, leg: LEGS[i].name, what });
+    if (events.length > 6) events.pop();
+  };
+
+  function tip() {
+    tipped = true;
+    eng.gait = null;
+    engineTick();
+    document.getElementById('tip-banner').hidden = false;
+  }
+
+  function standUp() {
+    tipped = false;
+    document.getElementById('tip-banner').hidden = true;
+    eng.gait = null;
+    engineStart(gaitName);
+    posture.roll = posture.pitch = 0;
+    body.a = body.b = 0;
+    // settle the commands at speed 0 (the engine rises from relaxed), then place the body
+    const want = eng.speed; eng.speed = 0;
+    for (let k = 0; k < 12; k++) engineTick();
+    eng.speed = want;
+    for (let i = 0; i < 4; i++) {
+      const L = legs[i], o = eng.out[i];
+      for (const k of ['fwd', 'back', 'bend', 'lift']) L.c[k] = o[k] / 100;
+      legPose(i);
+      L.anchorX = body.x + L.fx;
+      L.groundZ = ground(L.anchorX, L.fy);
+      L.supporting = true;
+    }
+    body.z = legs.reduce((s, L) => s + L.groundZ + L.E, 0) / 4;
+    body.lastX = body.x;
+    history.length = 0;
+  }
+
+  // ── History for the timeline ────────────────────────────────────────────
+  const HIST = 400;                      // 8 s at 50 Hz
+  const history = [];
+  function record() {
+    history.push(LEGS.map((_, i) => {
+      const a = commanded(i);
+      return { mode: eng.gait ? eng.st[i].mode : STANCE, sh: a.fwd - a.back, kn: a.bend - a.lift, sup: legs[i].supporting };
+    }));
+    if (history.length > HIST) history.shift();
+  }
+
+  // ── Drawing ─────────────────────────────────────────────────────────────
+  let css = {};
+  function readTheme() {
+    const s = getComputedStyle(document.documentElement);
+    for (const k of ['--bg', '--panel', '--ink', '--muted', '--line', '--grid', '--earth', '--earth-fill', '--leg', '--hot',
+      '--accent', '--ok', '--warn', '--bad', '--lf', '--rf', '--lr', '--rr']) css[k] = s.getPropertyValue(k).trim();
+  }
+  readTheme();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTheme);
+  new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
+
+  function hexToRgb(h) {
+    const m = h.replace('#', ''); const n = parseInt(m.length === 3 ? m.replace(/./g, c => c + c) : m, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function heat(v) {          // 0-1 activation -> colour between cool wire and hot
+    const a = hexToRgb(css['--leg'] || '#333'), b = hexToRgb(css['--hot'] || '#e0552b');
+    const t = clamp(v, 0, 1);
+    return `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(',')})`;
+  }
+
+  function fit(canvas) {
+    const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, w: r.width, h: r.height };
+  }
+
+  const sideC = document.getElementById('side'), topC = document.getElementById('top');
+  const tlC = document.getElementById('timeline'), frC = document.getElementById('frame');
+
+  function drawSide() {
+    const { ctx, w, h } = fit(sideC);
+    ctx.clearRect(0, 0, w, h);
+    const span = w < 500 ? 3.2 : 4.6;
+    const s = w / span, gy = h * 0.74, cx = w / 2;
+    const X = x => cx + (x - body.x) * s, Z = z => gy - z * s;
+    // grid ticks every body length
+    ctx.strokeStyle = css['--grid']; ctx.lineWidth = 1;
+    for (let gx = Math.floor(body.x - span); gx <= body.x + span; gx += 0.5) {
+      ctx.beginPath(); ctx.moveTo(X(gx), 0); ctx.lineTo(X(gx), h); ctx.stroke();
+    }
+    // far track (right side), then near track (left side) filled
+    const x0 = body.x - span / 2 - 0.2, x1 = body.x + span / 2 + 0.2;
+    ctx.beginPath();
+    for (let x = x0; x <= x1; x += 0.02) { const px = X(x), pz = Z(ground(x, -1)); x === x0 ? ctx.moveTo(px, pz) : ctx.lineTo(px, pz); }
+    ctx.strokeStyle = css['--earth']; ctx.globalAlpha = 0.45; ctx.setLineDash([4, 4]); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.moveTo(X(x0), h);
+    for (let x = x0; x <= x1; x += 0.02) ctx.lineTo(X(x), Z(ground(x, 1)));
+    ctx.lineTo(X(x1), h); ctx.closePath();
+    ctx.fillStyle = css['--earth-fill']; ctx.fill();
+    ctx.strokeStyle = css['--earth']; ctx.lineWidth = 1.5; ctx.stroke();
+
+    const drawLeg = (i, alpha) => {
+      const leg = LEGS[i], L = legs[i];
+      // upper segment lies in the body plane: hip and knee both on it
+      const hx = X(body.x + leg.hx), hz = Z(planeZ(leg.hx, leg.hy));
+      const kx = X(body.x + L.kx), kz = Z(L.kneeZ);
+      const fx = X(body.x + L.fx), fz = Z(L.footZ);
+      const a = commanded(i);
+      ctx.globalAlpha = alpha; ctx.lineCap = 'round';
+      ctx.strokeStyle = heat(Math.max(a.fwd, a.back) / 100); ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(hx, hz); ctx.lineTo(kx, kz); ctx.stroke();
+      ctx.strokeStyle = heat(Math.max(a.bend, a.lift) / 100); ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(kx, kz); ctx.lineTo(fx, fz); ctx.stroke();
+      const st = eng.st[i].mode;
+      ctx.beginPath(); ctx.arc(fx, fz, 5, 0, Math.PI * 2);
+      if (L.supporting) { ctx.fillStyle = css['--ink']; ctx.fill(); }
+      else { ctx.fillStyle = css['--panel']; ctx.fill(); ctx.strokeStyle = st === REACH ? css['--hot'] : css['--ink']; ctx.lineWidth = 2; ctx.stroke(); }
+      ctx.globalAlpha = 1;
+    };
+    drawLeg(1, 0.35); drawLeg(3, 0.35);          // far side: RF, RR
+    // body slab along the near side
+    const rearX = X(body.x - 0.6), frontX = X(body.x + 0.6);
+    const zr = Z(body.z + body.a * -0.6 + body.b * 0.3), zf = Z(body.z + body.a * 0.6 + body.b * 0.3);
+    ctx.fillStyle = css['--ink'];
+    ctx.beginPath(); ctx.moveTo(rearX, zr - 10); ctx.lineTo(frontX, zf - 10); ctx.lineTo(frontX, zf + 4); ctx.lineTo(rearX, zr + 4); ctx.closePath(); ctx.fill();
+    drawLeg(0, 1); drawLeg(2, 1);                 // near side: LF, LR
+    ctx.fillStyle = css['--muted']; ctx.font = '12px ' + getComputedStyle(document.body).fontFamily;
+    ctx.fillText('forward →', w - 78, 18);
+  }
+
+  function drawTop() {
+    const { ctx, w, h } = fit(topC);
+    ctx.clearRect(0, 0, w, h);
+    const s = Math.min(w, h) / 2.5, cx = w / 2, cy = h / 2;
+    const P = (x, y) => [cx + x * s, cy - y * s];          // x forward = right... use up = forward
+    const Q = (x, y) => [cx - y * s, cy - x * s];          // forward is up, left is left
+    // ground grid scrolling with distance
+    ctx.strokeStyle = css['--grid']; ctx.lineWidth = 1;
+    const off = (body.x % 0.25) * s;
+    for (let y = -h; y < 2 * h; y += 0.25 * s) { ctx.beginPath(); ctx.moveTo(0, y + off); ctx.lineTo(w, y + off); ctx.stroke(); }
+    // support polygon
+    const poly = support.pts;
+    const colour = support.margin > 0.05 ? css['--ok'] : support.margin > -0.02 ? css['--warn'] : css['--bad'];
+    if (poly.length >= 2) {
+      ctx.beginPath();
+      poly.forEach((p, k) => { const [px, py] = Q(p[0], p[1]); k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+      ctx.closePath();
+      ctx.globalAlpha = 0.16; ctx.fillStyle = colour; if (poly.length >= 3) ctx.fill();
+      ctx.globalAlpha = 1; ctx.strokeStyle = colour; ctx.lineWidth = 2; ctx.stroke();
+    }
+    // body
+    const c = [Q(0.6, 0.3), Q(0.6, -0.3), Q(-0.6, -0.3), Q(-0.6, 0.3)];
+    ctx.beginPath(); c.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+    ctx.fillStyle = css['--panel']; ctx.fill(); ctx.strokeStyle = css['--ink']; ctx.lineWidth = 1.5; ctx.stroke();
+    // head mark
+    ctx.beginPath(); const hm = Q(0.6, 0); ctx.arc(hm[0], hm[1], 3, 0, Math.PI * 2); ctx.fillStyle = css['--ink']; ctx.fill();
+    // legs
+    ctx.font = '12px ' + getComputedStyle(document.body).fontFamily;
+    LEGS.forEach((leg, i) => {
+      const L = legs[i], a = commanded(i);
+      const [hx, hy] = Q(leg.hx, leg.hy), [kx, ky] = Q(L.kx, L.ky), [fx, fy] = Q(L.fx, L.fy);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = heat(Math.max(a.fwd, a.back) / 100); ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.stroke();
+      ctx.strokeStyle = heat(Math.max(a.bend, a.lift) / 100); ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
+      ctx.beginPath(); ctx.arc(fx, fy, 6, 0, Math.PI * 2);
+      if (L.supporting) { ctx.fillStyle = css[leg.color]; ctx.fill(); }
+      else { ctx.fillStyle = css['--panel']; ctx.fill(); ctx.strokeStyle = eng.st[i].mode === REACH ? css['--hot'] : css[leg.color]; ctx.lineWidth = 2.5; ctx.stroke(); }
+      ctx.fillStyle = css['--muted'];
+      const lx = fx + (fx < cx ? -24 : 10), ly = fy + (fy < cy ? -8 : 16);
+      ctx.fillText(leg.name, lx, ly);
+    });
+    // centre of mass
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fillStyle = colour; ctx.fill();
+    ctx.fillStyle = css['--muted']; ctx.fillText('forward ↑', 8, 16);
+  }
+
+  function drawTimeline() {
+    const { ctx, w, h } = fit(tlC);
+    ctx.clearRect(0, 0, w, h);
+    const left = 34, right = 6, rowH = h / 4, barH = 12;
+    const x = k => left + (k / (HIST - 1)) * (w - left - right);
+    ctx.font = '12px ' + getComputedStyle(document.body).fontFamily;
+    // second marks
+    ctx.strokeStyle = css['--grid']; ctx.lineWidth = 1;
+    for (let sec = 0; sec <= 8; sec++) { const px = x(HIST - 1 - sec * 50); ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke(); }
+    LEGS.forEach((leg, i) => {
+      const y0 = i * rowH + 4;
+      ctx.fillStyle = css[leg.color]; ctx.fillText(leg.name, 4, y0 + 10);
+      // footfall bar
+      const off = HIST - history.length;
+      for (let k = 0; k < history.length; k++) {
+        const e = history[k][i];
+        let col = null;
+        if (e.mode === STANCE) col = e.sup ? css['--muted'] : css['--line'];
+        else if (e.mode === WAIT) col = css['--warn'];
+        else if (e.mode === REACH) col = css['--hot'];
+        if (col) { ctx.fillStyle = col; ctx.fillRect(x(k + off), y0, x(k + off + 1) - x(k + off) + 0.6, barH); }
+      }
+      // traces
+      const midY = y0 + barH + (rowH - barH - 8) / 2 + 2, amp = (rowH - barH - 12) / 2;
+      ctx.strokeStyle = css['--line']; ctx.beginPath(); ctx.moveTo(left, midY); ctx.lineTo(w - right, midY); ctx.stroke();
+      const trace = (key, colour, width) => {
+        ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.beginPath();
+        for (let k = 0; k < history.length; k++) {
+          const px = x(k + off), py = midY - (history[k][i][key] / 100) * amp;
+          k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        ctx.stroke();
+      };
+      trace('sh', css[leg.color], 1.8);
+      trace('kn', css['--ink'], 1);
+    });
+    ctx.fillStyle = css['--muted'];
+    ctx.fillText('now', w - right - 22, h - 2);
+    ctx.fillText('−8 s', left, h - 2);
+  }
+
+  // PWM frame: port of Robot/limbs/muscle schedule() for the 4 fitted limbs
+  function drawFrame() {
+    const { ctx, w, h } = fit(frC);
+    ctx.clearRect(0, 0, w, h);
+    const FRAME = 4096, slot = FRAME / 8;
+    const chans = [];
+    LEGS.forEach((leg, i) => {
+      const a = commanded(i);
+      const physFwd = leg.mirror ? a.back : a.fwd, physBack = leg.mirror ? a.fwd : a.back;
+      [physFwd, physBack, a.lift, a.bend].forEach((p, m) => chans.push({ ch: (leg.limb - 1) * 4 + m, p, leg: i }));
+    });
+    chans.sort((p, q) => p.ch - q.ch);
+    let at = 0;
+    const bw = w - 2, y = 4, bh = h - 22;
+    ctx.strokeStyle = css['--line']; ctx.strokeRect(1, y, bw, bh);
+    chans.forEach(c => {
+      const len = Math.floor(c.p * slot / 100);
+      if (!len) return;
+      ctx.fillStyle = css[LEGS[c.leg].color];
+      ctx.globalAlpha = 0.35 + 0.65 * (c.p / 100);
+      ctx.fillRect(1 + (at / FRAME) * bw, y, (len / FRAME) * bw, bh);
+      at += len;
+    });
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = css['--muted']; ctx.font = '12px ' + getComputedStyle(document.body).fontFamily;
+    ctx.fillText('0', 2, h - 4);
+    ctx.fillText('4096', w - 30, h - 4);
+    document.getElementById('frame-note').textContent =
+      `${Math.round(100 * at / FRAME)}% of the frame used · windows never overlap`;
+  }
+
+  function updateReadouts() {
+    const bpm = body.v / 1.2 * 60;      // body length is 1.2 units
+    document.getElementById('r-speed').textContent = bpm.toFixed(1);
+    document.getElementById('r-cycle').textContent = (eng.gait ? MAX_HZ * eng.speed / 100 : 0).toFixed(2);
+    document.getElementById('r-roll').textContent = posture.roll.toFixed(1) + '°';
+    document.getElementById('r-pitch').textContent = posture.pitch.toFixed(1) + '°';
+    document.getElementById('r-margin').textContent = Math.round(100 * support.margin / 1.2) + '%';
+    document.getElementById('r-dist').textContent = (body.dist / 1.2).toFixed(1);
+    const chip = document.getElementById('stability');
+    const [cls, txt] = support.margin > 0.05 ? ['ok', 'stable'] : support.margin > -0.02 ? ['warn', 'on the edge'] : ['bad', 'unsupported'];
+    chip.className = 'chip ' + cls; chip.textContent = txt;
+    const ev = document.getElementById('events');
+    ev.innerHTML = events.map(e => `<li>${e.t.toFixed(2)} s <b>${e.leg}</b> ${e.what}</li>`).join('') || '<li>No steps yet</li>';
+  }
+
+  // ── Controls ────────────────────────────────────────────────────────────
+  let gaitName = 'crawl', onoff = false, running = true;
+  const $ = id => document.getElementById(id);
+  function setPressed(groupId, attr, value) {
+    $(groupId).querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset[attr] === value)));
+  }
+  $('gait-seg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    gaitName = b.dataset.gait; setPressed('gait-seg', 'gait', gaitName);
+    $('gait-hint').textContent = GAITS[gaitName].hint;
+    if (!tipped) engineStart(gaitName);
+  });
+  $('mode-seg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    onoff = b.dataset.mode === 'onoff'; setPressed('mode-seg', 'mode', b.dataset.mode);
+  });
+  const bindRange = (id, fn, fmt) => { const el = $(id), out = $(id + '-v'); const f = () => { fn(+el.value); out.textContent = fmt(+el.value); }; el.addEventListener('input', f); f(); };
+  bindRange('speed', v => { eng.speed = v; }, v => v + '%');
+  bindRange('rough', v => { rough = v; }, v => v === 0 ? 'flat' : v + '%');
+  bindRange('effort', v => { eng.effort = v; }, v => v + '%');
+  $('level').addEventListener('change', e => { eng.level = e.target.checked; });
+  $('contact').addEventListener('change', e => { eng.sensing = e.target.checked; });
+  $('run').addEventListener('click', () => { running = !running; $('run').textContent = running ? 'Pause' : 'Run'; last = performance.now(); });
+  $('terrain').addEventListener('click', () => { seed = (seed * 16807 + 11) % 2147483647; standUp(); });
+  $('reset').addEventListener('click', () => { body.x = body.lastX = body.dist = body.v = 0; events.length = 0; simTime = 0; standUp(); });
+  $('stand').addEventListener('click', standUp);
+  $('gait-hint').textContent = GAITS[gaitName].hint;
+
+  // ── Demo: a fixed script, timed in simulation seconds so Pause pauses it ──
+  const DEMO = [
+    { t: 7, set: { gait: 'crawl', speed: 60, rough: 0, effort: 70, level: true, contact: true, mode: 'smooth' },
+      text: 'Crawl on flat ground. One foot in the air at a time, three holding the body.' },
+    { t: 7, set: { speed: 100 }, text: 'Speed up to 100%. Feet push for less time; each swing still takes about the same time.' },
+    { t: 8, set: { rough: 60 }, text: 'Rough ground. Feet land early on bumps and reach down into dips.' },
+    { t: 7, set: { level: false }, text: 'Leveling off. The body tilts with the terrain.' },
+    { t: 7, set: { level: true }, text: 'Leveling on. Low corners push harder to hold the body level.' },
+    { t: 8, set: { contact: false }, text: 'Contact sensing off. Feet land where the ground is assumed to be, some in mid-air.' },
+    { t: 5, set: { contact: true }, text: 'Contact sensing back on.' },
+    { t: 8, set: { gait: 'trot', rough: 0 }, text: 'Trot on flat ground. Diagonal pairs swing together, balanced on a line.' },
+    { t: 8, set: { gait: 'pace' }, text: 'Pace. Same-side pairs swing together, so the body rolls toward the unsupported side.' },
+    { t: 8, set: { gait: 'bound' }, text: 'Bound. Front pair, then rear pair: the body rocks nose to tail.' },
+    { t: 8, set: { gait: 'crawl', mode: 'onoff' }, text: 'On/off commands: the same crawl with every muscle switched fully on or off.' },
+    { t: 6, set: { mode: 'smooth' }, text: 'Smooth commands again: activations ramp through each step.' },
+    { t: 6, set: { speed: 0 }, text: 'Speed 0. Feet in the air finish their swing, then the robot stands and keeps leveling.' },
+  ];
+  let demo = null, driving = false;     // demo: { step, at }
+
+  function applySettings(d) {
+    driving = true;
+    if (d.gait) $('g-' + d.gait).click();
+    if (d.mode) $('m-' + d.mode).click();
+    for (const k of ['speed', 'rough', 'effort']) if (k in d) { $(k).value = d[k]; $(k).dispatchEvent(new Event('input')); }
+    for (const k of ['level', 'contact']) if (k in d) { $(k).checked = d[k]; $(k).dispatchEvent(new Event('change')); }
+    driving = false;
+  }
+  function showStep(n) {
+    const step = DEMO[n];
+    applySettings(step.set);
+    $('caption-step').textContent = `${n + 1}/${DEMO.length}`;
+    $('caption-text').textContent = step.text;
+    $('caption').hidden = false;
+    demo = { step: n, at: simTime + step.t };
+  }
+  function startDemo() {
+    seed = 7; tipped = false;
+    applySettings(DEMO[0].set);
+    body.x = body.lastX = body.dist = body.v = 0; events.length = 0; simTime = 0; standUp();
+    if (!running) $('run').click();
+    $('demo').textContent = 'Stop demo';
+    showStep(0);
+  }
+  function stopDemo() {
+    demo = null;
+    $('caption').hidden = true;
+    $('demo').textContent = 'Play demo';
+  }
+  function demoTick() {
+    if (!demo || simTime < demo.at) return;
+    if (tipped) standUp();
+    if (demo.step + 1 < DEMO.length) showStep(demo.step + 1);
+    else stopDemo();
+  }
+  $('demo').addEventListener('click', () => (demo ? stopDemo() : startDemo()));
+  const controlsEl = document.querySelector('.controls');
+  for (const type of ['input', 'change', 'click']) {
+    controlsEl.addEventListener(type, e => {
+      if (!demo || driving) return;
+      if (e.target.closest('#demo, #run')) return;
+      if (type === 'click' && !e.target.closest('button')) return;
+      stopDemo();
+    }, true);
+  }
+
+  // ── Loop ────────────────────────────────────────────────────────────────
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { running = false; $('run').textContent = 'Run'; }
+  standUp();
+  // warm up so the first frame shows a walk in progress
+  for (let k = 0; k < 250; k++) { simTime += TICK_MS / 1000; posture.valid = true; engineTick(); physicsTick(TICK_MS / 1000); record(); }
+  let last = performance.now(), acc = 0;
+  function frame(now) {
+    if (running) {
+      acc += Math.min(0.25, (now - last) / 1000);
+      while (acc >= TICK_MS / 1000) {
+        acc -= TICK_MS / 1000; simTime += TICK_MS / 1000;
+        engineTick(); physicsTick(TICK_MS / 1000); record();
+        demoTick();
+      }
+    }
+    last = now;
+    drawSide(); drawTop(); drawTimeline(); drawFrame(); updateReadouts();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
