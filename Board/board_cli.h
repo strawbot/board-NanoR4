@@ -19,13 +19,6 @@ void cli_set_utc(void);     // CLI wrapper for set_utc(): pops Unix epoch off da
 // gpio
 void gpio_dump_all(void);   // Pin/state dump (currently a stub on Nano)
 
-// dac
-void dac_init(void);        // Open DAC0, zero output, start (call once at boot)
-void dactest_cli(void);     // CLI word `dactest`: DAC0 -> ADC A0 loopback check (Board/dac_adc_test.c)
-void dac_release(void);     // CLI word `dac-off`: stop the DAC0 output so P014/A0 reads as ADC input
-void dac_write_code(uint16_t code); // Write a 12-bit code, starting the output if needed
-void dac_set(void);         // CLI word: pops 0-4095 off stack, writes to DAC0/P014
-
 // adc
 void adc_init(void);        // Open ADC0 unit 0, configure AN00, start continuous scan (call once at boot)
 uint16_t adc_read_an_raw(uint8_t an); // Raw 14-bit code of a scanned ANxxx
@@ -42,8 +35,5 @@ int      adc_init_status(void);       // First FSP error from adc_init (0 = ok)
 uint32_t adc_read_an_mv(uint8_t an); // Any scanned ANxxx (0, 1, 2, 9) in millivolts
 uint32_t adc_read_mv(void); // Read AN00 (P000) and return millivolts (0–5000), callable any time
 void cli_adc_read(void);    // CLI word: pushes AN00 reading in mV onto the data stack
-
-// limb I/O array (IIC1: SCL=P100, SDA=P101) — see Board/limb_io.h and
-// Board/limb_io_cli.h for the 4x ADS1015 + 4x MCP4728 + MPU6050 CLI words.
 
 #endif // BOARD_CLI_H

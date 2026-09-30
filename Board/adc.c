@@ -152,14 +152,6 @@ uint32_t adc_read_mv(void) {
     return (uint32_t)raw * ADC_VREF_MV / ADC_FULL_SCALE;
 }
 
-// AN001 (P001) reading in milliamps.
-// 1 Ω sense resistor → V_sense [mV] = I_sense [mA].
-float adc_read_sense_ma(void) {
-    uint16_t raw = 0;
-    R_ADC_Read(&g_board_adc_ctrl, ADC_CHANNEL_1, &raw);
-    return (float)raw * (float)ADC_VREF_MV / (float)ADC_FULL_SCALE;
-}
-
 // CLI word: push current AN000 reading in mV onto the data stack.
 void cli_adc_read(void) {
     lit((Cell)adc_read_mv());

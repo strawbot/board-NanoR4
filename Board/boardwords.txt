@@ -6,7 +6,7 @@
 Words // system
 	show-sys		show_sys		// show system info: clock frequencies and uptime
 	show-time		show_timer		// show delta timer state, UTC tick counter, and hardware RTC
-	show-timers		show_timers		// show live counter/duty for GPT0 tick, GPT2 delta, GPT3 mw-pwm, and RTC
+	show-timers		show_timers		// show live counter for GPT0 tick, GPT2 delta, and RTC
 	set-utc			cli_set_utc		// (utc) seed the RTC with a Unix epoch from the data stack
 	reboot			do_reboot		// reboot the device via NVIC system reset
 	show-cli		show_cli		// display cli status
@@ -40,9 +40,6 @@ Words // system
 	echoon autoEchoOn // turn on key echo
 	echooff autoEchoOff // turn off key echo
 	nap nap_for // (n) take a nap for n milliseconds
-	dac! dac_set // (n) write 12-bit value n (0-4095) to DAC0 output pin P014
-	up ramp_up // create a ramp up on DAC output
-	down ramp_down // create a ramp down on DAC output
 	dfu tud_dfu_runtime_reboot_to_dfu_cb // go into DFU mode for dfu-util on host to download
 	usbisr usb_cli_isr_count // print how many times usbfs_int_isr has fired — see Docs/usb-handoff.md
 	usbinit usb_cli_init_status // print whether tusb_init() succeeded and INTENB0 right after it returned
@@ -52,25 +49,7 @@ Words // system
 	nusbisr usb_native_cli_isr_count // native-stack smoke test: how many times usbfs_interrupt_handler has fired
 	nusbevt usb_native_cli_event_count // native-stack smoke test: app-callback fire count and last usb_status_t event
 	adc@ cli_adc_read // ( - mv ) read AN00 (P000) and push millivolts (0-5000) onto stack
-	limbio limb_io_cli_status // show all 16 ADC/DAC channels, IMU, per-limb I2C health
-	limbio! limb_io_cli_dac_set // (code ch) write raw 12-bit code (0-4095) to DAC channel ch (0-15)
-	limbio-assign limb_io_cli_assign // one-time: program the 4 MCP4728s to 0x60-0x63 via their SEL lines
-	limbio-assign1 limb_io_cli_assign_one // (limb) assign a single limb's MCP4728, for bench debugging
-	limbio-reset1 limb_io_cli_reset_one // (limb) move a limb's MCP4728 back to the shared default address 0x60
-	i2cscan i2c1_cli_scan // scan IIC1 (0x08-0x77) for devices, print the ones that ACK
-	i2ctest limb_io_cli_isolated_read // (limb channel count) pause the sweep, read limb's channel count times back-to-back with no other bus traffic
-	i2cregs limb_io_cli_debug_ch0 // (limb) pause the sweep, print the ADS1015's raw Config + Conversion registers around a channel-0 conversion
-	i2cseq limb_io_cli_sequence // (limb start_channel) pause the sweep, IMU-prime, read all 4 channels starting from start_channel — is staleness tied to channel 0 or to sequence position?
-	i2cverify limb_io_cli_verify // (limb) compare the sweep's cached value against a fresh isolated read for all 4 channels, flag mismatches
-	i2cpattern limb_io_cli_pattern // (limb) set limb's 4 DAC channels to an alternating LOW/HIGH pattern, one command instead of four
-	i2charness limb_io_cli_harness // (limb start_channel) automated pass/fail regression test: zero -> ramp -> zero, verifying ADC readings each time, reads starting from start_channel
-//	dac@ cli_dac_read // ( - n ) current dac value
-//	calibrate calibrate_muscle_wire // calibrate the muscle wire should take about 4s
-//	mw cli_set_muscle_wire // ( n ) set muscle wire to n% of its maximum
-//	pwm cli_pwm_pct // ( n ) set PWM duty to n% (0-100) directly, bypassing PI
 
-	limbon limb_io_init // start limb state machine
-	limboff limb_io_shutdown // stop limb state machine
 End
 
 Words // Nano FS (minimal ping-ponged-directory + append-log store on the RA4M1's 8K data flash)
@@ -84,29 +63,16 @@ Words // Nano FS (minimal ping-ponged-directory + append-log store on the RA4M1'
 	hexdump fs_cli_hexdump // <name> print a file's contents as an offset/hex/ASCII dump
 End
 
-Words // Muscles and gaits (Robot/limbs) — 4-limb build, windows drive the 74HC595 chain (Robot/limbs/muscle/muscle_sr)
+Words // Limb drive (PWM model): muscles get on-windows in a 20 ms frame, latched out through the 74HC595 chain
+	limb! muscle_cli_limb // (pct limb m) set limb 1-6 muscle 1-4 (1 fwd, 2 back, 3 lift, 4 bend) to pct 0-100; releases its antagonist
 	muscle! muscle_cli_set // (pct muscle) set muscle 1-24 to pct 0-100; releases its antagonist
-	dactest dactest_cli // DAC0 -> ADC A0 loopback sanity check at 5 codes; disconnect any sense resistor on A0 first
-	dac-off dac_release // stop the DAC0 output so P014/A0 reads as an ADC input again
-	adcexp adc_cli_experiment // rerun the internal-reference/temperature reads under several scan and sample-time settings
-	vref! adc_cli_vref_set // (mv) fix the ADC reference voltage (AVCC0) by hand and stop tracking
-	vref-auto adc_cli_vref_auto // toggle tracking AVCC0 from the internal reference (default on)
-	vref-cal adc_cli_vref_cal // (mv) calibrate the internal reference against a metered AVCC0 and save it to the calib file
-	vint! adc_cli_vint_set // (mv) set the internal reference calibration directly; the calib file runs this at boot
-	vin@ vin_cli_read // ( - mv ) supply voltage in mV through the calibrated A3 divider
-	vin-cal vin_cli_cal // (mv) solve the divider's bottom resistor from a metered VIN and save it to the calib file
-	rbot! vin_cli_rbot_set // (ohms) set the divider's bottom resistor directly; the calib file runs this at boot
-	wirecal wirecal_cli // (muscle) calibrate one wire (run halt first): ramp its drive, find where its resistance changes, save the result
-	wirecal-stop wirecal_cli_stop // abort a running wire calibration and relax
-	wires wirecal_cli_show // show each calibrated wire: cold resistance and onset/mid/full duty (percent of the frame)
-	wire! wirecal_cli_set // (muscle rcold onset mid full) set a wire's calibration directly (duty in tenths of a percent); the calib file runs this at boot
-	calib-save calib_cli_save // write every registered calibration value to the calib file now
-	status status_cli // read every connection: 595 pins and outputs, ISNS/VIN analog taps, muscle windows
+	relax muscle_relax // set every muscle to 0%
+	muscles muscle_show // show every fitted muscle's activation and scheduled frame window
 	sr! sr595_cli_write // (value chip) write byte to shift register chip 0-2 and latch; bit0=QA .. bit7=QH
 	sr@ sr595_cli_read // (chip - value) shadow byte last written to shift register chip
-	limb! muscle_cli_limb // (pct limb m) set limb 1-6 muscle 1-4 (1 fwd, 2 back, 3 lift, 4 bend) to pct
-	muscles muscle_show // show every fitted muscle's activation and scheduled frame window
-	relax muscle_relax // set every muscle to 0%
+End
+
+Words // Gaits
 	crawl gait_cli_crawl // start (or smoothly switch to) the crawl gait: one leg lifted at a time
 	trot gait_cli_trot // start the trot gait: diagonal pairs
 	pace gait_cli_pace // start the pace gait: same-side pairs
@@ -118,4 +84,25 @@ Words // Muscles and gaits (Robot/limbs) — 4-limb build, windows drive the 74H
 	gait-trace gait_cli_trace // toggle printing each leg lift-off, touchdown, wait and reach
 	level gait_cli_level // toggle IMU leveling of the stance legs
 	posture posture_show // show IMU roll/pitch estimate and tip-over state
+End
+
+Words // Wire calibration (Robot/limbs/wirecal): each wire's resistance transition, saved in the calib file
+	wirecal wirecal_cli // (muscle) calibrate one wire (run halt first): ramp its drive, find where its resistance changes, save the result
+	wirecal-stop wirecal_cli_stop // abort a running wire calibration and relax
+	wires wirecal_cli_show // show each calibrated wire: cold resistance and onset/mid/full duty (percent of the frame)
+	wire! wirecal_cli_set // (muscle rcold onset mid full) set a wire's calibration directly (duty in tenths of a percent); the calib file runs this at boot
+	calib-save calib_cli_save // write every registered calibration value to the calib file now
+End
+
+Words // Sensing: sense taps A0-A3, the ADC reference and the supply voltage
+	status status_cli // read every connection: 595 pins and outputs, ISNS/VIN analog taps, muscle windows
+	adc@ cli_adc_read // ( - mv ) read AN00 (P000) and push millivolts onto the stack
+	vin@ vin_cli_read // ( - mv ) supply voltage in mV through the calibrated A3 divider
+	vin-cal vin_cli_cal // (mv) solve the divider's bottom resistor from a metered VIN and save it to the calib file
+	rbot! vin_cli_rbot_set // (ohms) set the divider's bottom resistor directly; the calib file runs this at boot
+	vref! adc_cli_vref_set // (mv) fix the ADC reference voltage (AVCC0) by hand and stop tracking
+	vref-auto adc_cli_vref_auto // toggle tracking AVCC0 from the internal reference (default on)
+	vref-cal adc_cli_vref_cal // (mv) calibrate the internal reference against a metered AVCC0 and save it to the calib file
+	vint! adc_cli_vint_set // (mv) set the internal reference calibration directly; the calib file runs this at boot
+	adcexp adc_cli_experiment // rerun the internal-reference/temperature reads under several scan and sample-time settings
 End

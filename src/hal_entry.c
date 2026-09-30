@@ -9,8 +9,6 @@
 #include "usb_native_test.h"
 #include "canary.h"
 #include "board_cli.h"
-#include "i2c1.h"
-#include "limb_io.h"
 #include "fs_hw_flash.h"
 #include "muscle.h"
 #include "muscle_sr.h"
@@ -21,8 +19,6 @@
 #include "gait.h"
 #include "posture.h"
 #include "printers.h"
-
-void muscle_wire_init(void);
 
 // init_cli is defined in TimbreOS/cli.c but not declared in cli.h —
 // follow the convention used by the other board ports.
@@ -119,11 +115,8 @@ void hal_entry(void)
      * it and the wait never ends. usart_drain() calls usart_emit() directly,
      * which re-arms it. See Docs/output-backpressure-design.md; the proper fix
      * is for output() to kick the transport itself, after which this goes away. */
-    // dac_init() deliberately not called: P014 is A0/ISNS_A (see board_cli.c).
     adc_init();
-    muscle_wire_init();   // open GPT3 PWM on P003 before scheduler starts
     sr595_hw_init(3);     // hex PCB chain; one physical chip on the breadboard is chip 0
-    i2c1_init();          // IIC1: SCL=P100, SDA=P101, 400 kHz — limb array bus
     init_tea();
     vin_sense_init();     // register the divider calibration for the calib file
     adc_vref_start();     // track AVCC0 from the internal reference (needs the scheduler)
@@ -150,13 +143,6 @@ void hal_entry(void)
     wirecal_hw_init();     // per-wire self-calibration (`wirecal`)
     posture_init();
     gait_init();
-
-    // limb_io_init() calls in() to arm its first sweep tick, so it must
-    // come after init_tea() (unlike the peripheral opens above, which
-    // don't touch the scheduler).
-
-    // disabled for running cli tests; look at cli enabler.
-    // limb_io_init();
 
     /* USB comes up LAST, immediately before the run loop, so the first USB
      * interrupt is serviced on the next scheduler pass rather than after a few
