@@ -20,7 +20,7 @@
 #define PAD_SIZE 20
 #define PROMPTSTRING "ar: "
 #define CUSHION LINE_LENGTH // how much space to maintain for HERE
-#define HERE_SPACE 5000 // small here space
+#define HERE_SPACE 1000 // small here space
 #define OUTPUT_BLOCKED output() // deal with by running machines
 #define OUTPUT_FLUSH output()
 #define FLOAT_SUPPORT true
@@ -84,11 +84,15 @@ Long tick_get_utc(void);
 #define NUM_ACTIONS 80
 #define NUM_TE 80
 
-#define N_EVENTS 400
+#define N_EVENTS 50
 #define FIRST_EVENT (const char *)secs(5)
 
+// every dictionary here is a static HASHDICT: leave out the heap-allocated kind
+// (and with it malloc and the C library's heap, about 1.4 KB of RAM)
+#define DICT_STATIC_ONLY
+
 // define space for action stats
-#define TEA_TABLE HASH8
+#define TEA_TABLE HASH7   // 127 slots, 63 usable: distinct actions run; a full table restarts its stats
 
 // black hole reasons - addendum
 #define DMA_OVERBOOKED 7
