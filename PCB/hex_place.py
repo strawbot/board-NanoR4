@@ -6,7 +6,7 @@
 # expect to nudge parts and fix courtyard overlaps before routing.
 import math, pcbnew
 
-A   = 60.0                  # across flats, mm
+A   = 63.0                  # across flats, mm
 CUT = 6.0                   # truncation at the USB vertex (90 deg), mm
 CX, CY = 150.0, 100.0       # board centre on the sheet, mm
 R   = A / math.sqrt(3)      # vertex radius
@@ -83,6 +83,8 @@ for L in range(1, 7):
         put(f"Q{base + 1 + i}",  to(xl, -10.5), phi)          # AO3400A
         put(f"R{base + 1 + i}",  to(xl - 0.75, -14.0), phi)   # RG
         put(f"R{base + 11 + i}", to(xl + 0.75, -14.0), phi)   # RPD
+        put(f"C{base + 1 + i}",  to(xl - 0.75, -16.2), phi)   # CAC gate coupling
+        put(f"D{base + 11 + i}", to(xl + 0.8, -16.4), phi)    # BAT54 gate clamp
 
 def at(r, ang, rot, ref):                   # polar placement, rot relative to radial
     put(ref, pol(r, ang), ang + rot)
@@ -91,65 +93,36 @@ def at(r, ang, rot, ref):                   # polar placement, rot relative to r
 # Group A/B/C at the vertices 30/150/270 deg, between their two limbs.
 for gi, v in enumerate([30, 150, 270]):
     g = 700 + 100 * gi
-    at(24.5, v, 90, f"R{g + 1}")                            # RSENSE 2512, tangential
-    to = frame(pol(20.5, v), v)
+    at(R - 10.14, v, 90, f"R{g + 1}")                            # RSENSE 2512, tangential
+    to = frame(pol(R - 14.14, v), v)
     put(f"TP{g + 1}", to(-2.4, 0), v)
     put(f"R{g + 2}",  to(0.0, 0), v)                        # ISNS series R
     put(f"C{g + 1}",  to(1.6, 0), v)                        # ISNS filter C (DNP)
     at(10.8, v, 90, f"U{1101 + gi}")                        # 74HC595, inner ring
     at(15.0, v, 0, f"C{1101 + gi}")                         # its decoupling
 
-# ---------------------------------------------------------------- 2-layer routing tweaks (Sep 2026)
-# U1101/U1102 moved off the Nano's pad rows (their via space was blocked), turned so
-# outputs QB-QH face the gate resistors; decoupling caps moved to match.
-put("U1101", (12.0, 2.7), 270)
-put("U1102", (-12.0, 2.7), 270)
-put("C1101", (14.0, -1.9), 0)
-put("C1102", (-8.3, 3.0), 0)
-# courtyard clean-up nudges (power corner and keep-alive)
-put("C1001", (-10.8033, -6.1773), -60)
-put("C1003", (-5.0844, -5.9044), -40)
-put("R1002", (-6.445, -9.5239), -124)
-put("C1004", (-4.6654, -10.5109), -114)
-put("C1104", (19.6865, -7.9519), -30)
-# Sep 2026 round 2: limb 2/3 holes slid clear of the Nano; U1103 moved for the SWD/Qwiic holes;
-# UART pads J1 and SWD header J2 over the Nano (top side).
-put("J201", (11.5255, 24.5227), 60)
-put("D201", (7.7564, 21.1399), 60)
-put("J301", (-20.3243, 19.4427), 120)
-put("D304", (-7.6855, 21.106), 120)
-put("U1103", (0.25, -8.0), 90)
-put("C1103", (-1.5, -3.0), 90)
-put("R502", (-6.2743, -14.8678), -120)
-put("R511", (-3.4975, -16.3359), -120)
-put("R604", (3.4322, -14.5171), -60)
-put("R613", (6.2543, -14.834), -60)
-put("R614", (2.3654, -17.8299), -60)
-put("J1", (5.0, -8.0), 0)
-put("J2", (4.5, 5.0), 0)
-
 # ---------------------------------------------------------------- power (210 deg vertex)
-to = frame(pol(26.3, 210), 210)
+to = frame(pol(R - 8.34, 210), 210)
 fp = fp_of("J1001")                # 1x02 holes, origin at pin 1, laid along the edge
 if fp:
     fp.SetOrientationDegrees(210 % 360)
     fp.SetPosition(P(*to(-1.27, 0)))
-at(22.5, 210, 90, "D1001")          # TVS
-at(16.8, 210, 0,  "Q1001")          # reverse-protection P-FET
-at(12.2, 210, 90, "C1001")          # 100 uF polymer
-at(7.8, 190, 90, "C1002")
-at(7.8, 230, 90, "C1003")
-to = frame(pol(19.7, 210), 210)
+at(R - 12.14, 210, 90, "D1001")          # TVS
+at(R - 17.84, 210, 0,  "Q1001")          # reverse-protection P-FET
+at(11.3, 207, 90, "C1001")          # 100 uF polymer
+at(7.3, 190, 90, "C1002")
+at(7.3, 230, 90, "C1003")
+to = frame(pol(R - 14.94, 210), 210)
 put("R1001", to(2.0, 0), 210)
 put("D1002", to(-0.9, 0), 210 + 90)
-at(11.0, 236, 0, "R1002")           # VIN_S divider
-at(11.0, 241, 0, "R1003")
-at(11.0, 246, 0, "C1004")
+at(11.0, 239, 0, "R1002")           # VIN_S divider
+at(11.0, 244, 0, "R1003")
+at(13.4, 239, 0, "C1004")
 
 # ---------------------------------------------------------------- keep-alive / logic misc (330 deg vertex)
-at(17.3, 330, 0, "Q1101")
-at(24.5, 330, 90, "JP1101")
-to = frame(pol(21.0, 330), 330)
+at(R - 17.34, 330, 0, "Q1101")
+at(R - 10.14, 330, 90, "JP1101")
+to = frame(pol(R - 13.64, 330), 330)
 for ref, xl in [("C1104", -3.0), ("D1101", -1.0), ("D1102", 1.2), ("C1105", 2.9)]:
     put(ref, to(xl, 0), 330)
 for ref, ang in [("R1102", 318), ("R1101", 326), ("R1103", 334), ("R1104", 342)]:
@@ -161,6 +134,7 @@ for ref, xy in [("C1201", (-3.0, -3.2)), ("C1202", (0.0, -3.2)), ("C1203", (3.0,
                 ("R1201", (-4.2, 0.0)), ("R1202", (4.2, 1.0)), ("R1203", (4.2, -1.0)),
                 ("TP1201", (0.0, 3.5))]:
     put(ref, xy, 0)
+put("J1201", (-1.27 * 3, 10.4), 90)                  # Qwiic holes: PLACEHOLDER position
 
 # ---------------------------------------------------------------- mounting holes
 for n, k in enumerate([0, 2, 3, 4, 5], start=1):
@@ -192,20 +166,6 @@ if fp:
     pos = fp.GetPosition()
     fp.SetPosition(pcbnew.VECTOR2I(pos.x + pcbnew.FromMM(target[0] - cx),
                                    pos.y - pcbnew.FromMM(target[1] - cy)))
-
-# SWD test-point holes (J3) and Qwiic holes (J1201) share the Nano footprint origin
-if fp:
-    for ref in ("J3", "J1201"):
-        h = fp_of(ref)
-        if h:
-            h.SetOrientationDegrees(0)
-            h.SetPosition(fp.GetPosition())
-    # H6/H7: holes under the Nano's USB-end corner holes (M1.6 screws or alignment pins)
-    for ref, dx in (("H6", 7.62), ("H7", -7.62)):
-        h = fp_of(ref)
-        if h:
-            q = fp.GetPosition()
-            h.SetPosition(pcbnew.VECTOR2I(q.x + pcbnew.FromMM(dx), q.y - pcbnew.FromMM(20.32)))
 
 pcbnew.Refresh()
 print("placed; missing references:", missing if missing else "none")

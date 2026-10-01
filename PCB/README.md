@@ -25,6 +25,11 @@ Group A = limbs L1 + L2, B = L3 + L4, C = L5 + L6.
    group parts at their vertices, power at 210 deg, keep-alive at 330 deg,
    IMU at the centre, Nano flipped to the bottom). Checked for courtyard overlaps.
 
+## Board size
+The placement script uses A = 63 mm across flats (was 60). The per-gate guard
+(CAC + BAT54 on every channel) made each limb block deeper; 63 mm is the smallest
+size that placed with zero courtyard overlaps. Change A at the top of hex_place.py.
+
 ## Verify before layout
 - Nano R4: D9 (RCLK) and D6 (KA) must be GPT timer outputs.
 - Footprint A1 is hex_ctrl:Arduino_Nano_R4_Castellated (project library): 30 SMD pads
