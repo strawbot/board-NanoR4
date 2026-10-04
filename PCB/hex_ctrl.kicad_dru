@@ -1,0 +1,7 @@
+(version 1)
+
+# Fine-pitch IMU land pattern (0.5 mm pitch LGA): allow 0.125 mm between its own pads only.
+# Track widths for the pulse and sense nets come from the Pulse and Sense net classes.
+(rule "IMU fine pitch"
+  (constraint clearance (min 0.125mm))
+  (condition "A.insideCourtyard('U1201') && B.insideCourtyard('U1201')"))

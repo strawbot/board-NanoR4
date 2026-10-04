@@ -11,10 +11,7 @@ CUT = 6.0                   # truncation at the USB vertex (90 deg), mm
 CX, CY = 150.0, 100.0       # board centre on the sheet, mm
 R   = A / math.sqrt(3)      # vertex radius
 
-try:
-    b = BOARD                # set by an external test harness
-except NameError:
-    b = pcbnew.GetBoard()
+b = globals().get("_HEX_TEST_BOARD") or pcbnew.GetBoard()
 
 def P(x, y):                 # maths coords (mm, y up) -> KiCad internal units
     return pcbnew.VECTOR2I(pcbnew.FromMM(CX + x), pcbnew.FromMM(CY - y))
@@ -23,17 +20,36 @@ def pol(r, deg):
     return (r * math.cos(math.radians(deg)), r * math.sin(math.radians(deg)))
 
 missing = []
+# Build the reference map from GetFootprints(): in some KiCad versions
+# FindFootprintByReference returns an unwrapped SWIG pointer.
+FPS = {}
+for _fp in b.GetFootprints():
+    FPS[_fp.GetReference()] = _fp
+
 def fp_of(ref):
-    fp = b.FindFootprintByReference(ref)
+    fp = FPS.get(ref)
     if fp is None:
         missing.append(ref)
     return fp
+
+def set_rot(fp, deg):
+    deg = deg % 360
+    try:
+        fp.SetOrientationDegrees(deg)
+    except AttributeError:
+        fp.SetOrientation(pcbnew.EDA_ANGLE(deg, pcbnew.DEGREES_T))
+
+def get_rot(fp):
+    try:
+        return fp.GetOrientationDegrees()
+    except AttributeError:
+        return fp.GetOrientation().AsDegrees()
 
 def put(ref, xy, rot=0.0):
     fp = fp_of(ref)
     if fp is None:
         return
-    fp.SetOrientationDegrees(rot % 360)
+    set_rot(fp, rot)
     fp.SetPosition(P(*xy))
 
 def frame(origin, ang):
@@ -75,7 +91,7 @@ for L in range(1, 7):
     base = L * 100
     fp = fp_of(f"J{base + 1}")            # 1x05 header footprint, origin at pin 1
     if fp:
-        fp.SetOrientationDegrees(phi % 360)
+        set_rot(fp, phi)
         fp.SetPosition(P(*to(-2 * 2.54, -3.0)))
     for i in range(4):
         xl = (i - 1.5) * PITCH
@@ -98,24 +114,35 @@ for gi, v in enumerate([30, 150, 270]):
     put(f"TP{g + 1}", to(-2.4, 0), v)
     put(f"R{g + 2}",  to(0.0, 0), v)                        # ISNS series R
     put(f"C{g + 1}",  to(1.6, 0), v)                        # ISNS filter C (DNP)
-    at(10.8, v, 90, f"U{1101 + gi}")                        # 74HC595, inner ring
-    at(15.0, v, 0, f"C{1101 + gi}")                         # its decoupling
+
+# ---------------------------------------------------------------- shift registers (74HC595)
+# Round 2 placement (the one that routed completely): U1101/U1102 sit left and right of
+# centre, turned so their outputs QB-QH face the gate resistors of their two limbs;
+# U1103 sits below the IMU. Round 2 coordinates are (+-12.0, 2.7), U1103 (0.25, -8.0).
+# The gate coupling caps/clamp diodes added since then fill the strip just outside the
+# registers, so U1101/U1102 are pulled 1.0 mm toward the centre (SR_DX) and lifted
+# 1.5 mm (SR_DY): the smallest change that clears every courtyard (checked 2026-10-03)
+# while keeping the gate nets and SCK/RCLK/OE_N about as short as round 2. Do not
+# put them back on the 10.8 mm ring: that cost ~30% more gate/clock wire and failed to route.
+SR_DX, SR_DY = -1.0, 1.5
+for ref, xy, rot in [("U1101", (12.0 + SR_DX, 2.7 + SR_DY), 270), ("C1101", (14.0 + SR_DX, -1.9 + SR_DY), 0),
+                     ("U1102", (-12.0 - SR_DX, 2.7 + SR_DY), 270), ("C1102", (-8.3 - SR_DX, 3.0 + SR_DY), 0),
+                     ("U1103", (0.25, -8.0), 90), ("C1103", (-1.5, -3.0), 90)]:
+    put(ref, xy, rot)
 
 # ---------------------------------------------------------------- power (210 deg vertex)
 to = frame(pol(R - 8.34, 210), 210)
 fp = fp_of("J1001")                # 1x02 holes, origin at pin 1, laid along the edge
 if fp:
-    fp.SetOrientationDegrees(210 % 360)
+    set_rot(fp, 210)
     fp.SetPosition(P(*to(-1.27, 0)))
 at(R - 12.14, 210, 90, "D1001")          # TVS
-at(R - 17.84, 210, 0,  "Q1001")          # reverse-protection P-FET
+at(R - 17.44, 210, 0,  "Q1001")          # reverse-protection P-FET
 at(11.3, 207, 90, "C1001")          # 100 uF polymer
-at(7.3, 190, 90, "C1002")
-at(7.3, 230, 90, "C1003")
-to = frame(pol(R - 14.94, 210), 210)
-put("R1001", to(2.0, 0), 210)
-put("D1002", to(-0.9, 0), 210 + 90)
-at(11.0, 239, 0, "R1002")           # VIN_S divider
+at(7.3, 210, 90, "C1002")
+at(7.3, 330, 90, "C1003")          # second ceramic, distributed
+at(15.3, 210, 0, "R1001")
+at(11.0, 237, 0, "R1002")           # VIN_S divider
 at(11.0, 244, 0, "R1003")
 at(13.4, 239, 0, "C1004")
 
@@ -158,7 +185,7 @@ if fp:
         a, z = pad_xy("1"), pad_xy("15")
         if z[1] - a[1] > 10:
             break
-        fp.SetOrientationDegrees((fp.GetOrientationDegrees() + 90) % 360)
+        set_rot(fp, get_rot(fp) + 90)
     pads = [p.GetPosition() for p in fp.Pads()]
     cx = sum(pcbnew.ToMM(q.x) for q in pads) / len(pads) - CX
     cy = CY - sum(pcbnew.ToMM(q.y) for q in pads) / len(pads)
