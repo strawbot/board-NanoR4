@@ -14,6 +14,14 @@ offer to save in its own format on first save.
 
 Group A = limbs L1 + L2, B = L3 + L4, C = L5 + L6.
 
+## Schematic layout
+Each sheet is drawn as a wired, left-to-right flow (protection chain on power, the SER chain and clock trunks on
+logic, gate -> R -> C -> FET -> wire hole on each limb), and the top sheet is a block diagram: the Nano, the power,
+logic, IMU and group blocks, with every signal (SER, SCK, RCLK, KA, the 24 gate lines, ISNS, VIN_S, UART) drawn as a
+wire between blocks. The power rails are shown as a legend on that sheet. The layout comes from
+generator/build2.py; generator/README_generator.md describes how it is regenerated and checked against the
+original netlist (net for net, pin for pin).
+
 ## Design rules
 hex_ctrl.kicad_dru (Board Setup > Custom Rules) adds: 0.125 mm pad clearance inside the
 IMU footprint only; 0.4 mm min / 0.6 mm preferred width for +10V, GND, VIN_RAW, the wire

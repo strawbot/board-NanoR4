@@ -1,5 +1,6 @@
 import re
-LIB="/usr/share/kicad/symbols/"
+import os
+LIB=next((p for p in ("/usr/share/kicad/symbols/","/Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols/") if os.path.isdir(p)),"/usr/share/kicad/symbols/")
 def block(text, start):
     d=0
     for i in range(start,len(text)):

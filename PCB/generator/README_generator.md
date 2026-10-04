@@ -1,15 +1,31 @@
 # Generator scripts (how the schematic and board were produced)
 
-- libs.py, sch.py : write KiCad 7-format schematic files; pull symbols from KiCad's symbol library folder
-- build.py        : the design itself (all sheets, nets, values, footprints)
-- gen_board.py    : builds hex_ctrl.kicad_pcb from the exported netlist, runs ../hex_place.py, moves refs to Fab
-- testplace.py    : courtyard-overlap and board-outline check
-- check.py        : netlist connectivity summary
+## Current schematic generator (rev 2, 2026-10-04) -- use this one
+- build2.py   : the design, laid out as wired, left-to-right flow (one function per sheet; the top sheet is a block
+                diagram with real wires). `python3 build2.py` writes regen/out/*.kicad_sch.
+- sch2.py     : sheet writer: stable UUIDs, bus/poly/sheet-pin support, collision-free reference/value text
+- libs2.py    : symbol definitions, read from regen/baseline (the schematics as they were before the re-layout)
+- netsig.py   : netlist signature + diff. `python3 netsig.py DIR out.json`. Proves a layout change is electrically
+                identical: every net and every pin, plus part values and footprints.
+- regen/uuid_registry.json : UUIDs of the sheets and parts of the original schematics. build2.py reuses them, so
+                the PCB's footprint links (footprint path = sheet UUID / symbol UUID) keep working.
+- regen/baseline, regen/baseline_sig.json : the rev 1 schematics and their netlist signature (the reference).
 
-They were run with KiCad 7's kicad-cli and pcbnew Python module on Linux. Paths at the top of
-libs.py and gen_board.py point at /usr/share/kicad; change them for another install.
-Note: KiCad 10's pcbnew Python bindings misbehaved in the scripting console here, so the board
-generator may need adapting (or editing the .kicad_* text files directly) on that version.
+Procedure after editing build2.py:
+1. `python3 build2.py`
+2. `python3 -c "import json,netsig; a=json.load(open('regen/baseline_sig.json')); print(netsig.diff(a, netsig.sig('regen/out')))"`
+   must print `[]` (or only differences you meant to make; then refresh regen/baseline_sig.json).
+3. Close KiCad, copy regen/out/*.kicad_sch over the project's schematics, run ERC, and run PCB DRC with
+   `--schematic-parity` (it must report no parity issues: that proves the footprint links survived).
 
-IMPORTANT: re-running build.py regenerates all schematic UUIDs; after that, use
-"Re-link footprints by reference" when updating the PCB, or regenerate the board too.
+Net names: cross-sheet signals use a *global* label on the top-sheet wire, so net names stay "KA", "G_A1" ... (a local
+label on the top sheet would rename them "/KA"). Inside a sheet, signals arrive through hierarchical labels.
+
+## One-off edit scripts (kept for the record)
+- nano_iface_sch.py / nano_iface_pcb.py : J1201 -> SDA/SCL pads, SWD access holes, 4-pin J1001 (schematic and board)
+- silk_designators.py : move J* / TP* designators to the front silkscreen
+- netsig.py, silk_designators.py need KiCad's own python (pcbnew) where they touch the board.
+
+## Rev 1 generator (legacy, do not run)
+build.py, sch.py, libs.py, gen_board.py, testplace.py, check.py wrote the original schematics and board with KiCad 7
+on Linux. Re-running build.py regenerates every UUID and breaks the PCB's footprint links.
