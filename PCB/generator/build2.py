@@ -241,9 +241,22 @@ def build_imu():
     s.wire(pin('1'), (pin('1')[0] - 5.08, pin('1')[1])); s.power('GND', (pin('1')[0] - 5.08, pin('1')[1]), (-1, 0))
     s.stub(u, '12', 'label', 'VDD_IMU', L=15.24)
     s.stub(u, '6', 'power', 'GND')
-    # INT1 -> test point; unused pins no-connect
-    i1 = pin('4'); tpi = s.sym(TP, lambda b: f'TP{b + 1}', 'IMU_INT', FP['TP'], i1[0] + 20.32, i1[1], 270, place='b', inbom=False)
-    s.wire(i1, s.pin(tpi, '1')); s.label('label', 'IMU_INT', (i1[0] + 8.0, i1[1]), (1, 0))
+    # INT1 (3.3 V) -> test point and a one-MOSFET level shifter to the Nano's 5 V logic (D2).
+    # Q1201 gate at 3V3, source on the IMU side, drain on the Nano side, 10k pull-up on each side (works for push-pull or open-drain).
+    i1 = pin('4'); yl = i1[1]
+    s.label('label', 'IMU_INT', (205.74, yl), (1, 0))
+    xtp, xra, xq, xrb = 220.98, 228.6, 243.84, 256.54
+    s.wire(i1, (xq - 5.08, yl))
+    tpi = s.sym(TP, lambda b: f'TP{b + 1}', 'IMU_INT', FP['TP'], xtp, yl - 2.54, place='r', inbom=False)
+    s.wire(s.pin(tpi, '1'), (xtp, yl)); s.junction((xtp, yl))
+    ra = s.sym(R_, lambda b: f'R{b + 4}', '10k', FP['R0402'], xra, yl - 7.62, place='r')
+    s.wire(s.pin(ra, '2'), (xra, yl)); s.junction((xra, yl)); s.stub(ra, '1', 'power', '+3V3')
+    qi = s.sym(s.lib('hex_ctrl:Q_NMOS_GSD'), lambda b: f'Q{b + 1}', '2N7002', FP['SOT23'], xq, yl - 2.54, 270, place='b')
+    s.stub(qi, '1', 'power', '+3V3')
+    sd = s.pin(qi, '3')
+    rb = s.sym(R_, lambda b: f'R{b + 5}', '10k', FP['R0402'], xrb, yl - 7.62, place='r')
+    s.wire(sd, (xrb + 12.7, yl)); s.wire(s.pin(rb, '2'), (xrb, yl)); s.junction((xrb, yl)); s.stub(rb, '1', 'power', '+5V')
+    s.label('hier', 'IMU_INT_5V', (xrb + 12.7, yl), (1, 0), 'output')
     s.nc(pin('9'))
     for n in ('2', '3', '7', '10', '11'): s.nc(pin(n))
     # debug / Nano access holes block
@@ -258,7 +271,7 @@ def build_imu():
         else: s.nc(e)
     s.text((20, 22), 'ICM-42688-P in I2C mode: AP_CS tied high, AP_AD0 low -> address 0x68. Powered from the Nano 3.3 V pin; pull-ups fitted only if the Nano is insufficient.')
     s.text((20, 26), 'CHECK BEFORE LAYOUT: RESV pins (2, 3, 7, 10, 11) and INT2/FSYNC (9) are left unconnected here; confirm against the datasheet. Confirm the LGA footprint pad order.')
-    s.text((20, 30), 'INT1 goes to a test point only: its 3.3 V level may not read reliably on the 5 V Nano. Poll the FIFO over I2C instead.')
+    s.text((20, 30), 'INT1 is 3.3 V; Q1201 (gate at 3V3, 10k pull-up each side) shifts it to the Nano 5 V logic on D2 (net IMU_INT_5V). Polarity and push-pull / open-drain are set in the IMU INT_CONFIG register; TP1201 is the 3.3 V side.')
     s.text((20, 245), 'NANO INTERFACE (replaces the J1201 Qwiic header). 3V3 and GND come from Nano pins 17 and 4 on A1.')
     s.text((20, 249), 'TP1202 / TP1203 (SCL / SDA): pads with 1.0 mm holes under the two plated holes either side of the Nano Qwiic connector. Solder a short pin or wire through each.')
     s.text((20, 253), 'TP1204-TP1208 (SWDIO, SWCLK, NRST, GND, 3V3): 1.0 mm holes over the Nano SWD test pads, which are on the Nano underside facing this board, under the Qwiic connector.')
@@ -271,7 +284,7 @@ def build_root(pages):
     NANO = s.lib('hex_ctrl:Arduino_Nano_R4')
     a1 = s.sym(NANO, 'A1', 'Arduino Nano R4', FP['NANO'], 170.18, 101.6, fpos=dict(ref=(185.42, 78.74, 'left'), val=(185.42, 81.28, 'left')))
     P = lambda n: s.pin(a1, n)
-    for n in ('5', '6', '7', '8', '9', '10', '11', '13', '15', '28', '3', '18', '23', '24', '25', '26'): s.nc(P(n))
+    for n in ('6', '7', '8', '9', '10', '11', '13', '15', '28', '3', '18', '23', '24', '25', '26'): s.nc(P(n))
     s.stub(a1, '30', 'power', 'VIN', L=2.54); s.stub(a1, '17', 'power', '+3V3', L=7.62); s.stub(a1, '27', 'power', '+5V', L=12.7)
     g4, g29 = P('4'), P('29'); gy = g4[1] + 2.54
     s.wire(g4, (g4[0], gy)); s.wire(g29, (g29[0], gy), (g4[0], gy)); s.junction((g4[0], gy)); s.power('GND', (g4[0], gy), (0, 1))
@@ -279,7 +292,7 @@ def build_root(pages):
     for i in range(5): s.sym(mh, f'H{i + 1}', 'M2', FP['MH'], 120 + i * 16, 284, inbom=False)
     # ---- blocks
     pw = s.sheet('power', 'power.kicad_sch', 300, 40, 45, 17.78, [('NANO_TX', 'bidirectional', 'l', 5.08), ('NANO_RX', 'bidirectional', 'l', 7.62), ('VIN_S', 'output', 'l', 12.7)], page_of=lambda p: pages[(p, 'power')])
-    im = s.sheet('imu', 'imu.kicad_sch', 45, 40, 50, 20.32, [], page_of=lambda p: pages[(p, 'imu')])
+    im = s.sheet('imu', 'imu.kicad_sch', 45, 40, 50, 20.32, [('IMU_INT_5V', 'output', 'r', 5.08)], page_of=lambda p: pages[(p, 'imu')])
     LX, LY, LW = 38.1, 147.32, 60.96
     lpins = [('RCLK_MCU', 'input', 't', 10.16), ('SER', 'input', 't', 20.32), ('SCK_MCU', 'input', 't', 30.48)]
     for gi, g_ in enumerate('ABC'):
@@ -297,6 +310,9 @@ def build_root(pages):
     for nm, pn in (('RCLK_MCU', '12'), ('SER', '14'), ('SCK_MCU', '16')):
         (px, py), _ = s.spin(lg, nm); t = P(pn)
         s.wire((px, py), (px, t[1]), t); s.label('global', nm, (px + 18.0 + 12.0 * ('KA RCLK_MCU SER SCK_MCU'.split().index(nm)) * 0, t[1]), (1, 0), 'passive')
+    # ---- IMU interrupt (level shifted on the imu sheet) -> Nano D2
+    (ix, iy), _ = s.spin(im, 'IMU_INT_5V'); t = P('5')
+    s.wire((ix, iy), (129.54, iy), (129.54, t[1]), t); s.label('global', 'IMU_INT_5V', (105.0, iy), (1, 0), 'passive')
     # ---- ISNS: groups -> Nano right pins (A0..A2), each on its own riser
     for g_, pn, xr in (('A', '19', 246.38), ('B', '20', 251.46), ('C', '21', 256.54)):
         (gx, gy_), _ = s.spin(grp[g_], 'ISNS'); t = P(pn)
@@ -313,9 +329,9 @@ def build_root(pages):
     s.text((42, 190), '3 x 74HC595 gate-drive chain', 1.0); s.text((42, 193), '(OE tied low)', 1.0)
     for gi, g_ in enumerate('ABC'): s.text((185.42, 147.32 + 35.56 * gi + 30), 'RSENSE + limb_a + limb_b (8 channels)', 1.0)
     # ---- notes and the rail legend
-    s.text((100, 40), 'Nano R4 pin choices: D9 (RCLK) must be a GPT timer output; D11/D13 hardware SPI. D6 (formerly KA) is now unused. Verify against the Nano R4 pinout.', 1.27)
-    s.text((100, 44), 'IMU: 3.3 V and I2C come from the Nano through solder pads under its Qwiic holes (see imu sheet). D2 left free for an IMU interrupt if level-shifted later.', 1.27)
-    s.text((45, 74), 'No electrical link at this level: TP1202/TP1203 solder to the Nano Qwiic holes; SWD holes TP1204-1208.', 1.0)
+    s.text((100, 40), 'Nano R4 pin choices: D9 (RCLK) must be a GPT timer output; D11/D13 hardware SPI. D6 (formerly KA) is now unused; D2 reads the IMU interrupt. Verify against the Nano R4 pinout.', 1.27)
+    s.text((100, 44), 'IMU: 3.3 V and I2C come from the Nano through solder pads under its Qwiic holes (see imu sheet). The IMU interrupt is level-shifted to 5 V and wired to D2.', 1.27)
+    s.text((45, 74), 'I2C / power reach the Nano through TP1202/TP1203 (solder to its Qwiic holes); SWD holes TP1204-1208.', 1.0)
     s.text((185, 142), 'Group A = limbs L1+L2, B = L3+L4, C = L5+L6. Each limb holds two antagonist pairs (W1/W2, W3/W4).', 1.27)
     s.text((38, 262), 'POWER RAILS (global power symbols, not drawn as wires):', 1.27)
     s.text((38, 266), 'VIN   power sheet (reverse-protected input, J1001; 21 V in test) -> limb flyback diodes and wire holes, Nano VIN pin', 1.27)

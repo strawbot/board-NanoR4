@@ -27,6 +27,11 @@ Group A = limbs L1 + L2, B = L3 + L4, C = L5 + L6.
   three 74HC595s is tied to GND, so the outputs are always enabled; the gate guard on every channel (CAC / RPD / BAT54)
   keeps a stuck-high output from holding a MOSFET on.
 
+## IMU interrupt
+IMU INT1 (3.3 V logic) goes to Nano D2 (5 V logic) through a one-transistor level shifter: Q1201 (2N7002, gate on +3V3)
+with R1204 pulling the IMU side up to +3V3 and R1205 pulling the Nano side (IMU_INT_5V) up to +5V. TP1201 stays on the
+IMU side. Nano D2 is therefore no longer a spare pin.
+
 ## Schematic layout
 Each sheet is drawn as a wired, left-to-right flow (protection chain on power, the SER chain and clock trunks on
 logic, gate -> R -> C -> FET -> wire hole on each limb), and the top sheet is a block diagram: the Nano, the power,
