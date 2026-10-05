@@ -88,7 +88,7 @@ class Sheet:
         ang = {(1, 0): 0, (-1, 0): 180, (0, -1): 90, (0, 1): 270}[direction]
         self.items.append(dict(kind=kind, name=name, p=gp(p), ang=ang, shape=shape, uuid=U()))
     def power(self, net, p, direction):
-        key = self.lib('power:' + net)
+        key = self.lib(('hex_ctrl:' if net == 'VIN' else 'power:') + net)
         if net == 'GND': r = {(0, 1): 0, (1, 0): 90, (0, -1): 180, (-1, 0): 270}[direction]
         else: r = {(0, -1): 0, (-1, 0): 90, (0, 1): 180, (1, 0): 270}[direction]
         if net == 'PWR_FLAG': self.fcount += 1; n = self.fcount; ref = lambda b, n=n: f'#FLG{b + n:04d}'
@@ -200,7 +200,7 @@ class Sheet:
     def render(self, is_root=False):
         self.layout_fields()
         o = [f'(kicad_sch (version 20230121) (generator eeschema)\n  (uuid {self.uuid})\n  (paper "{self.paper}")']
-        o.append(f'  (title_block (title "{self.title}") (rev "2") (company "Hex muscle-wire controller") (comment 1 "Layout regenerated 2026-10-04; netlist identical to rev 1"))')
+        o.append(f'  (title_block (title "{self.title}") (rev "2") (company "Hex muscle-wire controller") (comment 1 "Layout regenerated 2026-10-04; rev 2: Vin rail, keep-alive removed"))')
         o.append('  (lib_symbols\n' + '\n'.join('    ' + t.strip() for t in self.libs.values()) + '\n  )')
         for it in self.items:
             k = it['kind']

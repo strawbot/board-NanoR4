@@ -45,21 +45,21 @@ def build_limb():
         top = s.pin(rpd, '1'); s.wire(gn, top); s.wire(top, s.pin(dc, '1')); s.junction(top)
         bot = s.pin(rpd, '2'); s.wire(s.pin(dc, '2'), bot); s.junction(bot)
         s.wire(bot, (bot[0], bot[1] + 2.54)); s.power('GND', (bot[0], bot[1] + 2.54), (0, 1))
-        # --- source -> SRC (sheet pin), drain -> W node, flyback diode to +10V
+        # --- source -> SRC (sheet pin), drain -> W node, flyback diode to Vin
         s.stub(q, '2', 'hier', 'SRC', L=5.08, shape='passive')
         dp = s.pin(q, '3'); yw = y0 - 12.7; xw = dp[0]
         xd = xw + 8.89
         s.wire(dp, (xw, yw), (xd, yw))
         fd = s.sym(D_, lambda b, k=k: f'D{b + 1 + k}', 'BAT165', FP['SOD323'], xd, yw - 3.81, 270, place='r')
-        s.junction((xd, yw)); s.stub(fd, '1', 'power', '+10V')
+        s.junction((xd, yw)); s.stub(fd, '1', 'power', 'VIN')
         # --- W wire to the connector
         pj = jpin[pinfor[k]]
         xl = lane[k]
         s.wire((xd, yw), (xl, yw), (xl, pj[1]), pj)
         if k in (0, 1): pass
         s.label('label', f'W{k + 1}', (xd + 25.4, yw), (1, 0))
-    s.stub(jl, '3', 'power', '+10V', L=2.54)
-    s.text((20, 18), 'Limb: 4 low-side channels. Muscle wire k runs from the +10 V hole to hole Wk. W1/W2 and W3/W4 are the antagonist pairs.')
+    s.stub(jl, '3', 'power', 'VIN', L=2.54)
+    s.text((20, 18), 'Limb: 4 low-side channels. Muscle wire k runs from the Vin hole to hole Wk. W1/W2 and W3/W4 are the antagonist pairs.')
     s.text((20, 22), 'Flyback diodes may be fitted DNP if the wire leads are short. Gate pull-downs keep every MOSFET off when the 74HC595 outputs are disabled.')
     s.text((20, 26), 'AO3400A pins: 1 G, 2 S, 3 D (SOT-23).')
     s.text((20, 30), 'Gate guard (hardware, no software involved): CAC AC-couples the drive, RPD bleeds it, the BAT54 clamp restores the low level each cycle.')
@@ -116,9 +116,9 @@ def build_power():
     # gate: PG net, pull-down to GND
     rg = s.sym(R_, lambda b: f'R{b + 1}', '10k', FP['R0402'], 127.0, 114.3, place='r')
     s.wire(qg, s.pin(rg, '1')); s.label('label', 'PG', (127.0, 109.22), (-1, 0)); s.stub(rg, '2', 'power', 'GND')
-    # +10V rail: bulk caps, flag, divider
+    # Vin rail (after reverse protection): bulk caps, flag, divider
     RE = 228.6
-    s.wire(qs, (RE, RY)); s.wire((RE, RY), (RE, RY - 2.54)); s.power('+10V', (RE, RY - 2.54), (0, -1))
+    s.wire(qs, (RE, RY)); s.wire((RE, RY), (RE, RY - 2.54)); s.power('VIN', (RE, RY - 2.54), (0, -1))
     caps = [(CP, 'C_Polarized', '100uF 16V polymer', FP['POLY'], 152.4), (C_, 'C', '22uF 25V', FP['C1206'], 170.18), (C_, 'C', '22uF 25V', FP['C1206'], 187.96)]
     for i, (lib, _, val, fp, x) in enumerate(caps):
         c = s.sym(lib, lambda b, i=i: f'C{b + 1 + i}', val, fp, x, RY + 3.81, place='r' if i == 2 else 'l')
@@ -130,7 +130,7 @@ def build_power():
     s.wire((187.96, gy), (200.66, gy)); s.power('PWR_FLAG', (200.66, gy), (0, 1)); 
     s.power('PWR_FLAG', (200.66, RY), (0, -1)); s.junction((200.66, RY))
     r1 = s.sym(R_, lambda b: f'R{b + 2}', '100k', FP['R0402'], 215.9, 106.68, place='l')
-    r2 = s.sym(R_, lambda b: f'R{b + 3}', '47k', FP['R0402'], 215.9, 118.11, place='l')
+    r2 = s.sym(R_, lambda b: f'R{b + 3}', '18k', FP['R0402'], 215.9, 118.11, place='l')
     cf = s.sym(C_, lambda b: f'C{b + 4}', '10nF', FP['C0402'], 228.6, 115.57, place='r')
     s.wire((215.9, RY), s.pin(r1, '1')); s.junction((215.9, RY))
     s.wire(s.pin(r1, '2'), s.pin(r2, '1')); s.junction((215.9, 111.76))
@@ -141,15 +141,15 @@ def build_power():
     s.wire(p2, (60.96, p2[1])); s.power('GND', (60.96, p2[1]), (1, 0))
     s.wire(p3, (66.04, p3[1])); s.label('hier', 'NANO_TX', (66.04, p3[1]), (1, 0), 'bidirectional')
     s.wire(p4, (66.04, p4[1])); s.label('hier', 'NANO_RX', (66.04, p4[1]), (1, 0), 'bidirectional')
-    s.text((30, 30), 'Reverse protection: AO3401A P-FET (body diode anode at input). Vgs = -10 V at a 10 V supply, inside its +/-12 V rating; add a gate clamp zener if the supply can exceed 12 V.')
-    s.text((30, 34), 'Bulk capacitance: size from breadboard rail-sag measurements. VIN_S = 10 V x 47k/147k = 3.2 V to ADC A3.')
+    s.text((30, 30), 'Reverse protection: AO3401A P-FET (body diode anode at input). With the gate pulled to GND, Vgs = -Vin; the AO3401A is rated +/-12 V, so a gate clamp is needed once Vin exceeds 12 V (running at 21 V).')
+    s.text((30, 34), 'Bulk capacitance: size from breadboard rail-sag measurements. VIN_S = Vin x 18k/118k = 3.2 V at Vin = 21 V, to ADC A3 (scale 0.1525).')
     s.text((30, 38), 'J1001: pin 1 VIN_RAW, pin 2 GND, pin 3 TX, pin 4 RX (Nano D1/TX, D0/RX). GND is shared with the power input; pins 2-4 form a GND / TX / RX UART header. Do not plug a UART cable onto pins 1-2.')
     return s
 
 def build_logic():
-    s = Sheet('logic.kicad_sch', 'Gate drive shift registers and keep-alive', 'A3', 1100)
+    s = Sheet('logic.kicad_sch', 'Gate drive shift registers', 'A3', 1100)
     R_, C_, D_, QN, JPs, IC = s.lib('Device:R'), s.lib('Device:C'), s.lib('Device:D'), s.lib('hex_ctrl:Q_NMOS_GSD'), s.lib('hex_ctrl:SolderJumper_2_Open'), s.lib('74xx:74HC595')
-    XS, XR, XO = 135.89, 128.27, 120.65            # trunks: SCK, RCLK, OE_N
+    XS, XR = 135.89, 128.27                        # trunks: SCK, RCLK
     IX = 170.18; IYS = [80.01, 144.78, 209.55]
     chain_nc = None
     pinsL = {}
@@ -170,12 +170,12 @@ def build_logic():
             p = s.pin(u, pn); e = (IX + 17.78, p[1]); s.wire(p, e); s.label('hier', f'G_{g_}{k + 1}', e, (1, 0), 'output')
         pinsL[g_] = dict(ser=s.pin(u, '14'), sck=s.pin(u, '11'), rclk=s.pin(u, '12'), oe=s.pin(u, '13'), qh=s.pin(u, '9'))
     # --- trunks and stubs
-    sck_y, rclk_y, oe_y = zip(*[(pinsL[g]['sck'][1], pinsL[g]['rclk'][1], pinsL[g]['oe'][1]) for g in 'ABC'])
+    sck_y, rclk_y = zip(*[(pinsL[g]['sck'][1], pinsL[g]['rclk'][1]) for g in 'ABC'])
     for g_ in 'ABC':
         p = pinsL[g_]
         s.wire(p['sck'], (XS, p['sck'][1])); s.junction((XS, p['sck'][1]))
         s.wire(p['rclk'], (XR, p['rclk'][1])); s.junction((XR, p['rclk'][1]))
-        s.wire(p['oe'], (XO, p['oe'][1])); s.junction((XO, p['oe'][1]))
+        s.wire(p['oe'], (p['oe'][0] - 5.08, p['oe'][1])); s.power('GND', (p['oe'][0] - 5.08, p['oe'][1]), (-1, 0))   # outputs always enabled
     # SCK / RCLK inputs through the series resistors
     YSK, YRK = 48.26, 55.88
     s.label('hier', 'SCK_MCU', (30.48, YSK), (-1, 0), 'input')
@@ -196,36 +196,8 @@ def build_logic():
         s.label('label', nm, (xv, ymid - 8.0), (1, 0)) if False else None
         s.label('label', nm, (xl + 10.0, ymid), (1, 0))
     s.nc(pinsL['C']['qh'])
-    # --- keep-alive chain along the bottom
-    YK = 262.0
-    s.label('hier', 'KA', (30.48, YK), (-1, 0), 'input')
-    c1 = s.sym(C_, lambda b: f'C{b + 4}', '100nF', FP['C0402'], 55.88, YK, 270, place='a')
-    s.wire((30.48, YK), s.pin(c1, '2')); s.wire(s.pin(c1, '1'), (88.9, YK)); s.junction((88.9, YK)); s.label('label', 'KX', (76.2, YK), (1, 0))
-    d1 = s.sym(D_, lambda b: f'D{b + 1}', 'BAT54', FP['SOD323'], 88.9, YK + 3.81, 270, place='r')
-    s.stub(d1, '2', 'power', 'GND')
-    d2 = s.sym(D_, lambda b: f'D{b + 2}', 'BAT54', FP['SOD323'], 106.68, YK, 180, place='a')
-    s.wire((88.9, YK), s.pin(d2, '2')); s.wire(s.pin(d2, '1'), (152.4, YK)); s.label('label', 'KY', (121.92 + 6.0, YK), (1, 0)) if False else None
-    s.label('label', 'KY', (114.3, YK), (1, 0))
-    c2 = s.sym(C_, lambda b: f'C{b + 5}', '100nF', FP['C0402'], 121.92, YK + 7.62, place='l')
-    rb = s.sym(R_, lambda b: f'R{b + 2}', '10k', FP['R0402'], 133.35, YK + 7.62, place='r')
-    s.wire((121.92, YK), s.pin(c2, '1')); s.junction((121.92, YK)); s.wire((133.35, YK), s.pin(rb, '1')); s.junction((133.35, YK))
-    s.stub(c2, '2', 'power', 'GND'); s.stub(rb, '2', 'power', 'GND')
-    qk = s.sym(QN, lambda b: f'Q{b + 1}', '2N7002', FP['SOT23'], 157.48, YK, place='r')
-    s.wire((152.4, YK), s.pin(qk, '1'))
-    s.stub(qk, '2', 'power', 'GND', L=2.54)
-    dr = s.pin(qk, '3'); ox = dr[0]; oy = dr[1] - 5.08
-    s.wire(dr, (ox, oy)); s.junction((ox, oy)); 
-    s.wire((ox, oy), (XO, oy), (XO, oe_y[0]))       # OE_N trunk up to the registers
-    s.label('label', 'OE_N', (XO + 12.0, oy), (1, 0))
-    # pull-up and bypass jumper on the OE_N node
-    rpu = s.sym(R_, lambda b: f'R{b + 1}', '10k', FP['R0402'], ox + 15.24, oy - 7.62, place='r')
-    s.wire((ox, oy), (ox + 15.24, oy), s.pin(rpu, '2')); s.stub(rpu, '1', 'power', '+5V')
-    jp = s.sym(JPs, lambda b: f'JP{b + 1}', 'KA_BYPASS', FP['SJ'], ox + 30.48, oy + 3.81, 270, place='r', inbom=False)
-    s.wire((ox + 15.24, oy), (ox + 30.48, oy), s.pin(jp, '1')); s.junction((ox + 15.24, oy)); s.stub(jp, '2', 'power', 'GND')
     s.text((230, 30), 'Chain: SER -> U_A -> U_B -> U_C. QA..QH of U_A drive G_A1..G_A8 (limbs L1, L2), U_B -> L3, L4, U_C -> L5, L6.')
-    s.text((230, 38), 'Keep-alive: KA square wave (about 10 kHz) charges KY; Q holds OE_N low (outputs on). KA stops -> OE_N pulled high -> all outputs off in about 1 ms.')
-    s.text((230, 42), 'JP bypasses the keep-alive for debugging only. Leave open in normal use.')
-    s.text((230, 46), 'KA must be toggled by firmware (once per scheduler frame), NOT by a free-running timer: a timer keeps toggling through a hang or a debugger halt.')
+    s.text((230, 36), 'OE is tied to GND: outputs are always enabled. The gate guard on every channel (CAC / RPD / BAT54) replaces the old keep-alive output-enable circuit.')
     return s
 
 def build_imu():
@@ -295,8 +267,8 @@ def build_root(pages):
     NANO = s.lib('hex_ctrl:Arduino_Nano_R4')
     a1 = s.sym(NANO, 'A1', 'Arduino Nano R4', FP['NANO'], 170.18, 101.6, fpos=dict(ref=(185.42, 78.74, 'left'), val=(185.42, 81.28, 'left')))
     P = lambda n: s.pin(a1, n)
-    for n in ('5', '6', '7', '8', '10', '11', '13', '15', '28', '3', '18', '23', '24', '25', '26'): s.nc(P(n))
-    s.stub(a1, '30', 'power', '+10V', L=2.54); s.stub(a1, '17', 'power', '+3V3', L=7.62); s.stub(a1, '27', 'power', '+5V', L=12.7)
+    for n in ('5', '6', '7', '8', '9', '10', '11', '13', '15', '28', '3', '18', '23', '24', '25', '26'): s.nc(P(n))
+    s.stub(a1, '30', 'power', 'VIN', L=2.54); s.stub(a1, '17', 'power', '+3V3', L=7.62); s.stub(a1, '27', 'power', '+5V', L=12.7)
     g4, g29 = P('4'), P('29'); gy = g4[1] + 2.54
     s.wire(g4, (g4[0], gy)); s.wire(g29, (g29[0], gy), (g4[0], gy)); s.junction((g4[0], gy)); s.power('GND', (g4[0], gy), (0, 1))
     mh = s.lib('Mechanical:MountingHole')
@@ -305,7 +277,7 @@ def build_root(pages):
     pw = s.sheet('power', 'power.kicad_sch', 300, 40, 45, 17.78, [('NANO_TX', 'bidirectional', 'l', 5.08), ('NANO_RX', 'bidirectional', 'l', 7.62), ('VIN_S', 'output', 'l', 12.7)], page_of=lambda p: pages[(p, 'power')])
     im = s.sheet('imu', 'imu.kicad_sch', 45, 40, 50, 20.32, [], page_of=lambda p: pages[(p, 'imu')])
     LX, LY, LW = 38.1, 147.32, 60.96
-    lpins = [('KA', 'input', 't', 10.16), ('RCLK_MCU', 'input', 't', 20.32), ('SER', 'input', 't', 30.48), ('SCK_MCU', 'input', 't', 40.64)]
+    lpins = [('RCLK_MCU', 'input', 't', 10.16), ('SER', 'input', 't', 20.32), ('SCK_MCU', 'input', 't', 30.48)]
     for gi, g_ in enumerate('ABC'):
         for k in range(8): lpins.append((f'G_{g_}{k + 1}', 'output', 'r', 35.56 * gi + 2.54 * (k + 1)))
     lg = s.sheet('logic', 'logic.kicad_sch', LX, LY, LW, 99.06, lpins, page_of=lambda p: pages[(p, 'logic')])
@@ -318,7 +290,7 @@ def build_root(pages):
             (lx, ly), _ = s.spin(lg, f'G_{g_}{k + 1}'); (gx, gy_), _ = s.spin(grp[g_], f'G{k + 1}')
             s.wire((lx, ly), (gx, gy_)); s.label('global', f'G_{g_}{k + 1}', (lx + 8.89 + (k % 2) * 22.86, ly), (1, 0), 'passive')
     # ---- control lines: logic top pins -> Nano left pins
-    for nm, pn in (('KA', '9'), ('RCLK_MCU', '12'), ('SER', '14'), ('SCK_MCU', '16')):
+    for nm, pn in (('RCLK_MCU', '12'), ('SER', '14'), ('SCK_MCU', '16')):
         (px, py), _ = s.spin(lg, nm); t = P(pn)
         s.wire((px, py), (px, t[1]), t); s.label('global', nm, (px + 18.0 + 12.0 * ('KA RCLK_MCU SER SCK_MCU'.split().index(nm)) * 0, t[1]), (1, 0), 'passive')
     # ---- ISNS: groups -> Nano right pins (A0..A2), each on its own riser
@@ -332,18 +304,18 @@ def build_root(pages):
     s.wire((tx_, ty), (146.05, ty), (146.05, P('1')[1]), P('1')); s.label('global', 'NANO_TX', (280.0, ty), (1, 0), 'passive')
     s.wire((rx_, ry), (139.7, ry), (139.7, P('2')[1]), P('2')); s.label('global', 'NANO_RX', (280.0, ry), (1, 0), 'passive')
     # ---- block descriptions
-    s.text((300, 64), 'Reverse-protected 10 V input (J1001), TVS, bulk caps,', 1.0); s.text((300, 67), 'VIN_S divider; pins 2-4 of J1001 = GND / TX / RX', 1.0)
+    s.text((300, 64), 'Reverse-protected Vin input (J1001), TVS, bulk caps,', 1.0); s.text((300, 67), 'VIN_S divider; pins 2-4 of J1001 = GND / TX / RX', 1.0)
     s.text((45, 70), 'ICM-42688-P on the Nano 3.3 V, SCL/SDA solder pads', 1.0)
-    s.text((42, 190), '3 x 74HC595 gate-drive chain', 1.0); s.text((42, 193), '+ keep-alive (OE_N)', 1.0)
+    s.text((42, 190), '3 x 74HC595 gate-drive chain', 1.0); s.text((42, 193), '(OE tied low)', 1.0)
     for gi, g_ in enumerate('ABC'): s.text((185.42, 147.32 + 35.56 * gi + 30), 'RSENSE + limb_a + limb_b (8 channels)', 1.0)
     # ---- notes and the rail legend
-    s.text((100, 40), 'Nano R4 pin choices: D9 (RCLK) and D6 (KA) must be GPT timer outputs; D11/D13 hardware SPI. Verify against the Nano R4 pinout.', 1.27)
+    s.text((100, 40), 'Nano R4 pin choices: D9 (RCLK) must be a GPT timer output; D11/D13 hardware SPI. D6 (formerly KA) is now unused. Verify against the Nano R4 pinout.', 1.27)
     s.text((100, 44), 'IMU: 3.3 V and I2C come from the Nano through solder pads under its Qwiic holes (see imu sheet). D2 left free for an IMU interrupt if level-shifted later.', 1.27)
     s.text((45, 74), 'No electrical link at this level: TP1202/TP1203 solder to the Nano Qwiic holes; SWD holes TP1204-1208.', 1.0)
     s.text((185, 142), 'Group A = limbs L1+L2, B = L3+L4, C = L5+L6. Each limb holds two antagonist pairs (W1/W2, W3/W4).', 1.27)
     s.text((38, 262), 'POWER RAILS (global power symbols, not drawn as wires):', 1.27)
-    s.text((38, 266), '+10V  power sheet (reverse-protected input, J1001) -> limb flyback diodes and wire holes, Nano VIN', 1.27)
-    s.text((38, 270), '+5V   Nano 5 V pin -> 74HC595s, keep-alive (logic sheet)        +3V3  Nano 3V3 pin (A1 pad 17) -> IMU sheet', 1.27)
+    s.text((38, 266), 'VIN   power sheet (reverse-protected input, J1001; 21 V in test) -> limb flyback diodes and wire holes, Nano VIN pin', 1.27)
+    s.text((38, 270), '+5V   Nano 5 V pin -> 74HC595s (logic sheet)        +3V3  Nano 3V3 pin (A1 pad 17) -> IMU sheet', 1.27)
     s.text((38, 274), 'GND   common to every sheet; Nano pins 4 and 29', 1.27)
     return s
 

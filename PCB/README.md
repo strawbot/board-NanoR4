@@ -7,24 +7,32 @@ offer to save in its own format on first save.
 ## Sheets
 - hex_ctrl.kicad_sch  top: Nano R4 (A1), mounting holes H1-H5, sheet links
 - power.kicad_sch     supply holes, TVS, reverse-protection P-FET, bulk C, VIN_S divider (refs 1000+)
-- logic.kicad_sch     3 x 74HC595, keep-alive, /OE pull-up, bypass jumper (refs 1100+)
+- logic.kicad_sch     3 x 74HC595 gate-drive chain (OE tied to GND), SCK/RCLK series resistors (refs 1100+)
 - imu.kicad_sch       ICM-42688-P on the Nano's 3.3 V I2C bus, SDA/SCL solder pads and SWD access holes (refs 1200+)
 - group.kicad_sch     used 3 times (A, B, C): RSENSE + ISNS option, two limb sheets (refs 700/800/900+)
 - limb.kicad_sch      used 6 times (L1..L6): 4 channels + 5 wire holes (refs 100..600+)
 
 Group A = limbs L1 + L2, B = L3 + L4, C = L5 + L6.
 
+## Supply and output enable (rev 2)
+- The rail after reverse protection is called **VIN** (it was +10V). It is the 21 V test supply; any Vin works as long as
+  the parts below are rated for it (see the supply-rating note in the power sheet). VIN_S = Vin x 18k/118k (R1003 is
+  18k, was 47k), 3.2 V at 21 V, to ADC A3.
+- The keep-alive output-enable circuit (KA, C1104, D1101, D1102, C1105, R1101, R1102, Q1101, JP1101) is gone. OE on all
+  three 74HC595s is tied to GND, so the outputs are always enabled; the gate guard on every channel (CAC / RPD / BAT54)
+  keeps a stuck-high output from holding a MOSFET on.
+
 ## Schematic layout
 Each sheet is drawn as a wired, left-to-right flow (protection chain on power, the SER chain and clock trunks on
 logic, gate -> R -> C -> FET -> wire hole on each limb), and the top sheet is a block diagram: the Nano, the power,
-logic, IMU and group blocks, with every signal (SER, SCK, RCLK, KA, the 24 gate lines, ISNS, VIN_S, UART) drawn as a
+logic, IMU and group blocks, with every signal (SER, SCK, RCLK, the 24 gate lines, ISNS, VIN_S, UART) drawn as a
 wire between blocks. The power rails are shown as a legend on that sheet. The layout comes from
 generator/build2.py; generator/README_generator.md describes how it is regenerated and checked against the
 original netlist (net for net, pin for pin).
 
 ## Design rules
 hex_ctrl.kicad_dru (Board Setup > Custom Rules) adds: 0.125 mm pad clearance inside the
-IMU footprint only; 0.4 mm min / 0.6 mm preferred width for +10V, GND, VIN_RAW, the wire
+IMU footprint only; 0.4 mm min / 0.6 mm preferred width for the supply rail (VIN), GND, VIN_RAW, the wire
 nets (W1..W4) and the SRC buses; 0.25 mm for the ISNS sense lines.
 
 ## Pre-placed board
@@ -48,7 +56,7 @@ limb 3 wire tracks come within 0.39 mm of the new edge (rule 0.5 mm). The cut sa
    Tools > Update PCB from Schematic (F8).
 4. Tools > Scripting Console:  exec(open(r"<path>/hex_place.py").read())
    Draws the hexagon and places every part in its zone (limbs on the edges,
-   group parts at their vertices, power at 210 deg, keep-alive at 330 deg,
+   group parts at their vertices, power at 210 deg,
    IMU at the centre, Nano flipped to the bottom). Checked for courtyard overlaps.
 
 ## Board size
@@ -87,7 +95,7 @@ from that script. Schematic edits are in generator/nano_iface_sch.py (run once; 
 .kicad_sch files in place so footprint links survive).
 
 ## Verify before layout
-- Nano R4: D9 (RCLK) and D6 (KA) must be GPT timer outputs.
+- Nano R4: D9 (RCLK) must be a GPT timer output. D6 (formerly KA) is unused.
 - Footprint A1 is hex_ctrl:Arduino_Nano_R4_Castellated (project library): 30 SMD pads
   for soldering the Nano flat on the bottom by its castellated edge. Pad size and offset
   are estimates; check against the real Nano. The Qwiic header placeholder J1201 is gone;

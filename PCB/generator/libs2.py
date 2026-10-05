@@ -27,6 +27,8 @@ def _pins(t):
     return out
 def get(key):
     _load()
+    if key == 'hex_ctrl:VIN' and key not in _texts:        # the supply rail after reverse protection (was +10V); lives in hex_ctrl.kicad_sym
+        _texts[key] = _texts['power:+10V'].replace('power:+10V', 'hex_ctrl:VIN').replace('+10V', 'VIN')
     t = _texts[key]
     return t, _pins(t)
 def keys():

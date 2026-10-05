@@ -9,12 +9,17 @@
                 identical: every net and every pin, plus part values and footprints.
 - regen/uuid_registry.json : UUIDs of the sheets and parts of the original schematics. build2.py reuses them, so
                 the PCB's footprint links (footprint path = sheet UUID / symbol UUID) keep working.
-- regen/baseline, regen/baseline_sig.json : the rev 1 schematics and their netlist signature (the reference).
+- regen/baseline, regen/baseline_sig.json : the rev 1 schematics and their netlist signature. libs2.py reads its symbol
+                definitions from regen/baseline, so keep it.
+- regen/current_sig.json : netlist signature of the installed rev 2 schematics (148 nets, 201 parts): the reference now.
+- regen/expect_vin.py : example of a deliberate change: the netlist expected after the rev 2 edit (keep-alive removed, +10V -> VIN).
+- vin_pcb.py : the matching board edit (parts removed, OE tied to GND, net renamed). VIN lives in hex_ctrl.kicad_sym as hex_ctrl:VIN.
 
 Procedure after editing build2.py:
 1. `python3 build2.py`
-2. `python3 -c "import json,netsig; a=json.load(open('regen/baseline_sig.json')); print(netsig.diff(a, netsig.sig('regen/out')))"`
-   must print `[]` (or only differences you meant to make; then refresh regen/baseline_sig.json).
+2. `python3 -c "import json,netsig; a=json.load(open('regen/current_sig.json')); print(netsig.diff(a, netsig.sig('regen/out')))"`
+   must print `[]` (or only differences you meant to make; then refresh regen/current_sig.json). For a deliberate change,
+   write the expected result first (see regen/expect_vin.py) and compare against that.
 3. Close KiCad, copy regen/out/*.kicad_sch over the project's schematics, run ERC, and run PCB DRC with
    `--schematic-parity` (it must report no parity issues: that proves the footprint links survived).
 

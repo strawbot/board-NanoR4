@@ -241,7 +241,7 @@
       "internal_id": "",
       "mfg": "",
       "mpn": "",
-      "sch_revision": ""
+      "sch_revision": "2"
     },
     "layer_pairs": [],
     "layer_presets": [],
@@ -612,7 +612,7 @@
     "netclass_patterns": [
       {
         "netclass": "Pulse",
-        "pattern": "+10V"
+        "pattern": "VIN"
       },
       {
         "netclass": "Pulse",
@@ -783,13 +783,66 @@
       {
         "filename": "hex_ctrl.kicad_sch",
         "name": "hex_ctrl",
-        "uuid": "00000000-0000-0000-0000-000000000000"
+        "uuid": "5e2476d1-9393-45c1-9d68-57b7e780fc63"
       }
     ],
     "used_designators": "",
     "variants": []
   },
-  "sheets": [],
+  "sheets": [
+    [
+      "5e2476d1-9393-45c1-9d68-57b7e780fc63",
+      "hex_ctrl"
+    ],
+    [
+      "8877e868-a16b-436f-8e27-312b3d53da25",
+      "power"
+    ],
+    [
+      "a01cc222-e151-4659-8531-0a3a3d398256",
+      "logic"
+    ],
+    [
+      "c97bdb55-5522-40d8-85df-2152a7e2a132",
+      "imu"
+    ],
+    [
+      "7a56b9fe-77dd-4702-b074-dc9e759125bc",
+      "group_A"
+    ],
+    [
+      "8f433659-52d9-419a-8769-8fa477859b33",
+      "limb_a"
+    ],
+    [
+      "ec7473c4-73b1-4afc-8da6-5a26fc8ba580",
+      "limb_b"
+    ],
+    [
+      "f70bb160-cbcb-4ca0-ad12-e2367742e160",
+      "group_B"
+    ],
+    [
+      "8f433659-52d9-419a-8769-8fa477859b33",
+      "limb_a"
+    ],
+    [
+      "ec7473c4-73b1-4afc-8da6-5a26fc8ba580",
+      "limb_b"
+    ],
+    [
+      "34bf8225-bfbb-41cf-9643-4504e46d5670",
+      "group_C"
+    ],
+    [
+      "8f433659-52d9-419a-8769-8fa477859b33",
+      "limb_a"
+    ],
+    [
+      "ec7473c4-73b1-4afc-8da6-5a26fc8ba580",
+      "limb_b"
+    ]
+  ],
   "text_variables": {},
   "tuning_profiles": {
     "meta": {
