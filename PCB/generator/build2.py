@@ -12,7 +12,7 @@ FP = dict(R0402="Resistor_SMD:R_0402_1005Metric", C0402="Capacitor_SMD:C_0402_10
  SOT23="Package_TO_SOT_SMD:SOT-23", SOD323="Diode_SMD:D_SOD-323", SOD523="Diode_SMD:D_SOD-523", SMA="Diode_SMD:D_SMA",
  R2512="Resistor_SMD:R_2512_6332Metric", TSSOP16="Package_SO:TSSOP-16_4.4x5mm_P0.65mm", H5="Connector_PinHeader_2.54mm:PinHeader_1x05_P2.54mm_Vertical",
  H4="Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical", MH="MountingHole:MountingHole_2.2mm_M2", NANO="hex_ctrl:Arduino_Nano_R4_Castellated",
- POLY="Capacitor_Tantalum_SMD:CP_EIA-7343-31_Kemet-D", SJ="Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm", TP="TestPoint:TestPoint_Pad_D1.0mm",
+ POLY="Capacitor_Tantalum_SMD:CP_EIA-7343-43_Kemet-X", SJ="Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm", SOD123="Diode_SMD:D_SOD-123", TP="TestPoint:TestPoint_Pad_D1.0mm",
  LGA="Package_LGA:LGA-14_3x2.5mm_P0.5mm_LayoutBorder3x4y", HOLE="hex_ctrl:Nano_Hole_Pad")
 ROOT = REG['root']
 def mm_(n): return n * 1.27
@@ -111,15 +111,18 @@ def build_power():
     q = s.sym(QP, lambda b: f'Q{b + 1}', 'AO3401A', FP['SOT23'], 127.0, 101.6, 90, place='a')
     qd, qs, qg = s.pin(q, '3'), s.pin(q, '2'), s.pin(q, '1')
     s.wire(p1, (qd[0], p1[1])); s.label('label', 'VIN_RAW', (73.66, p1[1]), (1, 0))
-    tvs = s.sym(DZ, lambda b: f'D{b + 1}', 'SMAJ12A', FP['SMA'], 88.9, RY + 3.81, 270, place='r')
+    tvs = s.sym(DZ, lambda b: f'D{b + 1}', 'SMAJ24A', FP['SMA'], 88.9, RY + 3.81, 270, place='r')
     s.wire((88.9, RY), s.pin(tvs, '1')); s.junction((88.9, RY)); s.stub(tvs, '2', 'power', 'GND')
     # gate: PG net, pull-down to GND
     rg = s.sym(R_, lambda b: f'R{b + 1}', '10k', FP['R0402'], 127.0, 114.3, place='r')
+    dz = s.sym(DZ, lambda b: f'D{b + 2}', 'BZT52C10 (10 V)', FP['SOD123'], 132.08, 105.41, 270, place='r')       # gate clamp: limits Vgs to -10 V
+    s.wire((132.08, RY), s.pin(dz, '1')); s.junction((132.08, RY))
+    s.wire(s.pin(dz, '2'), (127.0, s.pin(dz, '2')[1])); s.junction((127.0, s.pin(dz, '2')[1]))
     s.wire(qg, s.pin(rg, '1')); s.label('label', 'PG', (127.0, 109.22), (-1, 0)); s.stub(rg, '2', 'power', 'GND')
     # Vin rail (after reverse protection): bulk caps, flag, divider
     RE = 228.6
     s.wire(qs, (RE, RY)); s.wire((RE, RY), (RE, RY - 2.54)); s.power('VIN', (RE, RY - 2.54), (0, -1))
-    caps = [(CP, 'C_Polarized', '100uF 16V polymer', FP['POLY'], 152.4), (C_, 'C', '22uF 25V', FP['C1206'], 170.18), (C_, 'C', '22uF 25V', FP['C1206'], 187.96)]
+    caps = [(CP, 'C_Polarized', '100uF 35V polymer', FP['POLY'], 152.4), (C_, 'C', '10uF 50V X7R', FP['C1206'], 170.18), (C_, 'C', '10uF 50V X7R', FP['C1206'], 187.96)]
     for i, (lib, _, val, fp, x) in enumerate(caps):
         c = s.sym(lib, lambda b, i=i: f'C{b + 1 + i}', val, fp, x, RY + 3.81, place='r' if i == 2 else 'l')
         s.junction((x, RY))
@@ -141,8 +144,9 @@ def build_power():
     s.wire(p2, (60.96, p2[1])); s.power('GND', (60.96, p2[1]), (1, 0))
     s.wire(p3, (66.04, p3[1])); s.label('hier', 'NANO_TX', (66.04, p3[1]), (1, 0), 'bidirectional')
     s.wire(p4, (66.04, p4[1])); s.label('hier', 'NANO_RX', (66.04, p4[1]), (1, 0), 'bidirectional')
-    s.text((30, 30), 'Reverse protection: AO3401A P-FET (body diode anode at input). With the gate pulled to GND, Vgs = -Vin; the AO3401A is rated +/-12 V, so a gate clamp is needed once Vin exceeds 12 V (running at 21 V).')
+    s.text((30, 30), 'Reverse protection: AO3401A P-FET (body diode anode at input). The gate is pulled to GND, so Vgs would be -Vin; D1002 (10 V zener, gate to source) holds it at -10 V for any Vin (rating +/-12 V).')
     s.text((30, 34), 'Bulk capacitance: size from breadboard rail-sag measurements. VIN_S = Vin x 18k/118k = 3.2 V at Vin = 21 V, to ADC A3 (scale 0.1525).')
+    s.text((30, 42), 'Supply ratings (Vin = 21 V now): D1001 SMAJ24A (24 V standoff, clamps near 39 V - above the 30 V Vds of AO3401A / AO3400A, so it only absorbs moderate surges); C1001 35 V, C1002/C1003 50 V X7R. Check the Nano VIN limit against Vin.')
     s.text((30, 38), 'J1001: pin 1 VIN_RAW, pin 2 GND, pin 3 TX, pin 4 RX (Nano D1/TX, D0/RX). GND is shared with the power input; pins 2-4 form a GND / TX / RX UART header. Do not plug a UART cable onto pins 1-2.')
     return s
 
@@ -345,6 +349,12 @@ def write_all(sel):
         else: shutil.copy(os.path.join(BASE, fn), os.path.join(OUT, fn))
     for fn in ('hex_ctrl.kicad_pro', 'sym-lib-table', 'hex_ctrl.kicad_sym', 'fp-lib-table'):
         if os.path.exists(os.path.join(BASE, fn)): shutil.copy(os.path.join(BASE, fn), os.path.join(OUT, fn))
+    # the VIN power symbol lives in the project symbol library
+    from libs2 import get as _get
+    kp = os.path.join(OUT, 'hex_ctrl.kicad_sym'); ks = open(kp).read()
+    if '(symbol "VIN"' not in ks:
+        t = _get('hex_ctrl:VIN')[0].replace('(symbol "hex_ctrl:VIN"', '(symbol "VIN"', 1)
+        k = ks.rstrip().rfind(')'); open(kp, 'w').write(ks[:k].rstrip() + '\n  ' + t.strip().replace('\n', '\n  ') + '\n)\n')
     for sh in (root, limb, group, power, logic, imu):
         for n in sh.notes: print('NOTE', n)
 

@@ -18,6 +18,11 @@ Group A = limbs L1 + L2, B = L3 + L4, C = L5 + L6.
 - The rail after reverse protection is called **VIN** (it was +10V). It is the 21 V test supply; any Vin works as long as
   the parts below are rated for it (see the supply-rating note in the power sheet). VIN_S = Vin x 18k/118k (R1003 is
   18k, was 47k), 3.2 V at 21 V, to ADC A3.
+- Supply ratings at 21 V: D1001 is SMAJ24A (24 V standoff; clamps near 39 V, above the 30 V Vds of the AO3401A and
+  AO3400A, so it only absorbs moderate surges). C1001 is 100uF 35 V polymer (7343-43 case, same pads as the old
+  7343-31); C1002/C1003 are 10uF 50 V X7R 1206 (a 25 V X5R loses most of its capacitance at 21 V; a 22uF 50 V part
+  would need a 1210). D1002 (BZT52C10, 10 V zener, gate to source) holds the P-FET's Vgs at -10 V for any Vin; the
+  AO3401A is rated +/-12 V. Check the Nano's VIN limit against Vin.
 - The keep-alive output-enable circuit (KA, C1104, D1101, D1102, C1105, R1101, R1102, Q1101, JP1101) is gone. OE on all
   three 74HC595s is tied to GND, so the outputs are always enabled; the gate guard on every channel (CAC / RPD / BAT54)
   keeps a stuck-high output from holding a MOSFET on.

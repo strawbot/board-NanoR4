@@ -86,7 +86,8 @@
   "limb:R114": "3bc110a8-eb57-4a77-85ba-e9311ae6cb1d",
   "limb:D114": "56b895bf-129b-4398-afcd-b845f7d901f5",
   "limb:D104": "252bbc88-9fb0-4c8d-b98c-75f762cfddb6",
-  "limb:J101": "c6a7ee65-c92c-4e66-9c31-170b09a100e5"
+  "limb:J101": "c6a7ee65-c92c-4e66-9c31-170b09a100e5",
+  "power:D1002": "8f0ce18a-679d-451c-b5dc-ccdaae685c59"
  },
  "files": {
   "hex_ctrl": "5e2476d1-9393-45c1-9d68-57b7e780fc63",
