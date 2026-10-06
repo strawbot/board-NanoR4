@@ -27,6 +27,11 @@ Group A = limbs L1 + L2, B = L3 + L4, C = L5 + L6.
   three 74HC595s is tied to GND, so the outputs are always enabled; the gate guard on every channel (CAC / RPD / BAT54)
   keeps a stuck-high output from holding a MOSFET on.
 
+## Wire-hole labels
+Each limb hole (J101-J601) has its own label (W1-W4, + for Vin) on both silkscreen faces, outboard of the hole between it
+and the board edge (generator/silk_limbs.py; rerun it after moving a limb connector). It replaced the old one-string-per-limb
+text from the hexagon generator, which was nowhere near the octagon's holes, and the stale "+10V GND" text.
+
 ## IMU interrupt
 IMU INT1 (3.3 V logic) goes to Nano D2 (5 V logic) through a one-transistor level shifter: Q1201 (2N7002, gate on +3V3)
 with R1204 pulling the IMU side up to +3V3 and R1205 pulling the Nano side (IMU_INT_5V) up to +5V. TP1201 stays on the
