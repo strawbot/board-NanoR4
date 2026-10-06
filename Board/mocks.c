@@ -1,3 +1,4 @@
+#include "sr595.h"
 #include "ttypes.h"
 #include "tea.h"
 #include "cli.h"
@@ -11,7 +12,12 @@
 #include <sys/types.h>
 #include <stddef.h>
 
-void system_failure(Long reason) { while (true); }
+// Every black hole ends here. Outputs first: the 595 keeps its last pattern, and
+// a wire left latched on burns out in seconds.
+void system_failure(Long reason) {
+    sr595_all_off();
+    while (true);
+}
 
 // newlib's setjmp.o (used by cli.c stack-fault recovery) carries an EHABI
 // unwind entry naming this personality routine. Without a local definition

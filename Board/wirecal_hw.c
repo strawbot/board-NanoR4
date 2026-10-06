@@ -31,12 +31,20 @@ static bool sample(uint8_t ch, uint32_t *ma, uint32_t *vin_mv) {
     if (an < 0) return false;
     uint32_t mv = adc_read_an_mv((uint8_t)an);
     if (mv == 0) return false;               // no fresh conversion (register clears on read)
+    uint32_t vin = vin_read_mv();
+    if (vin == 0) return false;              // A3 has no fresh conversion either (also clears on read)
     *ma     = mv * 1000UL / SENSE_MOHM;
-    *vin_mv = vin_read_mv();
+    *vin_mv = vin;
     return true;
 }
 
-static const wirecal_hw_t hw = { sample, SERIES_MOHM };
+// Every analog tap right now, for `scope`: A0 (AN009), A1 (AN000), A2 (AN001), A3 (AN002).
+static void taps(uint32_t mv[4]) {
+    static const uint8_t an[4] = { 9, 0, 1, 2 };
+    for (uint8_t i = 0; i < 4U; i++) mv[i] = adc_read_an_mv(an[i]);
+}
+
+static const wirecal_hw_t hw = { sample, SERIES_MOHM, taps };
 
 void wirecal_hw_init(void) {
     wirecal_bind_hw(&hw);

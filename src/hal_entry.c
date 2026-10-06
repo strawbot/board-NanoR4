@@ -60,6 +60,12 @@ void hal_entry(void)
     SCB->VTOR = 0x00004000UL;
     __enable_irq();
 
+    /* Outputs off before anything else: the 595 keeps whatever pattern it held
+     * across a reset, so a wire that was on when the last run died stays on
+     * until this clears it. Hex PCB chain of 3; one physical chip on the
+     * breadboard is chip 0. */
+    sr595_hw_init(3);
+
     /* Visible "firmware alive" marker — three short LED pulses before we
      * touch the scheduler or transport. If you don't see this after reset,
      * the firmware isn't reaching hal_entry at all (check VTOR / memory
@@ -116,7 +122,6 @@ void hal_entry(void)
      * which re-arms it. See Docs/output-backpressure-design.md; the proper fix
      * is for output() to kick the transport itself, after which this goes away. */
     adc_init();
-    sr595_hw_init(3);     // hex PCB chain; one physical chip on the breadboard is chip 0
     init_tea();
     vin_sense_init();     // register the divider calibration for the calib file
     adc_vref_start();     // track AVCC0 from the internal reference (needs the scheduler)

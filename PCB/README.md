@@ -112,4 +112,4 @@ from that script. Schematic edits are in generator/nano_iface_sch.py (run once; 
   see "Nano interface" above.
 - ICM-42688-P: RESV pins and INT2/FSYNC left unconnected; confirm with the datasheet.
   Confirm the LGA-14 footprint pad order against the datasheet land pattern.
-- DNP parts: C701/C801/C901 (ISNS filter), R1202/R1203 (I2C pull-ups), D1002 (gate zener).
+- DNP parts: C701/C801/C901 (ISNS filter), R1202/R1203 (I2C pull-ups).

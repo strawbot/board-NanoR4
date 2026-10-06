@@ -40,6 +40,7 @@
 #include <stdint.h>
 
 #include "hal_data.h"
+#include "sr595.h"
 
 void blink(void);                 // hal_entry.c - GPIO + busy loop, no deps
 
@@ -55,6 +56,7 @@ void fault_report(uint32_t *frame);   // called from the naked stubs below
 #define VBT_WORD(off)     (*(volatile uint32_t *) &R_SYSTEM->VBTBKR[(off)])
 
 void fault_report(uint32_t *frame) {
+    sr595_all_off();   // before anything else: the shift register holds its last pattern through the blinks and the reset
     // Exception stack frame: r0 r1 r2 r3 r12 lr pc xpsr
     uint32_t lr   = frame[5];
     uint32_t pc   = frame[6];

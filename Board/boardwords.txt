@@ -48,6 +48,8 @@ Words // system
 	usbpoll usb_cli_poll_toggle // diagnostic: flip whether usb_action() polls tud_int_handler() directly
 	nusbisr usb_native_cli_isr_count // native-stack smoke test: how many times usbfs_interrupt_handler has fired
 	nusbevt usb_native_cli_event_count // native-stack smoke test: app-callback fire count and last usb_status_t event
+	scope wirecal_cli_scope // (muscle) after that wire's next window opens, read the ADC back to back for up to 1.2 ms and print time, current, supply and resistance
+	isns wirecal_cli_isns // sample each active wire during its own on-window for 1 s; print peak current, wire resistance and supply
 	adc@ cli_adc_read // ( - mv ) read AN00 (P000) and push millivolts (0-5000) onto stack
 
 End

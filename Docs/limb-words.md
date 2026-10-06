@@ -76,11 +76,17 @@ Example: `halt`, then `2 wirecal`, then `wires`.
 
 ## Sensing (supports the limb words)
 
+The A3 divider (100K over `rbot!`) must keep the tap under about 4.5 V: at a 21 V
+supply use about 18K, not the 47K used at 10 V. Set it with `rbot!` (ohms), or
+give `vin-cal` the metered supply.
+
 The sense taps and supply are what the wire calibration measures with.
 
 | Word | Stack effect | What it does |
 |---|---|---|
 | `status` | `( -- )` | Read every connection: 595 control pins and outputs, the A0-A3 analog taps, the ADC reference, and the muscle windows. |
+| `scope` | `( muscle -- )` | After that wire's next window opens, read the ADC back to back for up to 1.2 ms (at most three quarters of the window) and print time, current, supply and resistance for each sample: the waveform the ADC sees, to compare with a scope on the sense resistor. |
+| `isns` | `( -- )` | Sample each active wire during its own on-window for 1 s; print sample count, peak current while on (min/avg/max mA), the wire resistance that implies, and the supply (min/avg/max mV). Use this to see pulse current: `status` reads the ADC at an arbitrary moment, mostly between pulses. |
 | `adc@` | `( -- mv )` | Millivolts on AN000 (A1). |
 | `vin@` | `( -- mv )` | Supply voltage in mV through the calibrated A3 divider. |
 | `vin-cal` | `( mv -- )` | Give the metered supply in mV; solves the divider's bottom resistor and saves it. |
