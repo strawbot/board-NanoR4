@@ -21,3 +21,4 @@ PCB/_*
 *.ses
 *.lck
 *.dsn
+PCB/hex_ctrl/.history
