@@ -96,6 +96,15 @@ Words // Wire calibration (Robot/limbs/wirecal): each wire's resistance transiti
 	calib-save calib_cli_save // write every registered calibration value to the calib file now
 End
 
+Words // Analog peripheral bench tests (Board/analog_test.c): DAC12/DAC8/ACMPLP, before any of it is wired to the breadboard
+	gpt1-only analog_test_cli_gpt1_only // isolation test: open+start GPT1 only, nothing else — checks whether GPT1 alone breaks the tick timer
+	dmac-only analog_test_cli_dmac_only // isolation test: gpt1-only plus active DMAC into DAC12's register, DAC12 left unclocked — checks whether active DMA triggering breaks the tick timer
+	dac12-ramp analog_test_cli_dac12_ramp // GPT1+DMAC ramp DAC12 (P014) at ~15.6 kHz; scope P014 directly
+	dac8-cmp analog_test_cli_dac8_cmp // same ramp into DAC8 ch0 -> ACMPLP0 IVREF0; apply a test voltage to CMPIN0 (P100), watch VCOUT (P110)
+	analog-test-stop analog_test_cli_stop // stop GPT1/DMAC and close the peripherals opened by either test above
+	dac-status analog_test_cli_status // print MSTP/register state for DAC12, DAC8, ACMPLP, and a measured GPT1 count rate
+End
+
 Words // Sensing: sense taps A0-A3, the ADC reference and the supply voltage
 	status status_cli // read every connection: 595 pins and outputs, ISNS/VIN analog taps, muscle windows
 	adc@ cli_adc_read // ( - mv ) read AN00 (P000) and push millivolts onto the stack
