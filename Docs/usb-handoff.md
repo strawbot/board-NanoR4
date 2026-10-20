@@ -1,21 +1,14 @@
 # USB device stack — handoff
 
-**Status: enumerating and working, root cause still open.** `USB_TRANSPORT_ENABLE`
-is `1` in `Board/usb_init.c`. The device fully enumerates (DFU Runtime + CDC
-composite, see bug #4 below) and the CLI is confirmed working over both
-UART and USB CDC, auto-switching output to whichever last sent input (see
-"CDC bring-up (Phase 2)"). The scheduler-poll workaround in bug #4 is
-confirmed to be genuinely load-bearing, not just a startup crutch — see
-"Interrupt delivery keeps wedging, not just once" — and a native-stack
-smoke test (below) found RASC's own `r_usb_basic` driver hits what looks
-like the same wall, which points away from this being a TinyUSB-integration
-bug specifically. See "Native stack smoke test" before assuming a stack
-switch would help.
-
-This note has been rewritten from scratch after a long debugging session
-that found and fixed three separate, real bugs. The original version's
-root-cause theory (below, under "Retracted") turned out to be wrong; keeping
-it here as a marked dead end so nobody re-derives it.
+**Status: working and interrupt-driven.** `USB_TRANSPORT_ENABLE` is `1` in
+`Board/usb_init.c`. The device enumerates (DFU Runtime + CDC composite) and
+the CLI works over UART and USB CDC with the scheduler poll **off**. The
+long-standing "interrupt stops being delivered" wedge was a lost wakeup in
+the ISR, found by reading the RA4M1 manual and fixed 2026-10-20 — see
+"Root cause: lost wakeup in the ISR (fixed and verified)". The earlier
+bug #4 section and the native-stack / scope sections below are kept as the
+record of how it was chased; where they say the cause was unknown, this
+supersedes them.
 
 ---
 
@@ -197,6 +190,93 @@ incomplete: it's not a one-time startup problem, it's a **recurring**
 stall that the scheduler poll has to keep clearing, for the life of the
 board. The poll is not a bootstrap crutch that becomes unnecessary once
 past enumeration — it is continuously load-bearing.
+
+### Root cause: lost wakeup in the ISR (fixed and verified)
+
+Reading the ICU and USBFS chapters of the RA4M1 manual
+(`Docs/r01uh0887ej0110-ra4m1.pdf`, Rev 1.10) turned up three facts that fit
+every symptom above:
+
+- **Fig. 27.11**: `USBFS_USBI` (ELC event `033h`) is the **OR of every
+  enabled `INTSTS0` status bit** through an "edge/level detector". It makes
+  one request per rise of that aggregate. If any enabled bit is still set
+  when the ISR returns, the aggregate never falls and no later event — on
+  any bit — can produce a new request. This is the exact state captured
+  live earlier: `INTSTS0 = 0x38A9` (`DVST`, `CTRT` latched), `IELSR[6].IR`
+  = 0, NVIC pending = 0, `INTENB0` correct.
+- **§13.2.6 (IR flag)**: the documented clear sequence is (1) negate the
+  input interrupt signal, (2) read the peripheral once and wait 2 module
+  clocks, (3) write 0 to `IR`. Our ISR called `tud_int_handler()` (one
+  `INTSTS0` read, clears only the bits it saw) and then cleared `IR`.
+  Anything that set in between was either left latched or had its edge
+  erased by the `IR` clear → wedge. The scheduler poll "fixes" it simply by
+  running the handler a second time, which clears the stuck bits and lets
+  the aggregate fall — which is why it un-wedges instantly and why it was
+  needed forever, not just at boot.
+- **§27.3.3.5**: a latched `CTRT` sequence-error status (`CTSQ` = 110b)
+  suppresses further `CTRT` interrupts until software clears it, a second
+  "stuck until cleared" path of the same kind.
+
+Also corrected by the manual: Fig. 27.15 shows **SetAddress execution sets
+`DVST`** (Default→Address). The earlier claim in this doc and in
+`dcd_rusb2.c` that the silicon handles SET_ADDRESS "autonomously with no
+interrupt" was wrong; the interrupt just never got delivered. (The
+autonomous part is true only of the wire transaction and `USBADDR` latch.)
+
+**Fix** (`usbfs_int_isr()` in `Board/usb_init.c`): loop { service via
+`tud_int_handler()`, read `INTSTS0`, 4×`NOP`, clear `IELSR[6].IR`, re-check
+`INTSTS0 & INTENB0 & 0xFF00` } up to 8 passes. `usbisr` prints entries,
+**re-passes**, spurious entries, give-ups (and the stuck registers if it ever
+gives up), poll state and poll fallbacks.
+
+**Verified on hardware (2026-10-20), scheduler poll OFF:**
+
+| Test | Result |
+|------|--------|
+| Interrupt-only enumeration, 10 consecutive resets (`reboot` over CDC) | 10/10 mounted within ~2.5 s; 0 fallbacks, 0 give-ups |
+| Re-passes per enumeration | ~28–33 of ~115 ISR entries, every boot — the race fires constantly, the old ISR was losing those wakeups |
+| CDC command loop, 3 × 24 s | 57/57 answered |
+| Large output: `help` (12,242 B) × 15 | 15/15 identical length (~184 KB), 0 give-ups |
+
+One unexplained early failure: the very first poll-off run after a fresh
+flash got 0/12 answers (before the counters existed). It never recurred in
+~80 later trials across several flashes; if it does, the `give-ups` /
+last-give-up register dump in `usbisr` is there to catch it.
+
+**Poll is now OFF by default.** `usb_action()` only pumps `tud_task()`.
+`usb_poll_fallback()` is a guarded safety net: if VBUS is present but USB
+has not mounted 15 s after boot it turns the scheduler poll on and counts it
+(`poll fallbacks` in `usbisr`) so a board whose only link is USB can't strand
+itself. `usbpoll` still toggles the poll for experiments (turning it off arms
+a 30 s auto-restore).
+
+**Still to do:** soak over days and with the web-page/NCM streaming load;
+test a genuine cold power-on (not DFU handoff); once confident, delete the
+poll and fallback entirely.
+
+### Unique USB serial number (two boards on one host)
+
+The USB serial string was the constant `"ActiveRobot"`, so two boards had
+identical VID/PID/serial and macOS showed only one of them. It is now
+`"ActiveRobot"` + 3 hex digits hashed from the RA4M1's factory-unique 128-bit
+ID (`usb_serial_string()` in `Board/usb_init.c`, `R_BSP_UniqueIdGet()`), e.g.
+`ActiveRobot82C`.
+
+The **length matters** because macOS builds the CDC node name from the serial
+(`/dev/cu.usbmodem<serial><interface>`), which makes the right port easy to
+pick out among many: the board above appears as
+`/dev/cu.usbmodemActiveRobot82C2`. macOS only does this for serials up to
+**14 characters** (observed: 14 works, 19 and 32 do not — it silently falls
+back to a location-based `usbmodem13102`-style name). `ActiveRobot` + 3 digits
+is exactly 14, which is why the uniquifier is only 12 bits: plenty to tell
+boards on one bench apart (collision odds for 3 boards ≈ 0.07 %), but if two
+boards ever hash to the same value, bump `USB_SERIAL_UNIQ_DIGITS` knowing the
+node name will then lose the serial. `dfu-util -l` / `ioreg` show the serial
+either way.
+
+A board only changes identity once reflashed with this build; boards still
+on old firmware keep the shared `"ActiveRobot"` serial and will collide with
+each other.
 
 ### SCKE/USBE ordering fixed (real bug, likely not the cause of the above)
 
@@ -590,7 +670,8 @@ it if this FSP version ever gets upgraded.
 
 | Word | What it shows |
 | --- | --- |
-| `usbisr` | Live count of `usbfs_int_isr` fires this boot. Millions = storm; low single digits during real enumeration = healthy. |
+| `usbisr` | ISR entries this boot (millions = storm; ~115 after a normal enumeration), **re-passes** (ISR found an enabled `INTSTS0` bit still set after clearing the ICU latch and looped — ~25% of entries is normal), spurious entries, **give-ups** (hit the 8-pass limit; should stay 0 — if not, the last-give-up `INTSTS0/BRDYSTS/NRDYSTS/BEMPSTS` dump names the bit holding the line high), scheduler-poll state, and **poll fallbacks** (should stay 0). |
+| `usbpoll` | Toggle the scheduler poll of `tud_int_handler()` (default off). Turning it off arms a 30 s timer-driven auto-restore; the last off-window's ISR/re-pass counts appear in `usbisr`. |
 | `usbinit` | Whether `tusb_init()` reported success, and `INTENB0` immediately after it returned (catches a silent `TU_ASSERT` bail-out before `dcd_init()`, given `CFG_TUSB_DEBUG` is 0 and nothing gets logged either way). |
 | `usbcrash` | Survives a hang + power cycle via VBATT backup registers: ISR count / `INTSTS0:INTENB0` / `emitq` depth, captured every 256th ISR entry plus once on the very first entry (separate slot — the one-shot write has no settling delay before the VBATT domain's slow clock commits it, so it can silently fail to retain; the periodic one gets many chances to stick). Was essential before a debugger was available; now mostly superseded by live breakpoints for anything the debugger can reach. |
 

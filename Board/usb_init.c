@@ -138,6 +138,37 @@ void usb_cli_trace_dump(void) {
 
 static volatile uint32_t usbfs_isr_count;
 
+// How many times usbfs_int_isr() found an enabled INTSTS0 status bit still
+// set AFTER servicing and clearing the ICU latch, and went round again.
+// Nonzero is direct evidence of the lost-wakeup race described in
+// usbfs_int_isr() below. Shown by `usbisr`.
+static volatile uint32_t usbfs_isr_repass;
+
+// Defined (with their commentary) next to usb_action(); declared here so
+// `usbisr` can report them.
+static volatile bool     usb_poll_enabled;
+static volatile uint32_t usb_poll_fallbacks;
+
+// Set when the re-check loop used all USB_ISR_MAX_PASSES and an enabled
+// INTSTS0 bit was STILL set: which bit(s) keep the aggregate high, plus the
+// per-pipe status registers behind BRDY/NRDY/BEMP. Shown by `usbisr`.
+static volatile uint32_t usbfs_isr_giveups;
+static volatile uint16_t usbfs_stuck_intsts0, usbfs_stuck_brdy, usbfs_stuck_nrdy, usbfs_stuck_bemp;
+
+// Counts of the first-pass INTSTS0 cause bits seen on ISR entry, and of
+// entries with NO enabled cause bit at all (spurious / stale IR).
+static volatile uint32_t usbfs_isr_spurious;
+
+// Poll-off test window bookkeeping (see usb_cli_poll_toggle()).
+static volatile uint32_t poll_off_isr0, poll_off_isr1, poll_off_rep0, poll_off_rep1;
+
+#define USB_ISR_MAX_PASSES  8U
+#define USB_INTSTS0_IRQ_BITS  0xFF00U   // VBINT RESM SOFR DVST CTRT BEMP NRDY BRDY
+
+static inline bool usb_irq_still_pending(void) {
+    return (R_USB_FS0->INTSTS0 & R_USB_FS0->INTENB0 & USB_INTSTS0_IRQ_BITS) != 0;
+}
+
 // ── usb_isr_snapshot — crash telemetry that survives a hang + power cycle ────
 //
 // A lockup during real USB traffic leaves the CLI unresponsive, so nothing
@@ -206,26 +237,71 @@ void usbfs_int_isr(void) {
         usb_isr_snapshot(false);
     }
 
-    tud_int_handler(0);
+    // The ICU IELSR[n].IR clear is mandatory on every entry (the storm fix:
+    // IR is a true latch, not a reflection of the peripheral's line, and
+    // only software clears it). The ORDER and the re-check are what the
+    // RA4M1 manual (R01UH0887EJ0110) calls for:
+    //
+    //  - 13.2.6, IR flag: to clear IR, (1) negate the input interrupt
+    //    signal, (2) read the peripheral once and wait 2 module clocks,
+    //    (3) write 0 to IR.
+    //  - Fig. 27.11: USBFS_USBI is the OR of every ENABLED INTSTS0 status
+    //    bit through an edge/level detector -- one request per rise of that
+    //    aggregate. If any enabled bit is still set when we return, the
+    //    aggregate never falls, so no later event can raise a new request
+    //    (INTSTS0 shows DVST/CTRT latched, IR=0, nothing pending in NVIC --
+    //    exactly the wedge in Docs/usb-handoff.md; the scheduler poll
+    //    "fixed" it only by running this handler again).
+    //  - 27.3.3.5: a latched CTRT sequence-error status likewise suppresses
+    //    later CTRT interrupts until software clears it.
+    //
+    // A status bit that sets between tud_int_handler()'s INTSTS0 read and
+    // the IR clear is left set, or has its edge erased by the clear. So:
+    // service, clear IR, then re-check what is still pending and go round
+    // again. Bounded so a stuck bit can't pin the CPU in the ISR; the
+    // scheduler poll remains the backstop. INTENB1/INTSTS1 are host-mode
+    // only (INTENB1 stays 0 in device mode), so only INTSTS0 is checked.
+    if (!usb_irq_still_pending()) usbfs_isr_spurious++;
 
-    // The one-time clear in usb_hw_reset() wasn't enough: under a live
-    // debugger the storm re-enters with BOTH INTSTS0 and INTENB0 reading 0
-    // (the peripheral has nothing enabled and nothing pending, so it cannot
-    // be the one re-asserting the request). IELSR[n].IR is a true latch,
-    // not a passive reflection of the peripheral's line -- every normal
-    // FSP-generated ISR clears it as boilerplate on EVERY entry, not just
-    // once at setup. tud_int_handler() only clears the peripheral's own
-    // INTSTS0 (that's all a generic, non-FSP-integrated driver can know to
-    // do); nothing else was clearing the ICU's separate latch on each
-    // interrupt, only the one-time clear before enabling. Order matters:
-    // this must run AFTER tud_int_handler() has acknowledged the
-    // peripheral's own condition, or the ICU could just re-latch a request
-    // that's still actually pending. See Docs/usb-handoff.md.
-    R_BSP_IrqStatusClear((IRQn_Type) 6);
+    for (unsigned pass = 0; pass < USB_ISR_MAX_PASSES; pass++) {
+        tud_int_handler(0);
+
+        (void) R_USB_FS0->INTSTS0;               // manual: read peripheral once...
+        __NOP(); __NOP(); __NOP(); __NOP();      // ...and wait 2 module clocks
+        R_BSP_IrqStatusClear((IRQn_Type) 6);
+
+        if (!usb_irq_still_pending()) break;
+        usbfs_isr_repass++;
+
+        if (pass == USB_ISR_MAX_PASSES - 1) {
+            usbfs_isr_giveups++;
+            usbfs_stuck_intsts0 = R_USB_FS0->INTSTS0;
+            usbfs_stuck_brdy    = R_USB_FS0->BRDYSTS;
+            usbfs_stuck_nrdy    = R_USB_FS0->NRDYSTS;
+            usbfs_stuck_bemp    = R_USB_FS0->BEMPSTS;
+        }
+    }
 }
 
 void usb_cli_isr_count(void) {
-    print("usbfs_int_isr fired "); printDec((Long) usbfs_isr_count); print(" times"); printCr();
+    print("usbfs_int_isr fired "); printDec((Long) usbfs_isr_count); print(" times");
+    print(", re-passes "); printDec((Long) usbfs_isr_repass);
+    print(", spurious "); printDec((Long) usbfs_isr_spurious);
+    print(", give-ups "); printDec((Long) usbfs_isr_giveups);
+    print(", poll "); print(usb_poll_enabled ? "ON" : "off");
+    print(", poll fallbacks "); printDec((Long) usb_poll_fallbacks); printCr();
+    if (usbfs_isr_giveups) {
+        print("  last give-up: INTSTS0="); printHex((Long) usbfs_stuck_intsts0);
+        print(" BRDYSTS=");  printHex((Long) usbfs_stuck_brdy);
+        print(" NRDYSTS=");  printHex((Long) usbfs_stuck_nrdy);
+        print(" BEMPSTS=");  printHex((Long) usbfs_stuck_bemp); printCr();
+    }
+    if (poll_off_isr1) {
+        print("  last poll-off window: isr "); printDec((Long) poll_off_isr0);
+        print("->"); printDec((Long) poll_off_isr1);
+        print(", re-passes "); printDec((Long) poll_off_rep0);
+        print("->"); printDec((Long) poll_off_rep1); printCr();
+    }
 }
 
 // tusb_init_ok / intenb0_after_init — captured once, right after tusb_init()
@@ -248,33 +324,22 @@ void usb_cli_init_status(void) {
 // on every pass.  USB interrupts poke the RUSB2 driver; tud_task() drains
 // the resulting events and fires DFU callbacks.
 
-// Board patch: NVIC/ICU never re-delivers the USBFS interrupt past the
-// first two real entries (VBUS-attach, then Resume) -- confirmed
-// extensively live: INTSTS0 genuinely latches DVST/CTRT/SOFR for later
-// real bus events (device really reaches DVSQ=Address, a real SETUP
-// packet really arrives with VALID=1), yet NVIC ISPR0 and the ICU's own
-// IELSR[6].IR both read back 0 throughout -- no pending request ever
-// reaches the CPU for these. INTENB0 stays correctly 0xDD00, the vector
-// table correctly maps slot 6 to ELC_EVENT_USBFS_INT (0x33, matches
-// IELSR[6] exactly), NVIC's IABR0/ISER0 are clean, and nothing in this
-// codebase clears IELSR[6] except usbfs_int_isr() itself and the one-time
-// clear in usb_hw_reset() before tusb_init() even runs. The interrupt
-// REQUEST from the peripheral to the ICU for these later events is
-// genuinely not reaching the CPU, for reasons that need a working SWD
-// debugger or scope on the request line to pin down further (this
-// session's debugger attempts were abandoned -- see Docs/usb-handoff.md).
+// USB is interrupt-driven: usbfs_int_isr() services the peripheral and
+// tud_task() (below) dispatches the resulting events. The optional
+// scheduler poll of tud_int_handler() is NOT part of normal operation.
 //
-// Pragmatic fix: call tud_int_handler(0) directly from the scheduler,
-// exactly what usbfs_int_isr() would have done had the interrupt actually
-// fired. This drains and correctly dispatches ALL pending INTSTS0
-// conditions via the driver's own existing logic (DVST/DVSQ -> the
-// process_bus_reset/process_set_address switch already in dcd_int_handler,
-// CTRT -> process_setup_packet for a real GET_DESCRIPTOR etc., not just
-// the narrow SET_ADDRESS-only special case this replaces). Guarded with
-// dcd_int_disable/enable (NVIC_DisableIRQ/EnableIRQ under the hood) so a
-// genuine interrupt firing mid-call can't re-enter dcd_int_handler's
-// shared state concurrently, in the event NVIC delivery ever recovers.
-// See Docs/usb-handoff.md.
+// History (Docs/usb-handoff.md): for a long time the interrupt appeared to
+// stop being delivered after the first couple of entries, and polling
+// tud_int_handler() from the scheduler was the only thing that kept USB
+// alive. The cause was a lost wakeup in the ISR -- USBFS_USBI is the OR of
+// all enabled INTSTS0 bits through an edge/level detector (RA4M1 manual,
+// Fig. 27.11), so a status bit left set when the ISR returned, or one whose
+// edge was erased by the ICU IR clear, hid every later event. The ISR now
+// re-checks after clearing IR and loops. Verified on hardware with the poll
+// off: 10/10 interrupt-only enumerations, 57/57 and 15x184 KB CDC
+// transfers with zero give-ups.
+//
+// The poll remains only as a guarded safety net (usb_poll_fallback()).
 extern void dcd_int_enable(uint8_t rhport);
 extern void dcd_int_disable(uint8_t rhport);
 
@@ -282,11 +347,49 @@ extern void dcd_int_disable(uint8_t rhport);
 // NVIC-delivered interrupts alone keep USB working once past whatever
 // initial condition stops NVIC from delivering them at boot -- without a
 // rebuild/reflash cycle for each try. See Docs/usb-handoff.md.
-static volatile bool usb_poll_enabled = true;
+//
+// Default is OFF: USB is serviced by usbfs_int_isr() alone (service, clear
+// the ICU latch, re-check, loop -- see there). usb_poll_fallback() is the
+// safety net, not the design: if a host is attached (VBUS) but USB has not
+// mounted 15 s after boot, turn the scheduler poll on so a board whose
+// only link is USB can't strand itself, and count it (`usbisr` shows "poll fallbacks").
+static volatile bool usb_poll_enabled = false;
+static volatile uint32_t usb_poll_fallbacks;
+
+#define USB_POLL_FALLBACK_SECONDS  15
+
+static void usb_poll_fallback(void) {
+    // Only when a host is actually attached (INTSTS0.VBSTS): a robot running
+    // with no USB cable must not start polling forever for nothing.
+    bool vbus = (R_USB_FS0->INTSTS0 & (1U << 7)) != 0;
+    if (vbus && !tud_mounted()) {
+        usb_poll_enabled = true;
+        usb_poll_fallbacks++;
+    }
+}
+
+// Turning the poll OFF arms this: a timer-driven (not USB-driven) restore, so
+// a wedge during the test can't strand a board whose only link is USB CDC.
+#define USB_POLL_TEST_SECONDS  30
+
+static void usb_poll_restore(void) {
+    usb_poll_enabled = true;
+    poll_off_isr1 = usbfs_isr_count;
+    poll_off_rep1 = usbfs_isr_repass;
+    print("usb scheduler poll: back on (auto)"); printCr();
+}
 
 void usb_cli_poll_toggle(void) {
     usb_poll_enabled = !usb_poll_enabled;
-    print("usb scheduler poll: "); print(usb_poll_enabled ? "on" : "off"); printCr();
+    if (!usb_poll_enabled) {
+        poll_off_isr0 = usbfs_isr_count;
+        poll_off_rep0 = usbfs_isr_repass;
+        poll_off_isr1 = 0;
+        in(secs(USB_POLL_TEST_SECONDS), usb_poll_restore);
+    }
+    print("usb scheduler poll: "); print(usb_poll_enabled ? "on" : "off");
+    if (!usb_poll_enabled) { print(" (auto-restores in "); printDec(USB_POLL_TEST_SECONDS); print(" s)"); }
+    printCr();
 }
 
 static void usb_action(void) {
@@ -606,6 +709,7 @@ void usb_transport_init(void) {
 
     later(usb_action);
     namedAction(usb_action);
+    in(secs(USB_POLL_FALLBACK_SECONDS), usb_poll_fallback);
 #else
     (void) usb_action;             // referenced only by the enabled path
 #endif
@@ -704,15 +808,44 @@ static const char *const string_desc_arr[] = {
     (const char[]){ 0x09, 0x04 },   // 0: language — English (0x0409)
     "TimbreWorks",                   // 1: manufacturer
     "ActiveRobot",                   // 2: product
-    "ActiveRobot",                   // 3: serial → /dev/cu.usbmodemActiveRobot1 on macOS
+    "",                              // 3: serial — built from the chip's unique ID, see usb_serial_string()
     "TimbreOS DFU",                  // 4: DFU Runtime interface
     "TimbreOS CDC",                  // 5: CDC interface
 };
 
+// Serial number = "ActiveRobot" + 3 hex digits hashed (FNV-1a) from the
+// RA4M1's factory-unique 128-bit ID. It used to be the constant
+// "ActiveRobot", so two boards were identical to the host (same VID/PID/
+// serial) and macOS showed only one of them. A short, recognisable serial
+// matters beyond that: macOS builds the CDC node name from it
+// (/dev/cu.usbmodem<serial><n>), so these show up as
+// /dev/cu.usbmodemActiveRobot1A2B3C4D2 -- easy to pick out among many ports.
+// (The raw 32-digit ID as the serial was too long for macOS to use in the
+// node name, which fell back to a location-based name.) 32 bits is plenty to
+// tell boards on one bench apart; the full ID is not needed for that.
+#define USB_SERIAL_UNIQ_DIGITS  3   // 12 bits: ~4000 boards before a collision matters on one bench
+
+static const char *usb_serial_string(void) {
+    static char serial[sizeof("ActiveRobot") + USB_SERIAL_UNIQ_DIGITS];
+    if (serial[0] == '\0') {
+        const bsp_unique_id_t *uid = R_BSP_UniqueIdGet();
+        uint32_t h = 2166136261u;                       // FNV-1a
+        for (unsigned i = 0; i < sizeof(uid->unique_id_bytes); i++) {
+            h = (h ^ uid->unique_id_bytes[i]) * 16777619u;
+        }
+        memcpy(serial, "ActiveRobot", sizeof("ActiveRobot") - 1);
+        h ^= h >> 12 ^ h >> 24;                         // fold so low bits carry the whole hash
+        for (unsigned i = 0; i < USB_SERIAL_UNIQ_DIGITS; i++) {
+            serial[sizeof("ActiveRobot") - 1 + i] = "0123456789ABCDEF"[(h >> (4 * (USB_SERIAL_UNIQ_DIGITS - 1 - i))) & 0xF];
+        }
+    }
+    return serial;
+}
+
 uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
     (void)langid;
 
-    static uint16_t desc_str[32];
+    static uint16_t desc_str[34];
     uint8_t chr_count;
 
     if (index == 0) {
@@ -722,9 +855,10 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
         if (index >= (uint8_t)(sizeof(string_desc_arr) / sizeof(string_desc_arr[0]))) {
             return NULL;
         }
-        const char *str = string_desc_arr[index];
+        const char *str = (index == STRID_SERIAL) ? usb_serial_string()
+                                                  : string_desc_arr[index];
         chr_count = (uint8_t)strlen(str);
-        if (chr_count > 31) chr_count = 31;
+        if (chr_count > 33) chr_count = 33;
         for (uint8_t i = 0; i < chr_count; i++) {
             desc_str[1 + i] = (uint16_t)str[i];
         }
