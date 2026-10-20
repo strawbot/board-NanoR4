@@ -80,6 +80,7 @@
 void analog_test_cli_gpt1_only(void);   // CLI word: gpt1-only — isolation test, no DAC/DMAC/ACMPLP at all
 void analog_test_cli_dmac_only(void);   // CLI word: dmac-only — gpt1-only + active DMAC, DAC12 left unclocked
 void analog_test_cli_dac12_ramp(void);  // CLI word: dac12-ramp
+void analog_test_cli_dac12_set(void);   // CLI word: dac12! ( mv -- ) hold DAC12 at a fixed voltage, no ramp
 void analog_test_cli_dac8_cmp(void);    // CLI word: dac8-cmp
 void analog_test_cli_opamp0(void);      // CLI word: opamp0-test
 void analog_test_cli_opamp0_sweep(void); // CLI word: opamp0-sweep

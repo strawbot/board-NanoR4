@@ -100,6 +100,7 @@ Words // Analog peripheral bench tests (Board/analog_test.c): DAC12/DAC8/ACMPLP,
 	gpt1-only analog_test_cli_gpt1_only // isolation test: open+start GPT1 only, nothing else — checks whether GPT1 alone breaks the tick timer
 	dmac-only analog_test_cli_dmac_only // isolation test: gpt1-only plus active DMAC into DAC12's register, DAC12 left unclocked — checks whether active DMA triggering breaks the tick timer
 	dac12-ramp analog_test_cli_dac12_ramp // GPT1+DMAC ramp DAC12 (P014) at ~15.6 kHz; scope P014 directly
+	dac12! analog_test_cli_dac12_set // (mv) hold DAC12 (P014) at a fixed voltage, no ramp — for manual forward-path bring-up
 	dac8-cmp analog_test_cli_dac8_cmp // same ramp into DAC8 ch0 -> ACMPLP0 IVREF0; apply a test voltage to CMPIN0 (P100), watch VCOUT (P110)
 	opamp0-test analog_test_cli_opamp0 // enable OPAMP0 as a plain 3-pin diff amp: feed AMP0+ (P000)/AMP0- (P001), scope AMP0O (P002)
 	opamp0-sweep analog_test_cli_opamp0_sweep // jumper DAC12 (P014) to AMP0+ (P000); steps DAC12 0-4095 and prints setpoint vs measured AMP0O for plotting

@@ -30,6 +30,21 @@
 #include "tea.h"
 
 static ioport_instance_ctrl_t g_at_ioport_ctrl;
+// R_IOPORT_Open(&g_at_ioport_ctrl, NULL) was passed NULL in place of a real
+// config at all five call sites below. IOPORT_CFG_PARAM_CHECKING_ENABLE is
+// 0 project-wide, so FSP's own NULL guard on p_cfg is compiled out, and
+// r_ioport_pins_config() dereferences it unconditionally: p_pin_data->
+// number_of_pins and p_pin_data->p_pin_cfg_data are read straight from
+// address 0 (this chip's vector table / the DFU bootloader's own bytes),
+// then looped that many times writing garbage into PFS registers across
+// the chip. Confirmed against ra/fsp/src/r_ioport/r_ioport.c directly.
+// An explicit, valid, zero-pin config avoids the whole thing — individual
+// PinCfg calls below still do the actual per-pin configuration.
+static const ioport_cfg_t g_at_ioport_cfg = {
+    .number_of_pins = 0U,
+    .p_pin_cfg_data = NULL,
+    .p_extend       = NULL,
+};
 static void analog_test_dac8_cmp_continue(void);
 static void analog_test_opamp0_continue(void);
 static void analog_test_opamp0_sweep_step(void);
@@ -210,6 +225,19 @@ static void analog_test_stop_timers(void) {
     // NULL p_reg/p_cfg and hard-faults the MCU before anything can print.
     if (g_at_dmac_open) { R_DMAC_Disable(&g_at_dmac_ctrl); R_DMAC_Close(&g_at_dmac_ctrl); g_at_dmac_open = false; }
     if (g_at_gpt_open)  { R_GPT_Stop(&g_at_gpt_ctrl); R_GPT_Close(&g_at_gpt_ctrl); g_at_gpt_open = false; }
+    // R_BSP_MODULE_START is idempotent (just clears the MSTP bit), so this
+    // is safe to call every time. It is NOT safe to skip: if OPAMP's own
+    // module clock (MSTPD31) was never started (e.g. dac12! run as the
+    // first analog-test command after a cold boot, before opamp0-test/
+    // opamp0-sweep ever ran), writing AMPC below while the clock is gated
+    // can stall the bus outright rather than fault or drop silently — the
+    // same class of hazard already documented for the RTC in clocks.c
+    // (FSP_HARDWARE_REGISTER_WAIT spinning forever on a stopped module).
+    // A genuine bus stall wedges the core hard enough that nothing else
+    // can run (no fault captured, no USB activity, no LED) and even a
+    // software reset may not be reachable — matching the observed lockup
+    // exactly.
+    R_BSP_MODULE_START(FSP_IP_OPAMP, 0U);
     R_OPAMP->AMPC = 0x00U;   // AMPE0=0, IREFE=0 — safe to call even if opamp0-test was never run
     // Cancel a pending opamp0-sweep step/read if one is in flight — safe to
     // call even when the sweep was never started (stop_te on an action with
@@ -240,6 +268,15 @@ void analog_test_cli_dac12_ramp(void) {
     // R_DAC_Open likely also configures P014's pin function, which nothing
     // here otherwise does — see the IOPORT_PinCfg call just below.)
     R_BSP_MODULE_START(FSP_IP_DAC, 0U);
+
+    // Load the first sample before enabling the output driver below —
+    // DADR[0] otherwise still holds whatever a previous dac12-ramp/dac12!/
+    // opamp0-sweep run last left it at, and DAOE0 going live exposes that
+    // stale value on P014 for one visible step before the DMA's first
+    // transfer overwrites it. Confirmed on scope: a brief glitch to a
+    // stale level right as the pin goes live, before settling.
+    R_DAC->DADR[0] = g_ramp12[0];
+
     // DACR (HWM 36.2.2): bit6=DAOE0, bits4:0 reserved-must-be-1, bit5/7
     // reserved-must-be-0. There is no "DAE" bit on this part — the CMSIS
     // header's DACR_b.DAE (bit 5) is wrong for RA4M1; that bit is reserved
@@ -260,7 +297,7 @@ void analog_test_cli_dac12_ramp(void) {
     // moving DADR[0] (confirmed via dac-status) mean DAC12 is converting
     // correctly, but nothing reaches the physical pin until it's in analog
     // mode. Same HWM 19.5.4 procedure as CMPIN0/P100: PMR=0, ASEL=1.
-    R_IOPORT_Open(&g_at_ioport_ctrl, NULL);
+    R_IOPORT_Open(&g_at_ioport_ctrl, &g_at_ioport_cfg);
     R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_14,
                      (uint32_t) IOPORT_CFG_ANALOG_ENABLE);
 
@@ -275,6 +312,45 @@ void analog_test_cli_dac12_ramp(void) {
 
     print("analog-test: DAC12 (P014) ramping at "); printDec0(RAMP_HZ); print(" Hz, "); printDec0(RAMP_STEPS);
     print(" steps. Scope P014. `analog-test-stop` to end."); printCr();
+}
+
+// dac12! — ( mv -- ) hold DAC12 (P014) at one fixed voltage, no ramp — for
+// manual forward-path bring-up (pick a setpoint, watch the FET/wire/sense
+// resistor at that one point) rather than sweeping. Deliberately does NOT
+// call analog_test_stop_timers(): GPT1/DMAC only ever need stopping here to
+// protect against dac12-ramp fighting this same DADR[0] write, which is a
+// combination nobody actually wants (same pin, opposite purposes). Calling
+// the shared stop was also killing dac8-cmp's carrier and clearing OPAMP0's
+// AMPC on every call — exactly the combination the real closed-loop test
+// needs running continuously while dac12! pulses the setpoint (e.g. a `for
+// ... next` macro alternating dac12! between two values). If dac12-ramp
+// genuinely is running when this is called, the static write here just
+// gets overwritten by the next DMA cycle (~64us later) — self-evident on
+// the bench, not worth defending against for a combination nobody wants.
+void analog_test_cli_dac12_set(void) {
+    Cell mv = ret();
+    uint32_t vref = adc_vref_get();
+    if ((uint32_t) mv > vref) mv = (Cell) vref;
+
+    uint32_t code = (uint32_t) mv * 4095UL / vref;
+
+    R_BSP_MODULE_START(FSP_IP_DAC, 0U);
+    // Load the target value before enabling the output driver (DAOE0)
+    // below — otherwise DADR[0] still holds whatever a previous test left
+    // it at, and that stale value briefly appears on P014 the instant
+    // DAOE0 goes live, before this write overwrites it. Confirmed on
+    // scope: a visible glitch-then-settle instead of a clean single step.
+    R_DAC->DADR[0] = (uint16_t) code;
+    R_DAC->DACR     = 0x4FU;
+    R_DAC->DAVREFCR = 0x01U;
+    R_IOPORT_Open(&g_at_ioport_ctrl, &g_at_ioport_cfg);
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_14, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);
+
+    // No confirmation print, deliberately: this word is meant to be called
+    // from tight timed loops (e.g. a `for ... next` CLI macro alternating
+    // two voltages for a pulse test), and USB/UART transmission time would
+    // perturb exactly the timing being tested. Check the result with
+    // dac-status or a scope, not the console.
 }
 
 // dac8-cmp — ( -- ) put a known test voltage on CMPIN0 (P100) first,
@@ -295,7 +371,7 @@ void analog_test_cli_dac8_cmp(void) {
     R_DAC8->DAM_b.DACE0 = 1U;                             // enable DAC8 channel 0
     print("analog-test: DACE0 immediately after write reads "); printDec0(R_DAC8->DAM_b.DACE0); printCr();
 
-    R_IOPORT_Open(&g_at_ioport_ctrl, NULL);
+    R_IOPORT_Open(&g_at_ioport_ctrl, &g_at_ioport_cfg);
     // step 2: P100 as a pure analog input. Per HWM 19.5.4 ("Notes on Using
     // Analog Functions"), PMR and PDR must be 0 (general input port) with
     // only ASEL set — PSEL/peripheral-mode is NOT part of how analog inputs
@@ -334,7 +410,11 @@ static void analog_test_dac8_cmp_continue(void) {
     R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_01_PIN_10,
                      (uint32_t) (IOPORT_PERIPHERAL_CLKOUT_COMP_RTC | IOPORT_CFG_PERIPHERAL_PIN));
     R_ACMPLP->COMPOCR_b.C0OE = 1U;                        // drive VCOUT from comparator 0
-    R_ACMPLP->COMPOCR_b.C0OP = 0U;                        // non-inverted
+    // Inverted: this VCOUT feeds a single 74HCT14 Schmitt stage rather than
+    // two cascaded ones (matching the production 74LVC2G17's one-gate-per-
+    // channel topology). One inversion from that gate needs pre-correcting
+    // here so the final polarity at the gate still lands right-side up.
+    R_ACMPLP->COMPOCR_b.C0OP = 1U;                        // inverted
 
     fsp_err_t err = R_GPT_Open(&g_at_gpt_ctrl, &g_at_gpt_cfg);
     if (err != FSP_SUCCESS) { print("analog-test: GPT open failed, err="); printDec0((unsigned) err); printCr(); return; }
@@ -363,7 +443,7 @@ static void analog_test_dac8_cmp_continue(void) {
 void analog_test_cli_opamp0(void) {
     R_BSP_MODULE_START(FSP_IP_OPAMP, 0U);   // MSTPD31 = 0
 
-    R_IOPORT_Open(&g_at_ioport_ctrl, NULL);
+    R_IOPORT_Open(&g_at_ioport_ctrl, &g_at_ioport_cfg);
     // HWM 19.5.4: any analog function (input or output) needs PMR=0,
     // PDR=0 (general input port) with only ASEL set — same treatment
     // already proven on CMPIN0 (input) and DAC12's P014 (output).
@@ -408,12 +488,17 @@ void analog_test_cli_opamp0_sweep(void) {
     analog_test_stop_timers();   // free GPT1/DMAC/DAC12 and clear OPAMP0 first
 
     R_BSP_MODULE_START(FSP_IP_DAC, 0U);
+    // Load the first step (code 0) before DAOE0 goes live below, same
+    // stale-value glitch as dac12-ramp/dac12! otherwise — the first
+    // printed row would read whatever a previous test left DADR[0] at,
+    // not the 0 mV this sweep actually starts from.
+    R_DAC->DADR[0]  = 0U;
     R_DAC->DACR     = 0x4FU;
     R_DAC->DAVREFCR = 0x01U;
 
     R_BSP_MODULE_START(FSP_IP_OPAMP, 0U);
 
-    R_IOPORT_Open(&g_at_ioport_ctrl, NULL);
+    R_IOPORT_Open(&g_at_ioport_ctrl, &g_at_ioport_cfg);
     R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_14, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // DAC12
     R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_00, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0+
     R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_01, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0-
