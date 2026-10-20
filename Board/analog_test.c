@@ -24,11 +24,16 @@
 #include "r_dmac.h"
 #include "r_ioport.h"
 #include "analog_test.h"
+#include "board_cli.h"
 #include "cli.h"
 #include "printers.h"
+#include "tea.h"
 
 static ioport_instance_ctrl_t g_at_ioport_ctrl;
 static void analog_test_dac8_cmp_continue(void);
+static void analog_test_opamp0_continue(void);
+static void analog_test_opamp0_sweep_step(void);
+static void analog_test_opamp0_sweep_read(void);
 
 // GPT1 tick: PCLKD (48 MHz, per frame_timer.c) / 16 = 3 MHz, the same
 // divisor frame_timer.c already uses successfully for GPT7. An earlier
@@ -49,6 +54,15 @@ static void analog_test_dac8_cmp_continue(void);
 
 static gpt_instance_ctrl_t   g_at_gpt_ctrl;
 static dmac_instance_ctrl_t  g_at_dmac_ctrl;
+// BSP_CFG_PARAM_CHECKING_ENABLE is 0 in this project (ra_cfg/fsp_cfg/bsp/
+// bsp_cfg.h), which compiles out FSP's own "was this opened?" guards in
+// R_GPT_Stop/Close and R_DMAC_Disable/Close — calling any of them on a
+// control block that was never opened dereferences a NULL p_reg/p_cfg and
+// hard-faults. Track open state ourselves so analog_test_stop_timers() can
+// be called unconditionally (as opamp0-sweep does, first thing, even on a
+// cold boot where neither was ever opened) without that risk.
+static bool g_at_gpt_open;
+static bool g_at_dmac_open;
 
 // Triangle lookup table, 12-bit full-scale (DAC12) shifted down to 8-bit
 // (DAC8) by the caller as needed — see the two start functions below.
@@ -158,6 +172,7 @@ static const transfer_cfg_t g_at_dmac_cfg = {
 void analog_test_cli_gpt1_only(void) {
     fsp_err_t err = R_GPT_Open(&g_at_gpt_ctrl, &g_at_gpt_cfg);
     if (err != FSP_SUCCESS) { print("analog-test: GPT open failed, err="); printDec0((unsigned) err); printCr(); return; }
+    g_at_gpt_open = true;
     R_GPT_Start(&g_at_gpt_ctrl);
     print("analog-test: GPT1 opened and started, nothing else touched. Check dac-status / the LED now."); printCr();
 }
@@ -177,18 +192,30 @@ void analog_test_cli_dmac_only(void) {
 
     fsp_err_t err = R_GPT_Open(&g_at_gpt_ctrl, &g_at_gpt_cfg);
     if (err != FSP_SUCCESS) { print("analog-test: GPT open failed, err="); printDec0((unsigned) err); printCr(); return; }
+    g_at_gpt_open = true;
     err = R_DMAC_Open(&g_at_dmac_ctrl, &g_at_dmac_cfg);
     if (err != FSP_SUCCESS) { print("analog-test: DMAC open failed, err="); printDec0((unsigned) err); printCr(); return; }
+    g_at_dmac_open = true;
     R_DMAC_Enable(&g_at_dmac_ctrl);
     R_GPT_Start(&g_at_gpt_ctrl);
     print("analog-test: GPT1+DMAC running, DAC12 left unclocked/untouched. Check dac-status / the LED now."); printCr();
 }
 
 static void analog_test_stop_timers(void) {
-    R_GPT_Stop(&g_at_gpt_ctrl);
-    R_DMAC_Disable(&g_at_dmac_ctrl);
-    R_DMAC_Close(&g_at_dmac_ctrl);
-    R_GPT_Close(&g_at_gpt_ctrl);
+    // Guarded on our own open-tracking, not FSP's: BSP_CFG_PARAM_CHECKING_
+    // ENABLE is 0 project-wide, so R_GPT_Stop/Close and R_DMAC_Disable/
+    // Close have no "was this opened?" check compiled in at all — calling
+    // them on a control block that was never opened (e.g. opamp0-sweep
+    // run as the very first command after a cold boot) dereferences a
+    // NULL p_reg/p_cfg and hard-faults the MCU before anything can print.
+    if (g_at_dmac_open) { R_DMAC_Disable(&g_at_dmac_ctrl); R_DMAC_Close(&g_at_dmac_ctrl); g_at_dmac_open = false; }
+    if (g_at_gpt_open)  { R_GPT_Stop(&g_at_gpt_ctrl); R_GPT_Close(&g_at_gpt_ctrl); g_at_gpt_open = false; }
+    R_OPAMP->AMPC = 0x00U;   // AMPE0=0, IREFE=0 — safe to call even if opamp0-test was never run
+    // Cancel a pending opamp0-sweep step/read if one is in flight — safe to
+    // call even when the sweep was never started (stop_te on an action with
+    // no pending entry is a no-op).
+    stop_te(analog_test_opamp0_sweep_step);
+    stop_te(analog_test_opamp0_sweep_read);
 }
 
 void analog_test_cli_stop(void) {
@@ -239,8 +266,10 @@ void analog_test_cli_dac12_ramp(void) {
 
     fsp_err_t err = R_GPT_Open(&g_at_gpt_ctrl, &g_at_gpt_cfg);
     if (err != FSP_SUCCESS) { print("analog-test: GPT open failed, err="); printDec0((unsigned) err); printCr(); return; }
+    g_at_gpt_open = true;
     err = R_DMAC_Open(&g_at_dmac_ctrl, &g_at_dmac_cfg);
     if (err != FSP_SUCCESS) { print("analog-test: DMAC open failed, err="); printDec0((unsigned) err); printCr(); return; }
+    g_at_dmac_open = true;
     R_DMAC_Enable(&g_at_dmac_ctrl);
     R_GPT_Start(&g_at_gpt_ctrl);
 
@@ -309,8 +338,10 @@ static void analog_test_dac8_cmp_continue(void) {
 
     fsp_err_t err = R_GPT_Open(&g_at_gpt_ctrl, &g_at_gpt_cfg);
     if (err != FSP_SUCCESS) { print("analog-test: GPT open failed, err="); printDec0((unsigned) err); printCr(); return; }
+    g_at_gpt_open = true;
     err = R_DMAC_Open(&g_at_dmac_ctrl, &g_at_dmac_cfg);
     if (err != FSP_SUCCESS) { print("analog-test: DMAC open failed, err="); printDec0((unsigned) err); printCr(); return; }
+    g_at_dmac_open = true;
     R_DMAC_Enable(&g_at_dmac_ctrl);
     R_GPT_Start(&g_at_gpt_ctrl);
 
@@ -318,6 +349,105 @@ static void analog_test_dac8_cmp_continue(void) {
     print("Apply a known voltage to CMPIN0 (P100), watch VCOUT (P110). "); printCr();
     print("C0MON now reads: "); printDec0(R_ACMPLP->COMPMDR_b.C0MON); printCr();
     print("`analog-test-stop` to end."); printCr();
+}
+
+// opamp0-test — ( -- ) turn on OPAMP0 as a plain 3-pin differential amp.
+// AMP0+ = P000, AMP0- = P001, AMP0O = P002 — the only one of the four
+// on-chip OPAMP units with all three pins exposed on this board. No
+// DMA/ramp involved: feed it real test voltages on AMP0+/AMP0- and scope
+// AMP0O directly. These three pins double as AN000/AN001/AN002, the old
+// hex-board ISNS_B/ISNS_C/VIN_S scan (Board/adc.c) — moot now the hex
+// board is abandoned, but Table 35.12 already forbids scanning AN000/
+// AN001 on the ADC while OPAMP0 uses them as inputs, so nothing new
+// breaks by reusing them here.
+void analog_test_cli_opamp0(void) {
+    R_BSP_MODULE_START(FSP_IP_OPAMP, 0U);   // MSTPD31 = 0
+
+    R_IOPORT_Open(&g_at_ioport_ctrl, NULL);
+    // HWM 19.5.4: any analog function (input or output) needs PMR=0,
+    // PDR=0 (general input port) with only ASEL set — same treatment
+    // already proven on CMPIN0 (input) and DAC12's P014 (output).
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_00, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0+
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_01, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0-
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_02, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0O
+
+    // AMPMC (38.2.1): leave AMPSP=0 (low-power mode) and AMPPC0=0 (no
+    // precharge) — written explicitly even though both are the reset
+    // default, same documentation style as ACMPLP's step-by-step setup.
+    R_OPAMP->AMPMC = 0x00U;
+    // AMPC (38.2.4): AMPE0=1 and IREFE=1 in the same write — Figure 38.2's
+    // transition (4), straight from Status 1 to Status 3 in one step.
+    // AMPTRM is left at its reset default (00b = software trigger mode),
+    // so no activation trigger is involved.
+    R_OPAMP->AMPC = 0x81U;   // bit0 AMPE0=1, bit7 IREFE=1
+
+    print("analog-test: OPAMP0 enabled, settling ("); printDec0(650U); print(" us min, Table 48.68 Tstd3). ");
+    print("Feed AMP0+ (P000) and AMP0- (P001), scope AMP0O (P002). `analog-test-stop` to end."); printCr();
+    after(msec(1), analog_test_opamp0_continue);
+}
+
+static void analog_test_opamp0_continue(void) {
+    print("analog-test: OPAMP0 AMPMON0 reads "); printDec0(R_OPAMP->AMPMON_b.AMPMON0);
+    print(" (1 = operating)."); printCr();
+}
+
+// opamp0-sweep — ( -- ) jumper DAC12 (P014) to AMP0+ (P000) first. Steps
+// DAC12 through its full range and prints the expected setpoint (DAC12's
+// own output in mV, via the ADC's tracked AVCC0 reference) against the
+// measured OPAMP0 output (AMP0O/P002, read back over the ADC's existing
+// AN002 scan channel — no extra wiring, see Board/adc.c's ADC_PIN_MASK).
+// One line per step; paste the output into a spreadsheet to plot the
+// transfer curve. Static DAC12 writes, no GPT1/DMAC ramp — that hardware
+// is explicitly freed first since the shared DMA destination pointer
+// would otherwise fight these direct writes to the same register.
+#define OPAMP0_SWEEP_STEPS 33U   // 0..4095 in 33 points, ~128 codes apart
+
+static uint32_t g_opamp0_sweep_i;
+
+void analog_test_cli_opamp0_sweep(void) {
+    analog_test_stop_timers();   // free GPT1/DMAC/DAC12 and clear OPAMP0 first
+
+    R_BSP_MODULE_START(FSP_IP_DAC, 0U);
+    R_DAC->DACR     = 0x4FU;
+    R_DAC->DAVREFCR = 0x01U;
+
+    R_BSP_MODULE_START(FSP_IP_OPAMP, 0U);
+
+    R_IOPORT_Open(&g_at_ioport_ctrl, NULL);
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_14, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // DAC12
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_00, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0+
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_01, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0-
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_02, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0O
+
+    R_OPAMP->AMPMC = 0x00U;
+    R_OPAMP->AMPC  = 0x81U;   // AMPE0=1, IREFE=1
+
+    print("analog-test: opamp0-sweep - confirm DAC12 (P014) is jumpered to AMP0+ (P000). ");
+    printDec0(OPAMP0_SWEEP_STEPS); print(" steps across 0-4095. dac12_mv vs amp0o_mv:"); printCr();
+
+    g_opamp0_sweep_i = 0U;
+    after(msec(1), analog_test_opamp0_sweep_step);   // let OPAMP0's Tstd3 (650us) elapse first
+}
+
+static void analog_test_opamp0_sweep_step(void) {
+    uint16_t dac_code = (uint16_t) ((4095UL * g_opamp0_sweep_i) / (OPAMP0_SWEEP_STEPS - 1U));
+    R_DAC->DADR[0] = dac_code;
+    after(msec(1), analog_test_opamp0_sweep_read);   // Tset1 max 750us (low-power OPAMP), covers the DAC too
+}
+
+static void analog_test_opamp0_sweep_read(void) {
+    uint16_t dac_code = (uint16_t) ((4095UL * g_opamp0_sweep_i) / (OPAMP0_SWEEP_STEPS - 1U));
+    uint32_t dac_mv  = (uint32_t) dac_code * adc_vref_get() / 4095UL;
+    uint32_t amp0_mv = adc_read_an_mv(2U);   // AN002 = AMP0O
+
+    printDec0(dac_mv); print(", "); printDec0(amp0_mv); printCr();
+
+    g_opamp0_sweep_i++;
+    if (g_opamp0_sweep_i >= OPAMP0_SWEEP_STEPS) {
+        print("analog-test: opamp0-sweep done."); printCr();
+        return;
+    }
+    after(msec(1), analog_test_opamp0_sweep_step);
 }
 
 // dac-status — ( -- ) MSTP/register state for DAC12, DAC8, ACMPLP, and a
@@ -343,6 +473,11 @@ void analog_test_cli_status(void) {
     print("  IVREF0="); printDec0(R_ACMPLP->COMPSEL1_b.IVREF0);
     print("  C0OE="); printDec0(R_ACMPLP->COMPOCR_b.C0OE);
     print("  C0OP="); printDec0(R_ACMPLP->COMPOCR_b.C0OP); printCr();
+
+    print("OPAMP0: MSTPD31="); printDec0(R_MSTP->MSTPCRD_b.MSTPD31); print(" (0=clocked)");
+    print("  AMPE0="); printDec0(R_OPAMP->AMPC_b.AMPE0);
+    print("  IREFE="); printDec0(R_OPAMP->AMPC_b.IREFE);
+    print("  AMPMON0="); printDec0(R_OPAMP->AMPMON_b.AMPMON0); print(" (1=operating)"); printCr();
 
     // period_counts wraps constantly — two timed reads just land on two
     // unrelated points in [0, period) and prove nothing either way. Count
