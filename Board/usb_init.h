@@ -31,9 +31,5 @@ void usb_trace(uint32_t checkpoint_id, uint32_t extra);
 // See Docs/usb-handoff.md.
 void usb_cli_trace_dump(void);
 
-// CLI word `usbpoll` — diagnostic only: flip whether usb_action() polls
-// tud_int_handler() directly, so real-vs-polled interrupt delivery can be
-// tested live without a rebuild. See Docs/usb-handoff.md.
-void usb_cli_poll_toggle(void);
 
 #endif // USB_INIT_H

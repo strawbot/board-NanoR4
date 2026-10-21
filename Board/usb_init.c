@@ -144,11 +144,6 @@ static volatile uint32_t usbfs_isr_count;
 // usbfs_int_isr() below. Shown by `usbisr`.
 static volatile uint32_t usbfs_isr_repass;
 
-// Defined (with their commentary) next to usb_action(); declared here so
-// `usbisr` can report them.
-static volatile bool     usb_poll_enabled;
-static volatile uint32_t usb_poll_fallbacks;
-
 // Set when the re-check loop used all USB_ISR_MAX_PASSES and an enabled
 // INTSTS0 bit was STILL set: which bit(s) keep the aggregate high, plus the
 // per-pipe status registers behind BRDY/NRDY/BEMP. Shown by `usbisr`.
@@ -158,9 +153,6 @@ static volatile uint16_t usbfs_stuck_intsts0, usbfs_stuck_brdy, usbfs_stuck_nrdy
 // Counts of the first-pass INTSTS0 cause bits seen on ISR entry, and of
 // entries with NO enabled cause bit at all (spurious / stale IR).
 static volatile uint32_t usbfs_isr_spurious;
-
-// Poll-off test window bookkeeping (see usb_cli_poll_toggle()).
-static volatile uint32_t poll_off_isr0, poll_off_isr1, poll_off_rep0, poll_off_rep1;
 
 #define USB_ISR_MAX_PASSES  8U
 #define USB_INTSTS0_IRQ_BITS  0xFF00U   // VBINT RESM SOFR DVST CTRT BEMP NRDY BRDY
@@ -250,16 +242,17 @@ void usbfs_int_isr(void) {
     //    aggregate. If any enabled bit is still set when we return, the
     //    aggregate never falls, so no later event can raise a new request
     //    (INTSTS0 shows DVST/CTRT latched, IR=0, nothing pending in NVIC --
-    //    exactly the wedge in Docs/usb-handoff.md; the scheduler poll
-    //    "fixed" it only by running this handler again).
+    //    exactly the wedge in Docs/usb-handoff.md, which a scheduler poll
+    //    used to mask by running this handler a second time).
     //  - 27.3.3.5: a latched CTRT sequence-error status likewise suppresses
     //    later CTRT interrupts until software clears it.
     //
     // A status bit that sets between tud_int_handler()'s INTSTS0 read and
     // the IR clear is left set, or has its edge erased by the clear. So:
     // service, clear IR, then re-check what is still pending and go round
-    // again. Bounded so a stuck bit can't pin the CPU in the ISR; the
-    // scheduler poll remains the backstop. INTENB1/INTSTS1 are host-mode
+    // again. Bounded so a stuck bit can't pin the CPU in the ISR (a hit on
+    // the bound is counted and its registers captured: see `usbisr`).
+    // INTENB1/INTSTS1 are host-mode
     // only (INTENB1 stays 0 in device mode), so only INTSTS0 is checked.
     if (!usb_irq_still_pending()) usbfs_isr_spurious++;
 
@@ -287,20 +280,12 @@ void usb_cli_isr_count(void) {
     print("usbfs_int_isr fired "); printDec((Long) usbfs_isr_count); print(" times");
     print(", re-passes "); printDec((Long) usbfs_isr_repass);
     print(", spurious "); printDec((Long) usbfs_isr_spurious);
-    print(", give-ups "); printDec((Long) usbfs_isr_giveups);
-    print(", poll "); print(usb_poll_enabled ? "ON" : "off");
-    print(", poll fallbacks "); printDec((Long) usb_poll_fallbacks); printCr();
+    print(", give-ups "); printDec((Long) usbfs_isr_giveups); printCr();
     if (usbfs_isr_giveups) {
         print("  last give-up: INTSTS0="); printHex((Long) usbfs_stuck_intsts0);
         print(" BRDYSTS=");  printHex((Long) usbfs_stuck_brdy);
         print(" NRDYSTS=");  printHex((Long) usbfs_stuck_nrdy);
         print(" BEMPSTS=");  printHex((Long) usbfs_stuck_bemp); printCr();
-    }
-    if (poll_off_isr1) {
-        print("  last poll-off window: isr "); printDec((Long) poll_off_isr0);
-        print("->"); printDec((Long) poll_off_isr1);
-        print(", re-passes "); printDec((Long) poll_off_rep0);
-        print("->"); printDec((Long) poll_off_rep1); printCr();
     }
 }
 
@@ -325,79 +310,18 @@ void usb_cli_init_status(void) {
 // the resulting events and fires DFU callbacks.
 
 // USB is interrupt-driven: usbfs_int_isr() services the peripheral and
-// tud_task() (below) dispatches the resulting events. The optional
-// scheduler poll of tud_int_handler() is NOT part of normal operation.
+// tud_task() (below) dispatches the resulting events.
 //
 // History (Docs/usb-handoff.md): for a long time the interrupt appeared to
-// stop being delivered after the first couple of entries, and polling
-// tud_int_handler() from the scheduler was the only thing that kept USB
-// alive. The cause was a lost wakeup in the ISR -- USBFS_USBI is the OR of
-// all enabled INTSTS0 bits through an edge/level detector (RA4M1 manual,
-// Fig. 27.11), so a status bit left set when the ISR returned, or one whose
-// edge was erased by the ICU IR clear, hid every later event. The ISR now
-// re-checks after clearing IR and loops. Verified on hardware with the poll
-// off: 10/10 interrupt-only enumerations, 57/57 and 15x184 KB CDC
-// transfers with zero give-ups.
-//
-// The poll remains only as a guarded safety net (usb_poll_fallback()).
-extern void dcd_int_enable(uint8_t rhport);
-extern void dcd_int_disable(uint8_t rhport);
-
-// Diagnostic only: `usbpoll` flips this so we can test, live, whether real
-// NVIC-delivered interrupts alone keep USB working once past whatever
-// initial condition stops NVIC from delivering them at boot -- without a
-// rebuild/reflash cycle for each try. See Docs/usb-handoff.md.
-//
-// Default is OFF: USB is serviced by usbfs_int_isr() alone (service, clear
-// the ICU latch, re-check, loop -- see there). usb_poll_fallback() is the
-// safety net, not the design: if a host is attached (VBUS) but USB has not
-// mounted 15 s after boot, turn the scheduler poll on so a board whose
-// only link is USB can't strand itself, and count it (`usbisr` shows "poll fallbacks").
-static volatile bool usb_poll_enabled = false;
-static volatile uint32_t usb_poll_fallbacks;
-
-#define USB_POLL_FALLBACK_SECONDS  15
-
-static void usb_poll_fallback(void) {
-    // Only when a host is actually attached (INTSTS0.VBSTS): a robot running
-    // with no USB cable must not start polling forever for nothing.
-    bool vbus = (R_USB_FS0->INTSTS0 & (1U << 7)) != 0;
-    if (vbus && !tud_mounted()) {
-        usb_poll_enabled = true;
-        usb_poll_fallbacks++;
-    }
-}
-
-// Turning the poll OFF arms this: a timer-driven (not USB-driven) restore, so
-// a wedge during the test can't strand a board whose only link is USB CDC.
-#define USB_POLL_TEST_SECONDS  30
-
-static void usb_poll_restore(void) {
-    usb_poll_enabled = true;
-    poll_off_isr1 = usbfs_isr_count;
-    poll_off_rep1 = usbfs_isr_repass;
-    print("usb scheduler poll: back on (auto)"); printCr();
-}
-
-void usb_cli_poll_toggle(void) {
-    usb_poll_enabled = !usb_poll_enabled;
-    if (!usb_poll_enabled) {
-        poll_off_isr0 = usbfs_isr_count;
-        poll_off_rep0 = usbfs_isr_repass;
-        poll_off_isr1 = 0;
-        in(secs(USB_POLL_TEST_SECONDS), usb_poll_restore);
-    }
-    print("usb scheduler poll: "); print(usb_poll_enabled ? "on" : "off");
-    if (!usb_poll_enabled) { print(" (auto-restores in "); printDec(USB_POLL_TEST_SECONDS); print(" s)"); }
-    printCr();
-}
-
+// stop being delivered after the first couple of entries, and a scheduler
+// poll of tud_int_handler() was the only thing that kept USB alive. The
+// cause was a lost wakeup in the ISR -- USBFS_USBI is the OR of all enabled
+// INTSTS0 bits through an edge/level detector (RA4M1 manual, Fig. 27.11), so
+// a status bit left set when the ISR returned, or one whose edge was erased
+// by the ICU IR clear, hid every later event. The ISR now re-checks after
+// clearing IR and loops, and the poll has been removed: it passed an 8 h
+// soak, 12 hot-plug cycles and 6 cold power-ons without it.
 static void usb_action(void) {
-    if (usb_poll_enabled) {
-        dcd_int_disable(0);
-        tud_int_handler(0);
-        dcd_int_enable(0);
-    }
     tud_task();
     later(usb_action);
 }
@@ -701,15 +625,13 @@ void usb_transport_init(void) {
     // NVIC_SetPriority() for it at all, leaving it at the NVIC register's
     // reset value of 0 (highest priority) -- confirmed via a live IPR[6]
     // read during this investigation. Matching RASC's own intended
-    // priority in case running the USB interrupt at the highest possible
-    // priority is itself contributing to the repeated wedging described
-    // in Docs/usb-handoff.md ("Interrupt delivery keeps wedging, not just
-    // once at boot") -- untested hypothesis, cheap and safe to try.
+    // priority. (Tested as a suspect for the wedge described in
+    // Docs/usb-handoff.md and ruled out -- the lost wakeup was -- but
+    // running USB at the highest NVIC priority was never intentional.)
     NVIC_SetPriority((IRQn_Type) 6, 12);
 
     later(usb_action);
     namedAction(usb_action);
-    in(secs(USB_POLL_FALLBACK_SECONDS), usb_poll_fallback);
 #else
     (void) usb_action;             // referenced only by the enabled path
 #endif

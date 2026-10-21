@@ -1,14 +1,16 @@
 # USB device stack — handoff
 
-**Status: working and interrupt-driven.** `USB_TRANSPORT_ENABLE` is `1` in
-`Board/usb_init.c`. The device enumerates (DFU Runtime + CDC composite) and
-the CLI works over UART and USB CDC with the scheduler poll **off**. The
-long-standing "interrupt stops being delivered" wedge was a lost wakeup in
-the ISR, found by reading the RA4M1 manual and fixed 2026-10-20 — see
-"Root cause: lost wakeup in the ISR (fixed and verified)". The earlier
-bug #4 section and the native-stack / scope sections below are kept as the
-record of how it was chased; where they say the cause was unknown, this
-supersedes them.
+**Status: working and interrupt-driven; the scheduler poll has been removed.**
+`USB_TRANSPORT_ENABLE` is `1` in `Board/usb_init.c`. The device enumerates (DFU
+Runtime + CDC composite) and the CLI works over UART and USB CDC with USB
+serviced purely by `usbfs_int_isr()`. The long-standing "interrupt stops being
+delivered" wedge was a lost wakeup in the ISR, found by reading the RA4M1
+manual and fixed 2026-10-20 — see "Root cause: lost wakeup in the ISR (fixed
+and verified)". Verified without any polling: 8 h soak, 12 hot-plug cycles,
+6 cold power-ons. The bug #4 section and the native-stack / scope sections below
+are kept as the record of how it was chased; where they say the cause was
+unknown, or mention `usbpoll` or the scheduler poll, this supersedes them (the
+poll, its fallback and the `usbpoll` word no longer exist).
 
 ---
 
@@ -243,12 +245,11 @@ flash got 0/12 answers (before the counters existed). It never recurred in
 ~80 later trials across several flashes; if it does, the `give-ups` /
 last-give-up register dump in `usbisr` is there to catch it.
 
-**Poll is now OFF by default.** `usb_action()` only pumps `tud_task()`.
-`usb_poll_fallback()` is a guarded safety net: if VBUS is present but USB
-has not mounted 15 s after boot it turns the scheduler poll on and counts it
-(`poll fallbacks` in `usbisr`) so a board whose only link is USB can't strand
-itself. `usbpoll` still toggles the poll for experiments (turning it off arms
-a 30 s auto-restore).
+**The scheduler poll has been deleted** (2026-10-21), after the tests below
+passed without it. `usb_action()` just pumps `tud_task()`; there is no
+`usb_poll_fallback()`, no `usbpoll` word, and `usbisr` no longer prints poll
+fields. (While it existed it was OFF by default, with a VBUS-gated 15 s
+fallback; the table and results below were all taken with it off.)
 
 **8-hour soak (2026-10-21), poll OFF, CDC + UART watchdog:** 5,648 short
 commands, 474 bulk `help` dumps (12 KB each), and 47 periodic resets
@@ -275,10 +276,23 @@ note for the harness: it spends ~6.8 s probing over the UART after seeing the
 node vanish, so its "unplugged" and "answered in" times are floored at ~6.8 s
 and ~1.3 s respectively; pass/fail, reset detection and counters are exact.)
 
-**Still to do:** a genuine cold power-on (USB only, no DFU handoff — also the
-only way the board ever sees VBUS appear); a run under the web-page/NCM
-streaming load; once confident, delete the scheduler poll and
-`usb_poll_fallback()` entirely.
+**Cold power-on test (2026-10-21), poll OFF:** 6 cycles, each with VIN and the
+cable removed, a ~5 s wait, then USB plugged in as the *only* supply. The harness
+only counted a cycle if the UART was silent first (proving the board was really
+off). **6/6 mounted and answered**, each ~1.1 s after the node appeared; counters
+each time 78–81 ISR entries, 20–23 re-passes, 0 give-ups, `poll off`, 0
+fallbacks. This is also the case where the board never sees a VBUS-change
+interrupt (VBUS is already present at start).
+
+*Observation, not a failure:* the board's uptime at the first answer was ~9 s
+on every cold boot, i.e. the node appeared ~8 s after the app started, versus
+under ~2.5 s after a software reset (soak) or DFU handoff. Not yet explained —
+candidates: slow work in `hal_entry` before `usb_transport_init()` on a cold
+start, the host's own attach delay, or the bootloader. Worth measuring (UART
+banner time vs node-appear time) if boot-to-USB latency ever matters.
+
+**Still to do:** a run under the web-page/NCM streaming load (the poll is already
+gone, so any problem there is a real one).
 
 **Related, not USB:** a "USB device disappears" report on 2026-10-21 turned out
 to be `R_IOPORT_Open(…, NULL)` in `Board/analog_test.c` — with FSP parameter
@@ -702,8 +716,7 @@ it if this FSP version ever gets upgraded.
 
 | Word | What it shows |
 | --- | --- |
-| `usbisr` | ISR entries this boot (millions = storm; ~115 after a normal enumeration), **re-passes** (ISR found an enabled `INTSTS0` bit still set after clearing the ICU latch and looped — ~25% of entries is normal), spurious entries, **give-ups** (hit the 8-pass limit; should stay 0 — if not, the last-give-up `INTSTS0/BRDYSTS/NRDYSTS/BEMPSTS` dump names the bit holding the line high), scheduler-poll state, and **poll fallbacks** (should stay 0). |
-| `usbpoll` | Toggle the scheduler poll of `tud_int_handler()` (default off). Turning it off arms a 30 s timer-driven auto-restore; the last off-window's ISR/re-pass counts appear in `usbisr`. |
+| `usbisr` | ISR entries this boot (millions = storm; ~115 after a normal enumeration), **re-passes** (the ISR found an enabled `INTSTS0` bit still set after clearing the ICU latch and looped — ~25 % of entries is normal), spurious entries, and **give-ups** (hit the 8-pass limit; should stay 0 — if not, the last-give-up `INTSTS0/BRDYSTS/NRDYSTS/BEMPSTS` dump names the bit holding the line high). |
 | `usbinit` | Whether `tusb_init()` reported success, and `INTENB0` immediately after it returned (catches a silent `TU_ASSERT` bail-out before `dcd_init()`, given `CFG_TUSB_DEBUG` is 0 and nothing gets logged either way). |
 | `usbcrash` | Survives a hang + power cycle via VBATT backup registers: ISR count / `INTSTS0:INTENB0` / `emitq` depth, captured every 256th ISR entry plus once on the very first entry (separate slot — the one-shot write has no settling delay before the VBATT domain's slow clock commits it, so it can silently fail to retain; the periodic one gets many chances to stick). Was essential before a debugger was available; now mostly superseded by live breakpoints for anything the debugger can reach. |
 
