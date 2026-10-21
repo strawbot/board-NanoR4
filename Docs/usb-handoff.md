@@ -250,9 +250,41 @@ has not mounted 15 s after boot it turns the scheduler poll on and counts it
 itself. `usbpoll` still toggles the poll for experiments (turning it off arms
 a 30 s auto-restore).
 
-**Still to do:** soak over days and with the web-page/NCM streaming load;
-test a genuine cold power-on (not DFU handoff); once confident, delete the
-poll and fallback entirely.
+**8-hour soak (2026-10-21), poll OFF, CDC + UART watchdog:** 5,648 short
+commands, 474 bulk `help` dumps (12 KB each), and 47 periodic resets
+(`reboot` over UART every 10 min, each required to re-enumerate and answer on
+interrupts alone) — **0 failures**. Worst reset-to-answer 3.2 s; `give-ups` 0
+and `poll fallbacks` 0 on every check; at the end the board showed 6,674 ISR
+entries, 1,051 re-passes (~16 %), 0 give-ups, 0 fallbacks. (The harness
+captures the USB/ICU/NVIC registers over the UART and stops on 3 consecutive
+CDC failures; it never triggered.)
+
+**Hot-plug test (2026-10-21), poll OFF, board powered from VIN throughout:**
+12 unplug/replug cycles at the board end (flicks to ~13 s, some mid-enumeration)
+— **12/12 re-enumerated and answered with no reset** (board uptime kept
+counting), `give-ups` 0, `poll fallbacks` 0, 2,117 ISR entries / 526 re-passes
+by the end. One cycle took ~8.6 s to answer instead of ~1.3 s (macOS retried
+part of the enumeration after a replug mid-handshake; the board recovered by
+itself). Caveat on what this exercised: with VIN supplying the board's 5 V rail
+the VBUS-sense pin stays high (`VBSTS` = 1) when the cable is pulled, so the
+board sees *suspend, then a bus reset on replug* (`DVSQ` 7 → 1 → 3; `DPRPU`
+stays 1) — **not** the VBUS-drop interrupt (`VBINT`/`dcd_disconnect`). That
+path can't be hit on this board as wired without losing power; with USB as the
+only supply an unplug is a power-off, i.e. the cold-boot case. (Measurement
+note for the harness: it spends ~6.8 s probing over the UART after seeing the
+node vanish, so its "unplugged" and "answered in" times are floored at ~6.8 s
+and ~1.3 s respectively; pass/fail, reset detection and counters are exact.)
+
+**Still to do:** a genuine cold power-on (USB only, no DFU handoff — also the
+only way the board ever sees VBUS appear); a run under the web-page/NCM
+streaming load; once confident, delete the scheduler poll and
+`usb_poll_fallback()` entirely.
+
+**Related, not USB:** a "USB device disappears" report on 2026-10-21 turned out
+to be `R_IOPORT_Open(…, NULL)` in `Board/analog_test.c` — with FSP parameter
+checking off project-wide that loops over 10,712 garbage "pin configs" read
+from flash and writes arbitrary peripheral registers. Fixed there; if USB ever
+drops erratically again, check for NULL/unopened FSP handles first.
 
 ### Unique USB serial number (two boards on one host)
 
