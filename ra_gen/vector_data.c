@@ -35,6 +35,10 @@
             [11] = iic_master_txi_isr, /* IIC1 TXI (Transmit data empty) */
             [12] = iic_master_tei_isr, /* IIC1 TEI (Transmit end) */
             [13] = iic_master_eri_isr, /* IIC1 ERI (Transfer error) */
+            /* [14]-[16]: the muscle frame timer (GPT7), Board/frame_timer.c. Added by hand. */
+            [14] = frame_timer_edge_isr,   /* GPT7 CAPTURE COMPARE A: next window edge */
+            [15] = frame_timer_sample_isr, /* GPT7 CAPTURE COMPARE B: sample point */
+            [16] = frame_timer_frame_isr,  /* GPT7 COUNTER OVERFLOW: frame start */
         };
         #if BSP_FEATURE_ICU_HAS_IELSR
         const bsp_interrupt_event_t g_interrupt_event_link_select[BSP_ICU_VECTOR_NUM_ENTRIES] =
@@ -50,6 +54,9 @@
             [11] = BSP_PRV_VECT_ENUM(EVENT_IIC1_TXI,GROUP3), /* IIC1 TXI (Transmit data empty) */
             [12] = BSP_PRV_VECT_ENUM(EVENT_IIC1_TEI,GROUP4), /* IIC1 TEI (Transmit end) */
             [13] = BSP_PRV_VECT_ENUM(EVENT_IIC1_ERI,GROUP5), /* IIC1 ERI (Transfer error) */
+            [14] = BSP_PRV_VECT_ENUM(EVENT_GPT7_CAPTURE_COMPARE_A,GROUP6), /* GPT7 CAPTURE COMPARE A */
+            [15] = BSP_PRV_VECT_ENUM(EVENT_GPT7_CAPTURE_COMPARE_B,GROUP7), /* GPT7 CAPTURE COMPARE B */
+            [16] = BSP_PRV_VECT_ENUM(EVENT_GPT7_COUNTER_OVERFLOW,GROUP0), /* GPT7 COUNTER OVERFLOW */
         };
         #endif
         #endif

@@ -95,7 +95,9 @@ static void usart_emit(void) {
     bool claimed = false;
 
     FSP_CRITICAL_SECTION_ENTER;
-    if (!tx_busy && qbq(emitq)) {
+    // Only the active transport drains: this also runs from the TX-complete
+    // chain, which would otherwise keep pulling another transport's output.
+    if (!tx_busy && qbq(emitq) && cli_transport_is_active(&usart_hw)) {
         tx_byte = (uint8_t) pullbq(emitq);
         tx_busy = true;
         claimed = true;
@@ -153,7 +155,7 @@ static void usart_rx_action(void) {
 void usart_transport_init(void) {
     R_SCI_UART_Open(&g_uart2_ctrl, &g_uart2_cfg);
 
-    when(EmitEvent, usart_emit);
+    cli_transport_claim(&usart_hw);    // the UART is the active (and fallback) transport from boot
     autoEchoOff();
     namedAction(usart_rx_action);
 }

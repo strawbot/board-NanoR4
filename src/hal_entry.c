@@ -12,10 +12,14 @@
 #include "fs_hw_flash.h"
 #include "muscle.h"
 #include "muscle_sr.h"
+#include "frame_timer.h"
 #include "wirecal_hw.h"
 #include "sr595_hw.h"
 #include "calib.h"
+#include "robot_model.h"
 #include "vin_sense.h"
+#include "power_sense.h"
+#include "adc_sync.h"
 #include "gait.h"
 #include "posture.h"
 #include "printers.h"
@@ -124,7 +128,9 @@ void hal_entry(void)
     adc_init();
     init_tea();
     vin_sense_init();     // register the divider calibration for the calib file
+    power_sense_init();   // register the Vdrain divider's calibration for the calib file
     adc_vref_start();     // track AVCC0 from the internal reference (needs the scheduler)
+    adc_sync_marker_init(); // ELC links + GPT3/P111 scope marker for the hardware-triggered ADC path (Board/adc_sync.c) — dormant until dac8-cmp's carrier runs
     usart_transport_init();
 
     print_build_banner();
@@ -144,10 +150,17 @@ void hal_entry(void)
     // muscle_sr). No posture_bind_hw() until the new board's ICM-42688-P is
     // up; until then the gait runs without IMU feedback.
     muscle_init(MUSCLE_LIMBS_4);
+    frame_timer_bind();    // GPT7 frame timer for the shift register edges
     muscle_sr_init();
+    if (muscle_sr_fault() != MUSCLE_SR_OK) {   // the frame timer did not prove itself: nothing will be latched
+        print("muscle_sr: frame timer self-test failed (fault ");
+        printDec0((unsigned)muscle_sr_fault()); print("): muscle outputs disabled"); printCr();
+        usart_drain();
+    }
     wirecal_hw_init();     // per-wire self-calibration (`wirecal`)
     posture_init();
     gait_init();
+    robot_model_init();    // body model (`body`, `body!`), saved in the calib file
 
     /* USB comes up LAST, immediately before the run loop, so the first USB
      * interrupt is serviced on the next scheduler pass rather than after a few

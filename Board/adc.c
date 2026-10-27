@@ -77,15 +77,20 @@ static const adc_cfg_t g_board_adc_cfg = {
     .p_extend       = &g_board_adc_cfg_extend,
 };
 
-// Scan AN000 (P000), AN001 (P001), AN002 (P002), AN009 (P014) and the
-// internal reference together.
-// Hex-board plan: A0=AN009 ISNS_A, A1=AN000 ISNS_B, A2=AN001 ISNS_C,
-// A3=AN002 VIN_S.
+// Scan AN000 (P000), AN001 (P001), AN002 (P002), AN009 (P014), AN019
+// (P103), AN020 (P102), AN021 (P101) and the internal reference together.
+// Hex-board plan (dead, hex board abandoned): A0=AN009 ISNS_A, A1=AN000
+// ISNS_B, A2=AN001 ISNS_C, A3=AN002 VIN_S.
+// AN019/020/021 are the new closed-loop power-sense inputs: P103 = raw
+// sense-resistor voltage (Board/power_sense.c), P102 = FET drain through
+// a 82.5k/22k divider, P101 = VIN through a 100k/20k divider (Board/
+// vin_sense.c). R_wire = (VIN - V_drain) / (V_sense / R_sense) is computed
+// from these three in Board/power_sense.c.
 // The internal reference is scanned with the pins; the temperature sensor is
 // deliberately NOT: with both sensors in one scan the reference register
 // reads the temperature value (bench-verified with `adcexp`, with and without
 // pin channels), while reference + pins alone reads correctly.
-#define ADC_PIN_MASK    ((1U << 0) | (1U << 1) | (1U << 2) | (1U << 9))
+#define ADC_PIN_MASK    ((1U << 0) | (1U << 1) | (1U << 2) | (1U << 9) | (1U << 19) | (1U << 20) | (1U << 21))
 #define ADC_NORMAL_MASK (ADC_PIN_MASK | ADC_MASK_VOLT)
 #define ADC_ALL_MASK    (ADC_NORMAL_MASK | ADC_MASK_TEMPERATURE)   // known-bad, for adcexp
 
@@ -107,28 +112,143 @@ static fsp_err_t adc_init_err;
 
 int adc_init_status(void) { return (int)adc_init_err; }
 
+// Longest sample time (255 states) on every scanned channel, continuous-scan
+// or group-scan alike. The taps are high impedance (100K/47K divider ~32k,
+// sense taps behind a 1k filter); the default sample time is meant for a few
+// kOhm and reads such a source low. Shared between adc_init() and
+// adc_sync_start() so the two scan configs can't drift apart.
+static fsp_err_t adc_set_sample_states(void) {
+    static const uint8_t scanned[] = { 0, 1, 2, 9, 19, 20, 21 };
+    fsp_err_t first = FSP_SUCCESS;
+    for (unsigned i = 0; i < sizeof scanned; i++) {
+        adc_sample_state_t ss = { (adc_sample_state_reg_t)scanned[i], 255U };
+        fsp_err_t e = R_ADC_SampleStateCountSet(&g_board_adc_ctrl, &ss);
+        if (first == FSP_SUCCESS) first = e;
+    }
+    return first;
+}
+
 void adc_init(void) {
     // P000/P001 are analog from ra_gen/pin_data.c; P002 and P014 are not.
     R_IOPORT_PinCfg(&g_ioport_ctrl, BSP_IO_PORT_00_PIN_02, (uint32_t)IOPORT_CFG_ANALOG_ENABLE);
     R_IOPORT_PinCfg(&g_ioport_ctrl, BSP_IO_PORT_00_PIN_14, (uint32_t)IOPORT_CFG_ANALOG_ENABLE);
+    // P101/P102/P103 (AN021/020/019) — the new power-sense inputs. Not
+    // known to default to analog from RASC, so configure explicitly same
+    // as P002/P014 above rather than assume.
+    R_IOPORT_PinCfg(&g_ioport_ctrl, BSP_IO_PORT_01_PIN_01, (uint32_t)IOPORT_CFG_ANALOG_ENABLE);  // P101 = AN021, VIN divider
+    R_IOPORT_PinCfg(&g_ioport_ctrl, BSP_IO_PORT_01_PIN_02, (uint32_t)IOPORT_CFG_ANALOG_ENABLE);  // P102 = AN020, V_drain divider
+    R_IOPORT_PinCfg(&g_ioport_ctrl, BSP_IO_PORT_01_PIN_03, (uint32_t)IOPORT_CFG_ANALOG_ENABLE);  // P103 = AN019, V_sense direct
 
     adc_init_err = R_ADC_Open(&g_board_adc_ctrl, &g_board_adc_cfg);
     fsp_err_t e = R_ADC_ScanCfg(&g_board_adc_ctrl, &g_board_adc_channel_cfg);
     if (!adc_init_err) adc_init_err = e;
 
-    // Longest sample time (255 states) on every scanned channel. The taps
-    // are high impedance (100K/47K divider ~32k, sense taps behind a 1k
-    // filter); the default sample time is meant for a few kOhm and reads
-    // such a source low.
-    static const uint8_t scanned[] = { 0, 1, 2, 9 };
-    for (unsigned i = 0; i < sizeof scanned; i++) {
-        adc_sample_state_t ss = { (adc_sample_state_reg_t)scanned[i], 255U };
-        e = R_ADC_SampleStateCountSet(&g_board_adc_ctrl, &ss);
-        if (!adc_init_err) adc_init_err = e;
-    }
+    e = adc_set_sample_states();
+    if (!adc_init_err) adc_init_err = e;
 
     e = R_ADC_ScanStart(&g_board_adc_ctrl);
     if (!adc_init_err) adc_init_err = e;
+}
+
+// ── adc_sync_start/stop: hardware-triggered group-scan, scoped to the
+// carrier's lifetime (Board/analog_test.c's dac8-cmp/dac8-stop) ────────────
+//
+// Default (above, and restored by adc_sync_stop) is continuous-scan,
+// software-started, free-running independent of anything else — what
+// `vin@`/`status`/`pstatus`/`adcexp` all depend on working any time, carrier
+// running or not. That's wrong for Vsense/Vdrain while chasing chatter: a
+// continuous-scan read lands at whatever instant the CPU happens to poll it,
+// no relationship to the carrier's own 64us step — exactly the skew that
+// made the first pstatus-vs-meter comparison meaningless (see conversation).
+//
+// Group-scan mode fixes that: group A (Vsense P103/AN019, Vdrain P102/AN020)
+// is triggered by ELC_AD00, group B (the original continuous-scan channels:
+// legacy 0/1/2/9, VIN AN021, internal ref) by ELC_AD01 — both wired (Board/
+// adc_sync.c) to the SAME ELC_EVENT_GPT1_COUNTER_OVERFLOW already driving
+// the carrier's own DMAC step, so every channel gets a fresh, hardware-timed
+// sample every 64us step, zero CPU/scheduler jitter in the trigger itself.
+// Confirmed against the manual (35.3.2, ADSTRGR.TRSA/TRSB, Table 35.7) that
+// RA4M1's ADC140 only has two real ELC trigger slots (ELC_AD00/ELC_AD01) —
+// the FSP header's per-GPT-channel-named ADC_START_SOURCE_GPT_* constants
+// don't correspond to anything in this chip's own TRSA/TRSB encoding; same
+// category of trap as DACR's bogus DAE bit and R_OPAMP's bogus OS/MS/PS
+// selector found earlier in this project. ELC_EVENT_ADC0_SCAN_END (Board/
+// adc_sync.c) marks completion on a scope pin for verification.
+//
+// Deliberately gated to the carrier's own runtime, not left on permanently:
+// group B's trigger is the same GPT1 overflow event, so if this were the
+// boot-time default, VIN/status/adcexp would go stale/frozen any time the
+// carrier isn't running, including at boot before dac8-cmp has ever been
+// called — a real regression to diagnostics that currently work standalone.
+#define ADC_GROUP_A_MASK ((1U << 19) | (1U << 20))                    // Vsense, Vdrain
+#define ADC_GROUP_B_MASK ((1U << 0) | (1U << 1) | (1U << 2) | (1U << 9) | (1U << 21) | ADC_MASK_VOLT)
+
+static const adc_extended_cfg_t g_adc_sync_cfg_extend = {
+    .add_average_count   = ADC_ADD_OFF,
+    .clearing            = ADC_CLEAR_AFTER_READ_ON,
+    .trigger             = ADC_START_SOURCE_ELC_AD0,   // group A <- ELC_AD00
+    .trigger_group_b     = ADC_START_SOURCE_ELC_AD1,   // group B <- ELC_AD01
+    .double_trigger_mode = ADC_DOUBLE_TRIGGER_DISABLED,
+    .adc_vref_control    = ADC_VREF_CONTROL_AVCC0_AVSS0,
+    .enable_adbuf        = 0U,
+    .window_a_irq        = FSP_INVALID_VECTOR,
+    .window_b_irq        = FSP_INVALID_VECTOR,
+    .window_a_ipl        = BSP_IRQ_DISABLED,
+    .window_b_ipl        = BSP_IRQ_DISABLED,
+};
+
+static const adc_cfg_t g_adc_sync_cfg = {
+    .unit           = 0U,
+    .mode           = ADC_MODE_GROUP_SCAN,
+    .resolution     = ADC_RESOLUTION_14_BIT,
+    .alignment      = ADC_ALIGNMENT_RIGHT,
+    .trigger        = ADC_TRIGGER_SYNC_ELC,
+    .scan_end_irq   = FSP_INVALID_VECTOR,
+    .scan_end_b_irq = FSP_INVALID_VECTOR,
+    .scan_end_ipl   = BSP_IRQ_DISABLED,
+    .scan_end_b_ipl = BSP_IRQ_DISABLED,
+    .p_callback     = NULL,
+    .p_context      = NULL,
+    .p_extend       = &g_adc_sync_cfg_extend,
+};
+
+static const adc_channel_cfg_t g_adc_sync_channel_cfg = {
+    .scan_mask          = ADC_GROUP_A_MASK,
+    .scan_mask_group_b  = ADC_GROUP_B_MASK,
+    .add_mask           = 0U,
+    .p_window_cfg       = NULL,
+    .priority_group_a   = ADC_GROUP_A_PRIORITY_OFF,
+    .sample_hold_mask   = 0U,
+    .sample_hold_states = 24U,
+};
+
+// dac8-cmp calls this once the carrier/ELC links are live. Errors are
+// reported through adc_init_err, same as adc_init() — check with `status`.
+void adc_sync_start(void) {
+    R_ADC_Close(&g_board_adc_ctrl);
+    adc_init_err = R_ADC_Open(&g_board_adc_ctrl, &g_adc_sync_cfg);
+    fsp_err_t e = R_ADC_ScanCfg(&g_board_adc_ctrl, &g_adc_sync_channel_cfg);
+    if (!adc_init_err) adc_init_err = e;
+    e = adc_set_sample_states();
+    if (!adc_init_err) adc_init_err = e;
+    // R_ADC_ScanStart() IS required here, confirmed wrong on the bench: it
+    // was skipped on the (wrong) assumption that R_ADC_Open alone arms an
+    // ELC-triggered unit. Per r_adc.c's own doc comments, ScanStart "enables
+    // hardware trigger" regardless of trigger type — R_ADC_Open just applies
+    // the config, it doesn't set ADCSR.ADST. Without this, nothing was ever
+    // armed: pstatus's one real-looking reading was stale data left in the
+    // register from before the mode switch, immediately zeroed by
+    // ADC_CLEAR_AFTER_READ_ON on that first read, with no new conversion
+    // ever occurring to refill it.
+    e = R_ADC_ScanStart(&g_board_adc_ctrl);
+    if (!adc_init_err) adc_init_err = e;
+}
+
+// dac8-stop/analog-test-stop calls this — just re-runs the original
+// continuous-scan init, restoring exactly what adc_init() set up at boot.
+void adc_sync_stop(void) {
+    R_ADC_Close(&g_board_adc_ctrl);
+    adc_init();
 }
 
 // Any scanned channel's raw 14-bit code.

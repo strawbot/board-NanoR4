@@ -135,12 +135,5 @@ void cli_set_utc(void) {
     print("set: "); print_RTC(); printCr();
 }
 
-// ── gpio_dump_all stub ─────────────────────────────────────────────────────
-// gpio_dump.c is still STM32-only and excluded from the build. Provide a
-// placeholder so the CLI word `pins` resolves.
-void gpio_dump_all(void) {
-    print("pins: gpio_dump not ported yet"); printCr();
-}
-
 // ── word filter ───────────────────────────────────────────────────────────
 bool visible_word(char *s) { (void)s; return true; }

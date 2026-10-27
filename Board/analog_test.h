@@ -7,17 +7,49 @@
 //   dac12-ramp   GPT1 overflow -> ELC -> DMAC writes a lookup table into
 //                DAC12 (P014) at a fixed rate. Scope P014 directly; this
 //                is the only piece with an external, already-proven pin.
+//                The DMA's TRANSFER_MODE_REPEAT is not actually infinite:
+//                its repeat counter (DMCRB) exhausts after 65536 cycles of
+//                the 64-sample table, ~268s (~4.5 min), at which point the
+//                DMAC stops itself (confirmed on the bench: dac8-cmp's
+//                carrier went silent after a few minutes of otherwise-
+//                untouched operation). Both this and dac8-cmp now
+//                periodically Close+Open+Enable the DMAC well inside that
+//                window (analog_test_dmac_rearm) so it never actually runs
+//                out during normal bench use.
 //
 //   dac8-cmp     Same GPT1/ELC/DMAC chain, but the destination is DAC8 ch0
 //                (internal only, no pin) and DAC8's value becomes ACMPLP0's
 //                reference (IVREF0). The other input (IVCMP0) is CMPIN0,
-//                P100 — apply a known external test voltage there. ACMPLP0's
-//                output is VCOUT, P110 (NOT P109 — P109 only carries CLKOUT
-//                at that same PSEL value; P110 is the one with VCOUT). As
-//                DAC8 ramps through the CMPIN0 voltage, VCOUT should flip —
-//                that one transition is the proof DAC8's internal route
-//                into the comparator is real, since DAC8's own voltage can
-//                never be probed directly.
+//                P100. ACMPLP0's output is VCOUT, P110 (NOT P109 — P109
+//                only carries CLKOUT at that same PSEL value; P110 is the
+//                one with VCOUT). Also enables OPAMP0 itself (same as
+//                opamp0-test) — CMPIN0 is meant to be fed by AMP0O in the
+//                real trigger path, so this test owns that rather than
+//                leaving "remember to run opamp0-test first" as a separate
+//                step; only the external jumpers stay the user's job. DAC8's
+//                carrier is a band (DAC8_CARRIER_MIN/MAX in analog_test.c,
+//                currently ~102-5088mV) rather than sweeping true edge to
+//                edge: any CMPIN0 value inside the carrier's own range gets
+//                crossed every cycle regardless of what it is, so a CMPIN0
+//                sitting right at a full-scale carrier's boundary (e.g. 0V)
+//                produces a steady trickle of boundary-grazing edges
+//                instead of true silence. With the carrier narrowed, a
+//                CMPIN0 value outside the band on either side settles to a
+//                steady, non-toggling state (the cap-coupled RC stage
+//                downstream only responds to edges, not DC level), and a
+//                value inside the band produces real toggling — confirmed
+//                on the bench with dac12!: 0mV silent, ~2500mV actively
+//                pulsing the gate (at the original, tighter ~1020-4075mV
+//                band tuned for that test). That band was later widened to
+//                ~102-5088mV for mapping the wire's characteristic at a
+//                higher error-amp gain (R2=470k), where AMP0O's excursion
+//                across the wire's full onset-to-saturation range turned
+//                out to be wider than the tighter band could represent —
+//                it was cutting the sweep off (comparator settling to a
+//                steady "off" state) before the wire's real saturation
+//                plateau ever showed up. If trigger-pulse testing needs
+//                the tighter band's cleaner silence margin again, only
+//                DAC8_CARRIER_MIN/MAX need to change back.
 //
 // Uses GPT1. GPT0 is TEA's own system tick (Board/clocks.c), GPT2 is
 // delta_timer, GPT7 is the muscle frame timer (frame_timer.c) — all three
@@ -84,7 +116,13 @@ void analog_test_cli_dac12_set(void);   // CLI word: dac12! ( mv -- ) hold DAC12
 void analog_test_cli_dac8_cmp(void);    // CLI word: dac8-cmp
 void analog_test_cli_opamp0(void);      // CLI word: opamp0-test
 void analog_test_cli_opamp0_sweep(void); // CLI word: opamp0-sweep
+void analog_test_cli_wire_sweep(void);   // CLI word: wire-sweep — dac8-cmp must already be running; steps dac12 0-1500mV, prints rwire/vsense/vdrain stats per setpoint
+void analog_test_cli_wsettle_set(void);    // CLI word: wsettle! ( ms -- ) wire-sweep's per-step settle time before the first sample
+void analog_test_cli_wsample_ms_set(void); // CLI word: wsample-ms! ( ms -- ) wire-sweep's spacing between samples within a step
+void analog_test_cli_wsamples_set(void);   // CLI word: wsamples! ( n -- ) wire-sweep's sample count per step
 void analog_test_cli_stop(void);        // CLI word: analog-test-stop
+void analog_test_cli_dac8_stop(void);   // CLI word: dac8-stop — stops just the carrier/comparator, leaves OPAMP0 running
+void analog_test_cli_cmpfir_set(void);  // CLI word: cmpfir! ( n -- ) ACMPLP0 output resample: 0 bypass, 1 PCLKB, 2 PCLKB/8, 3 PCLKB/32
 void analog_test_cli_status(void);      // CLI word: dac-status — MSTP/register state for DAC12, DAC8, ACMPLP, OPAMP0, GPT1
 
 #endif

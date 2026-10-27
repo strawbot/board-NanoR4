@@ -6,9 +6,15 @@
 #include "cli.h"
 #include "printers.h"
 
-#define VIN_AN            2U          // A3 = AN002
+// Was AN002/P002 (A3) — dead since that pin is now AMP0O's own output
+// (Board/analog_test.c), not a VIN divider at all; vin@ was silently
+// reading the opamp's output through the wrong scaling math. Moved to
+// AN021/P101, a genuinely free ADC-capable pin, with a fresh 100k/20k
+// divider (both 0.1%) built for this specific purpose rather than
+// reusing the old hex-board divider's values.
+#define VIN_AN            21U         // P101 = AN021
 #define VIN_R_TOP_OHMS    100000UL    // 0.1 % part
-#define VIN_R_BOT_NOMINAL 47000UL     // 5 % part: calibrate with vin-cal
+#define VIN_R_BOT_NOMINAL 20000UL     // 0.1 % part — tighter than the old 5% R_BOT, but vin-cal still applies
 
 static uint32_t r_bot = VIN_R_BOT_NOMINAL;
 
@@ -20,8 +26,21 @@ void vin_sense_init(void) {
 
 uint32_t vin_tap_mv(void) { return adc_read_an_mv(VIN_AN); }
 
+// Pure math, no ADC access — lets a caller that already has a tap reading
+// (e.g. Board/power_sense.c's pstatus, reading each channel exactly once
+// per call) compute VIN from it without a second R_ADC_Read(). With
+// ADC_CLEAR_AFTER_READ_ON, a second independent read of the same channel
+// moments later can land on a since-cleared register before the next
+// trigger refills it — confirmed on the bench as self-inconsistent fields
+// within one pstatus row (vsense@/isense@ disagreeing, a raw value briefly
+// reading near zero) once Vdrain's own divider started converting reliably
+// enough to expose it.
+uint32_t vin_mv_from_tap(uint32_t tap_mv) {
+    return tap_mv * (VIN_R_TOP_OHMS + r_bot) / r_bot;
+}
+
 uint32_t vin_read_mv(void) {
-    return vin_tap_mv() * (VIN_R_TOP_OHMS + r_bot) / r_bot;
+    return vin_mv_from_tap(vin_tap_mv());
 }
 
 uint32_t vin_rbot_ohms(void) { return r_bot; }

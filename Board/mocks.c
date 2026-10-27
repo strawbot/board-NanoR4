@@ -1,4 +1,5 @@
 #include "sr595.h"
+#include "muscle_sr.h"
 #include "ttypes.h"
 #include "tea.h"
 #include "cli.h"
@@ -15,7 +16,7 @@
 // Every black hole ends here. Outputs first: the 595 keeps its last pattern, and
 // a wire left latched on burns out in seconds.
 void system_failure(Long reason) {
-    sr595_all_off();
+    muscle_sr_emergency_stop();   // stop the frame timer (it would keep latching patterns), then clear the chain
     while (true);
 }
 

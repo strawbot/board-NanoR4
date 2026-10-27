@@ -6,7 +6,7 @@
         #endif
                 /* Number of interrupts allocated */
         #ifndef VECTOR_DATA_IRQ_COUNT
-        #define VECTOR_DATA_IRQ_COUNT    (14)
+        #define VECTOR_DATA_IRQ_COUNT    (17)
         #endif
         /* ISR prototypes */
         void sci_uart_rxi_isr(void);
@@ -26,6 +26,10 @@
         void iic_master_txi_isr(void);
         void iic_master_tei_isr(void);
         void iic_master_eri_isr(void);
+        /* GPT7 frame timer for muscle_sr — added by hand, see Board/frame_timer.c */
+        void frame_timer_edge_isr(void);
+        void frame_timer_sample_isr(void);
+        void frame_timer_frame_isr(void);
 
         /* Vector table allocations */
         #define VECTOR_NUMBER_SCI2_RXI ((IRQn_Type) 0) /* SCI2 RXI (Receive data full) */
@@ -56,8 +60,14 @@
         #define IIC1_TEI_IRQn          ((IRQn_Type) 12) /* IIC1 TEI (Transmit end) */
         #define VECTOR_NUMBER_IIC1_ERI ((IRQn_Type) 13) /* IIC1 ERI (Transfer error) */
         #define IIC1_ERI_IRQn          ((IRQn_Type) 13) /* IIC1 ERI (Transfer error) */
+        #define VECTOR_NUMBER_GPT7_CAPTURE_COMPARE_A ((IRQn_Type) 14) /* GPT7 CAPTURE COMPARE A */
+        #define GPT7_CAPTURE_COMPARE_A_IRQn          ((IRQn_Type) 14) /* GPT7 CAPTURE COMPARE A */
+        #define VECTOR_NUMBER_GPT7_CAPTURE_COMPARE_B ((IRQn_Type) 15) /* GPT7 CAPTURE COMPARE B */
+        #define GPT7_CAPTURE_COMPARE_B_IRQn          ((IRQn_Type) 15) /* GPT7 CAPTURE COMPARE B */
+        #define VECTOR_NUMBER_GPT7_COUNTER_OVERFLOW ((IRQn_Type) 16) /* GPT7 COUNTER OVERFLOW */
+        #define GPT7_COUNTER_OVERFLOW_IRQn          ((IRQn_Type) 16) /* GPT7 COUNTER OVERFLOW */
         /* The number of entries required for the ICU vector table. */
-        #define BSP_ICU_VECTOR_NUM_ENTRIES (14)
+        #define BSP_ICU_VECTOR_NUM_ENTRIES (17)
 
         #ifdef __cplusplus
         }

@@ -9,7 +9,12 @@ The CLI words that drive and calibrate the limbs. Stack effects are written
 Each muscle has an **activation** of 0-100 %. The scheduler turns activations
 into non-overlapping **on-windows** inside a repeating 20 ms frame, one wire on
 at a time, and the windows are latched out through the 74HC595 chain to the
-MOSFET gates. A muscle at 100 % gets `frame / (2 x fitted limbs)` of the frame
+MOSFET gates. The window edges are timed by hardware timer GPT7 (3 MHz, edges
+rounded to 24 us) and latched from its interrupts, not by the scheduler, so a
+busy or stalled scheduler does not move them. A change reaches the wires at the
+next frame start (up to 20 ms). `status` shows `frame timer: ok`; if the timer's
+start-up self-test or its edge supervisor ever trips, it shows the fault code
+and no pattern is latched. A muscle at 100 % gets `frame / (2 x fitted limbs)` of the frame
 (12.5 % in the 4-limb build). Activating one side of an antagonist pair
 releases the other.
 

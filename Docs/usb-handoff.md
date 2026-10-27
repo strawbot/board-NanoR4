@@ -547,7 +547,9 @@ the CLI is available over USB, duplicating the existing UART transport.
   explicit TinyUSB file list (linker fails with undefined `cdcd_*`
   references without it — `usbd.c`'s driver table references the CDC
   class driver unconditionally once `CFG_TUD_CDC` is set).
-- `Robot/cli/cli_transport_cdc.c` (new, board-agnostic — talks only to
+- `Board/cli_transport_cdc.c` (moved here from `Robot/cli/` on 2026-10-21: it includes
+  `tusb.h`, a USB medium driver, which `Robot/CLAUDE.md` keeps out of `Robot/`; the text
+  below describes it as originally written — talks only to
   `tud_cdc_*` and the existing `Robot/cli/cli_transport.c` bridge, no
   board registers): ported from `board-Discovery/Board/cli_transport_cdc.c`
   but adapted to route received bytes through `cli_transport_rx_byte()`

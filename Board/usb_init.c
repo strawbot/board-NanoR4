@@ -5,12 +5,11 @@
 //   USBFS peripheral; VBUS/D+/D- on P407/P914/P915 (see ra_gen/pin_data.c).
 //   USBFS_INT event wired to IRQ 6 in ra_gen/vector_data.h/.c.
 //
-// Composite evolution — this file is Phase 2 (DFU Runtime + CDC for the
-// CLI; Robot/cli/cli_transport_cdc.c has the board-agnostic CDC glue,
-// wired to the shared Robot/cli/cli_transport.c bridge exactly like this
-// board's own cli_transport_usart.c). CDC-ECM (Phase 3) still needs:
-//   - CFG_TUD_NCM 1 in tusb_config.h.
-//   - Extend the configuration descriptor with the NCM interfaces.
+// Composite: DFU Runtime + CDC for the CLI (Board/cli_transport_cdc.c, board-
+// side because it uses tusb.h, wired to the shared Robot/cli/cli_transport.c
+// bridge exactly like this board's own cli_transport_usart.c) and, in
+// env:nano_r4_web only (-D WITH_USB_NCM), a CDC-NCM network function for the
+// web page (Board/usb_ncm.c).
 //
 // DFU Runtime flow:
 //   $ dfu-util -l                      — lists device in Runtime mode
@@ -40,6 +39,7 @@
 
 #include "tusb.h"
 #include "usb_init.h"
+#include "usb_ncm.h"
 
 // ── VBATT backup register helpers ─────────────────────────────────────────────
 //
@@ -603,6 +603,12 @@ void usb_transport_init(void) {
     usb_init_tick = get_ticks();   // baseline for DFU_MIN_ELAPSED guard
 
 #if USB_TRANSPORT_ENABLE
+#ifdef WITH_USB_NCM
+    // Before tusb_init(): that call connects D+, and the host starts
+    // enumerating at once. The network stack should be ready by then, not
+    // still being built while the host waits.
+    usb_ncm_init();
+#endif
     tusb_init_ok = tusb_init();
     intenb0_after_init = R_USB_FS0->INTENB0;
 
@@ -650,6 +656,10 @@ enum {
     STRID_SERIAL,
     STRID_DFU,
     STRID_CDC,
+#ifdef WITH_USB_NCM
+    STRID_NCM,
+    STRID_MAC,
+#endif
 };
 
 // ── Endpoint addresses ────────────────────────────────────────────────────────
@@ -663,6 +673,11 @@ enum {
 #define EP_CDC_NOTIF    0x81    // EP1 IN  — CDC line-state notifications
 #define EP_CDC_OUT      0x02    // EP2 OUT — CDC bulk data
 #define EP_CDC_IN       0x82    // EP2 IN  — CDC bulk data
+#ifdef WITH_USB_NCM
+#define EP_NCM_NOTIF    0x83    // EP3 IN  — NCM link-state notifications
+#define EP_NCM_OUT      0x04    // EP4 OUT — NCM bulk data
+#define EP_NCM_IN       0x84    // EP4 IN  — NCM bulk data
+#endif
 
 // ── Device descriptor ─────────────────────────────────────────────────────────
 //
@@ -684,7 +699,11 @@ static const tusb_desc_device_t device_desc = {
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
 
     .idVendor           = 0xCafe,
+#ifdef WITH_USB_NCM
+    .idProduct          = 0x4005,   // distinct PID: Nano R4 DFU Runtime + CDC + NCM
+#else
     .idProduct          = 0x4004,   // distinct PID: Nano R4 DFU Runtime + CDC
+#endif
     .bcdDevice          = 0x0100,
 
     .iManufacturer      = STRID_MANUFACTURER,
@@ -711,12 +730,23 @@ uint8_t const *tud_descriptor_device_cb(void) {
 //
 // xfer_size 4096 is advisory (the bootloader owns actual transfer sizing).
 
+#ifdef WITH_USB_NCM
+// env:nano_r4_web adds an NCM function (interfaces 3+4) for the web page.
+#define NUM_INTERFACES      5
+#define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_DFU_RT_DESC_LEN + TUD_CDC_DESC_LEN + TUD_CDC_NCM_DESC_LEN)
+#else
+#define NUM_INTERFACES      3
 #define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_DFU_RT_DESC_LEN + TUD_CDC_DESC_LEN)
+#endif
 
 static const uint8_t config_desc[] = {
-    TUD_CONFIG_DESCRIPTOR(1, 3, 0, CONFIG_TOTAL_LEN, 0x00, 100),
+    TUD_CONFIG_DESCRIPTOR(1, NUM_INTERFACES, 0, CONFIG_TOTAL_LEN, 0x00, 100),
     TUD_DFU_RT_DESCRIPTOR(0, STRID_DFU, 0x0D, 1000, 4096),
     TUD_CDC_DESCRIPTOR(1, STRID_CDC, EP_CDC_NOTIF, 8, EP_CDC_OUT, EP_CDC_IN, 64),
+#ifdef WITH_USB_NCM
+    TUD_CDC_NCM_DESCRIPTOR(3, STRID_NCM, STRID_MAC, EP_NCM_NOTIF, 64, EP_NCM_OUT, EP_NCM_IN,
+                           CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU),
+#endif
 };
 
 uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
@@ -733,6 +763,10 @@ static const char *const string_desc_arr[] = {
     "",                              // 3: serial — built from the chip's unique ID, see usb_serial_string()
     "TimbreOS DFU",                  // 4: DFU Runtime interface
     "TimbreOS CDC",                  // 5: CDC interface
+#ifdef WITH_USB_NCM
+    "TimbreOS NCM",                  // 6: NCM interface
+    "",                              // 7: MAC address — built from the chip's unique ID, see usb_ncm_mac_string()
+#endif
 };
 
 // Serial number = "ActiveRobot" + 3 hex digits hashed (FNV-1a) from the
@@ -778,6 +812,9 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
             return NULL;
         }
         const char *str = (index == STRID_SERIAL) ? usb_serial_string()
+#ifdef WITH_USB_NCM
+                        : (index == STRID_MAC)    ? usb_ncm_mac_string()
+#endif
                                                   : string_desc_arr[index];
         chr_count = (uint8_t)strlen(str);
         if (chr_count > 33) chr_count = 33;

@@ -25,6 +25,8 @@
 #include "r_ioport.h"
 #include "analog_test.h"
 #include "board_cli.h"
+#include "power_sense.h"
+#include "vin_sense.h"
 #include "cli.h"
 #include "printers.h"
 #include "tea.h"
@@ -49,6 +51,9 @@ static void analog_test_dac8_cmp_continue(void);
 static void analog_test_opamp0_continue(void);
 static void analog_test_opamp0_sweep_step(void);
 static void analog_test_opamp0_sweep_read(void);
+static void analog_test_dmac_rearm(void);
+static void analog_test_wire_sweep_step(void);
+static void analog_test_wire_sweep_sample(void);
 
 // GPT1 tick: PCLKD (48 MHz, per frame_timer.c) / 16 = 3 MHz, the same
 // divisor frame_timer.c already uses successfully for GPT7. An earlier
@@ -90,12 +95,41 @@ static uint8_t  g_ramp8[RAMP_STEPS];
 // 2-sample-wide flat top, not a scope/measurement artifact. This version
 // gives a single-sample peak (at k=RAMP_STEPS/2) and single-sample valley
 // (at k=0): min(k, RAMP_STEPS-k) counts 0..32..0 with no repeated value.
+// DAC8 feeds ACMPLP0's carrier (IVREF0), compared continuously against
+// CMPIN0 (dac8-cmp). Any CMPIN0 value inside the carrier's own sweep range
+// gets crossed every cycle, generating periodic edges regardless of what
+// that value is — DAC12=0 sitting exactly at a full-scale carrier's own
+// minimum was producing a steady trickle of boundary-grazing edges rather
+// than true silence. Narrowing the carrier to a band that excludes the
+// "off" test value entirely (CMPIN0 then sits below — or above — the
+// whole range, the comparator output stops toggling, and the cap-coupled
+// RC stage downstream — which only responds to edges, not DC level —
+// settles to its true rest state) fixes that. The "on" test value needs
+// to land inside this band to get real toggling/retriggering; outside it
+// on either side just settles to a steady, non-toggling state again.
+// Values below are DAC8 8-bit codes (0-255), not DAC12's — DAC12's own
+// ramp (dac12-ramp) is unrelated and keeps the full 0-4095 range.
+//
+// Widened from 50-200 to 5-250 for mapping the wire's characteristic in
+// digital mode at the higher error-amp gain (R2=470k): the narrow band
+// above was tuned for clean on/off silence at the trigger-pulse test
+// values, but at the higher gain AMP0O's excursion across the wire's
+// full onset-to-saturation range is wider than that ~3V band could
+// represent — confirmed on the bench, the narrow carrier cut the sweep
+// off (comparator settling to steady "off") before the wire's real
+// saturation plateau ever showed up. This trades back some of that
+// clean-silence margin for headroom; if trigger-pulse testing needs the
+// tighter band again later, these two constants are the only thing that
+// needs to change back.
+#define DAC8_CARRIER_MIN 5U     // ~102 mV at AVCC0 ~5190 mV (opamp0-sweep's measured vref)
+#define DAC8_CARRIER_MAX 250U   // ~5088 mV at AVCC0 ~5190 mV
+
 static void build_ramp(void) {
     for (uint32_t k = 0; k < RAMP_STEPS; k++) {
         uint32_t tri = (k < RAMP_STEPS / 2U) ? k : (RAMP_STEPS - k);
         uint32_t v12 = (4095U * tri) / (RAMP_STEPS / 2U);
         g_ramp12[k] = (uint16_t) v12;
-        g_ramp8[k]  = (uint8_t) (v12 >> 4);
+        g_ramp8[k]  = (uint8_t) (DAC8_CARRIER_MIN + (DAC8_CARRIER_MAX - DAC8_CARRIER_MIN) * tri / (RAMP_STEPS / 2U));
     }
 }
 
@@ -115,8 +149,28 @@ static const gpt_extended_cfg_t g_at_gpt_ext = {
     .capture_b_ipl = BSP_IRQ_DISABLED,
     .capture_a_irq = FSP_INVALID_VECTOR,
     .capture_b_irq = FSP_INVALID_VECTOR,
-    .compare_match_value  = { 0U, 0U },
-    .compare_match_status = 0U,
+    // compare_match_value[1] (GTCCRB) gives Board/adc_sync.c's ADC group B
+    // (VIN/legacy) its own trigger, offset a half-step from GPT1's overflow
+    // (group A's trigger) rather than sharing it. Per HWM 35.3.2 ("if the
+    // conversion processes in group A and B occur at the same time, those
+    // conversions cannot be controlled separately") group B would never
+    // convert if both groups shared one event — stuck at 0 forever, not a
+    // one-off glitch. Harmless to the GTIOCB-less words that share this same
+    // cfg (gpt1-only, dmac-only, dac12-ramp): nothing reads GTCCRB or enables
+    // GTIOCB output for them.
+    //
+    // compare_match_status must have bit1 (GTCCRB, "0x02") set for
+    // compare_match_value[1] to actually get written to hardware at Open —
+    // found by reading r_gpt.c's r_gpt_init_compare_match_channel(): with
+    // status left 0 (as this was before), NEITHER GTCCRA nor GTCCRB is ever
+    // written, so the register keeps its power-on-reset value (HWM register
+    // summary: GTCCRA/B reset to FFFFFFFFh) — a value GTCNT (0..GPT1_PERIOD-1
+    // here) can never reach, so the compare-match-B event this whole offset
+    // scheme depends on would never fire. The private mask constants
+    // (GPT_PRV_COMPARE_MATCH_A_MASK=0x01, _B_MASK=0x02) aren't exported by
+    // the FSP header, hence the literal here.
+    .compare_match_value  = { 0U, GPT1_PERIOD / 2U },
+    .compare_match_status = 0x02U,   // bit1 = GTCCRB enabled
     .p_pwm_cfg = NULL,
     .gtior_setting.gtior = 0U,
     .gtioca_polarity = GPT_GTIOC_POLARITY_NORMAL,
@@ -216,7 +270,13 @@ void analog_test_cli_dmac_only(void) {
     print("analog-test: GPT1+DMAC running, DAC12 left unclocked/untouched. Check dac-status / the LED now."); printCr();
 }
 
-static void analog_test_stop_timers(void) {
+// Stops GPT1/DMAC (the carrier) and any pending sweep/rearm actions, but
+// leaves OPAMP0 untouched — split out of analog_test_stop_timers() so
+// dac8-stop can silence the carrier alone for analog-mode testing, where
+// OPAMP0 needs to keep running but the comparator/DAC8 carrier doesn't
+// (and is a real noise source per the gate-off bench test, worth
+// silencing when it's not actually needed).
+static void analog_test_stop_carrier(void) {
     // Guarded on our own open-tracking, not FSP's: BSP_CFG_PARAM_CHECKING_
     // ENABLE is 0 project-wide, so R_GPT_Stop/Close and R_DMAC_Disable/
     // Close have no "was this opened?" check compiled in at all — calling
@@ -225,6 +285,21 @@ static void analog_test_stop_timers(void) {
     // NULL p_reg/p_cfg and hard-faults the MCU before anything can print.
     if (g_at_dmac_open) { R_DMAC_Disable(&g_at_dmac_ctrl); R_DMAC_Close(&g_at_dmac_ctrl); g_at_dmac_open = false; }
     if (g_at_gpt_open)  { R_GPT_Stop(&g_at_gpt_ctrl); R_GPT_Close(&g_at_gpt_ctrl); g_at_gpt_open = false; }
+    stop_te(analog_test_opamp0_sweep_step);
+    stop_te(analog_test_opamp0_sweep_read);
+    stop_te(analog_test_dmac_rearm);
+    stop_te(analog_test_wire_sweep_step);
+    stop_te(analog_test_wire_sweep_sample);
+    // GPT1's overflow is about to stop firing (or already has) — revert the
+    // ADC to continuous-scan before it goes stale waiting on a trigger that
+    // no longer comes. Safe to call even if adc_sync_start() was never
+    // reached this session (e.g. dac8-stop before dac8-cmp ever ran): it's
+    // just Close+adc_init(), same idempotent end state either way.
+    adc_sync_stop();
+}
+
+static void analog_test_stop_timers(void) {
+    analog_test_stop_carrier();
     // R_BSP_MODULE_START is idempotent (just clears the MSTP bit), so this
     // is safe to call every time. It is NOT safe to skip: if OPAMP's own
     // module clock (MSTPD31) was never started (e.g. dac12! run as the
@@ -239,16 +314,70 @@ static void analog_test_stop_timers(void) {
     // exactly.
     R_BSP_MODULE_START(FSP_IP_OPAMP, 0U);
     R_OPAMP->AMPC = 0x00U;   // AMPE0=0, IREFE=0 — safe to call even if opamp0-test was never run
-    // Cancel a pending opamp0-sweep step/read if one is in flight — safe to
-    // call even when the sweep was never started (stop_te on an action with
-    // no pending entry is a no-op).
-    stop_te(analog_test_opamp0_sweep_step);
-    stop_te(analog_test_opamp0_sweep_read);
+}
+
+// TRANSFER_MODE_REPEAT is not actually infinite: DMCRB (the repeat counter)
+// decrements once per full source-table cycle and the transfer genuinely
+// ends when it reaches 0 (HWM 16.4.1: "the value of DMACm.DMCRB changes
+// from 1 to 0, DMA transfer ends"). num_blocks=0 maps to the maximum,
+// 65536 (HWM 16.2.4), so a continuous ramp runs for
+// 65536 * RAMP_STEPS/RAMP_HZ = 65536 * 4.096 ms =~ 268 s (~4.5 min) before
+// DMAC stops itself — confirmed on the bench: dac8-cmp's carrier went
+// silent after a few minutes of otherwise-untouched operation. R_DMAC_
+// Enable() alone cannot resume it afterward either: it only sets DMCNT.DTE
+// = 1 (r_dmac_prv_enable), it does not reload DMCRB. The fix is a full
+// Close+Open+Enable re-arm, done periodically well inside the 268 s
+// window so DMCRB never actually reaches 0 in practice. GPT1 itself needs
+// no equivalent treatment — it is a plain free-running periodic timer with
+// no block/repeat counter to exhaust.
+#define DMAC_REARM_MS 60000U   // well under the ~268 s DMCRB exhaustion limit
+
+static void analog_test_dmac_rearm(void) {
+    if (!g_at_dmac_open) return;   // stopped since this was scheduled — nothing to re-arm
+    R_DMAC_Disable(&g_at_dmac_ctrl);
+    R_DMAC_Close(&g_at_dmac_ctrl);
+    R_DMAC_Open(&g_at_dmac_ctrl, &g_at_dmac_cfg);   // fresh DMCRB, reloaded from g_at_dmac_info.num_blocks
+    R_DMAC_Enable(&g_at_dmac_ctrl);
+    after(msec(DMAC_REARM_MS), analog_test_dmac_rearm);
 }
 
 void analog_test_cli_stop(void) {
     analog_test_stop_timers();
     print("analog-test: stopped"); printCr();
+}
+
+// dac8-stop — ( -- ) stop just the DAC8/ACMPLP0 carrier (GPT1+DMAC, the
+// comparator), leaving OPAMP0 running untouched — unlike analog-test-stop,
+// which stops both together. For analog-mode testing: dac8-cmp is the
+// only word that turns OPAMP0 on, but it also starts the carrier, which
+// analog mode doesn't use and which runs continuously regardless of
+// anything else (confirmed a real noise source on the bench, independent
+// of the gate's own state) — worth silencing once OPAMP0 is up and the
+// carrier/comparator path is no longer needed.
+void analog_test_cli_dac8_stop(void) {
+    analog_test_stop_carrier();
+    R_DAC8->DAM_b.DACE0 = 0U;
+    R_ACMPLP->COMPMDR_b.C0ENB = 0U;
+    print("analog-test: DAC8/ACMPLP0/carrier stopped, OPAMP0 left running."); printCr();
+}
+
+// cmpfir! — ( n -- ) ACMPLP0's own digital resampling stage on VCOUT
+// (COMPFIR.C0FCK, 39.2.2): 0 bypass (no sampling, reset default — what
+// we've been running with the whole time this file has existed), 1 sample
+// at PCLKB, 2 at PCLKB/8, 3 at PCLKB/32. No analog hysteresis exists on
+// this comparator at all (checked every COMPMDR/COMPFIR/COMPOCR/COMPSEL0/1
+// bit — nothing resembling one), so this resampling stage is the only
+// on-chip lever against the near-threshold chatter seen on the bench: a
+// toggle faster than the chosen resample period gets smoothed out before
+// it ever reaches VCOUT/the gate. Safe to change live while dac8-cmp is
+// running — this just reselects the output's own sampling clock, not
+// C0ENB or anything the ACMPLP setup sequence (Table 39.3) requires
+// quiesced first.
+void analog_test_cli_cmpfir_set(void) {
+    Cell v = ret();
+    if (v < 0 || v > 3) { print("cmpfir!: 0 bypass, 1 PCLKB, 2 PCLKB/8, 3 PCLKB/32"); printCr(); return; }
+    R_ACMPLP->COMPFIR_b.C0FCK = (uint8_t) v;
+    print("cmpfir: C0FCK="); printDec0((unsigned) v); printCr();
 }
 
 // dac12-ramp — ( -- ) scope P014 directly.
@@ -309,6 +438,7 @@ void analog_test_cli_dac12_ramp(void) {
     g_at_dmac_open = true;
     R_DMAC_Enable(&g_at_dmac_ctrl);
     R_GPT_Start(&g_at_gpt_ctrl);
+    after(msec(DMAC_REARM_MS), analog_test_dmac_rearm);   // DMCRB exhausts after ~268s otherwise
 
     print("analog-test: DAC12 (P014) ramping at "); printDec0(RAMP_HZ); print(" Hz, "); printDec0(RAMP_STEPS);
     print(" steps. Scope P014. `analog-test-stop` to end."); printCr();
@@ -327,12 +457,13 @@ void analog_test_cli_dac12_ramp(void) {
 // genuinely is running when this is called, the static write here just
 // gets overwritten by the next DMA cycle (~64us later) — self-evident on
 // the bench, not worth defending against for a combination nobody wants.
-void analog_test_cli_dac12_set(void) {
-    Cell mv = ret();
+// Shared by dac12! and wire-sweep below — same body, just not popping the
+// data stack, so a scheduled sweep step can call it directly.
+static void analog_test_dac12_set_mv(uint32_t mv) {
     uint32_t vref = adc_vref_get();
-    if ((uint32_t) mv > vref) mv = (Cell) vref;
+    if (mv > vref) mv = vref;
 
-    uint32_t code = (uint32_t) mv * 4095UL / vref;
+    uint32_t code = mv * 4095UL / vref;
 
     R_BSP_MODULE_START(FSP_IP_DAC, 0U);
     // Load the target value before enabling the output driver (DAOE0)
@@ -345,6 +476,11 @@ void analog_test_cli_dac12_set(void) {
     R_DAC->DAVREFCR = 0x01U;
     R_IOPORT_Open(&g_at_ioport_ctrl, &g_at_ioport_cfg);
     R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_14, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);
+}
+
+void analog_test_cli_dac12_set(void) {
+    Cell mv = ret();
+    analog_test_dac12_set_mv((uint32_t) mv);
 
     // No confirmation print, deliberately: this word is meant to be called
     // from tight timed loops (e.g. a `for ... next` CLI macro alternating
@@ -355,6 +491,13 @@ void analog_test_cli_dac12_set(void) {
 
 // dac8-cmp — ( -- ) put a known test voltage on CMPIN0 (P100) first,
 // then watch VCOUT (P110) for a clean transition as DAC8 ramps through it.
+// Also enables OPAMP0 itself (same as opamp0-test): CMPIN0 is meant to be
+// fed by AMP0O in the real trigger/closed-loop path, so this test owns
+// turning that on rather than leaving it as a separate step someone has
+// to remember to run first — a standalone test shouldn't depend on
+// knowledge the user has to carry in their head. Only the external
+// jumpers (what's physically wired to AMP0+/AMP0-/AMP0O) stay the user's
+// responsibility; the peripheral itself is this word's job.
 void analog_test_cli_dac8_cmp(void) {
     build_ramp();
 
@@ -371,7 +514,17 @@ void analog_test_cli_dac8_cmp(void) {
     R_DAC8->DAM_b.DACE0 = 1U;                             // enable DAC8 channel 0
     print("analog-test: DACE0 immediately after write reads "); printDec0(R_DAC8->DAM_b.DACE0); printCr();
 
+    // OPAMP0 (see opamp0-test for the register-level rationale): AMPE0+
+    // IREFE together, same Status-1-to-Status-3 transition. Its 650us
+    // Tstd3 settle is comfortably covered by the Tcmp wait below.
+    R_BSP_MODULE_START(FSP_IP_OPAMP, 0U);
+    R_OPAMP->AMPMC = 0x00U;
+    R_OPAMP->AMPC  = 0x81U;
+
     R_IOPORT_Open(&g_at_ioport_ctrl, &g_at_ioport_cfg);
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_00, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0+
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_01, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0-
+    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_02, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0O
     // step 2: P100 as a pure analog input. Per HWM 19.5.4 ("Notes on Using
     // Analog Functions"), PMR and PDR must be 0 (general input port) with
     // only ASEL set — PSEL/peripheral-mode is NOT part of how analog inputs
@@ -387,6 +540,19 @@ void analog_test_cli_dac8_cmp(void) {
     R_ACMPLP->COMPMDR_b.C0VRF = 0U;                       // step 4: reference = CRVS-selected source, not internal Vref
     R_ACMPLP->COMPSEL1_b.IVREF0 = 0x2U;                   // step 4: DAC8 (channel 0) output
     R_ACMPLP->COMPSEL0_b.IVCMP0 = 0x1U;                   // step 2: CMPIN0 (P100)
+    // Default to the most aggressive VCOUT resample (COMPFIR.C0FCK=3,
+    // PCLKB/32 = 750kHz here, ~1.33us added latency) rather than bypass.
+    // ACMPLP has no analog hysteresis at all (checked every register), so
+    // this digital resample is the only on-chip defense against near-
+    // threshold chatter — confirmed on the bench across 0-3: bypass/PCLKB
+    // chatter heavily, PCLKB/32 collapses it to clean single transitions
+    // at a mid/high setpoint (500mV dac12!). At low setpoint (~100mV) the
+    // pulses still jitter pulse-to-pulse even at this setting — real
+    // instability near the carrier's noisy low end, not something this
+    // register can fully clean up. `cmpfir!` can still override live;
+    // expect low-setpoint calibration reads to need their own firmware-
+    // side averaging/filtering on top of this, not rely on it alone.
+    R_ACMPLP->COMPFIR_b.C0FCK = 3U;
     R_ACMPLP->COMPMDR_b.C0ENB = 1U;                       // step 4: enable comparator 0
 
     // step 5: Tcmp, min 100us, before trusting C0MON/VCOUT. later() (used
@@ -424,10 +590,17 @@ static void analog_test_dac8_cmp_continue(void) {
     g_at_dmac_open = true;
     R_DMAC_Enable(&g_at_dmac_ctrl);
     R_GPT_Start(&g_at_gpt_ctrl);
+    after(msec(DMAC_REARM_MS), analog_test_dmac_rearm);   // DMCRB exhausts after ~268s otherwise
 
-    print("analog-test: DAC8 ch0 ramping into ACMPLP0 IVREF0 at "); printDec0(RAMP_HZ); print(" Hz. ");
-    print("Apply a known voltage to CMPIN0 (P100), watch VCOUT (P110). "); printCr();
+    // GPT1 is now actually counting, so its overflow event (Board/adc_sync.c's
+    // ELC links) starts firing — safe to switch the ADC into triggered
+    // group-scan mode now, not before. Reverted by dac8-stop/analog-test-stop.
+    adc_sync_start();
+
+    print("analog-test: DAC8 ch0 ramping into ACMPLP0 IVREF0 at "); printDec0(RAMP_HZ); print(" Hz, OPAMP0 enabled. ");
+    print("CMPIN0 (P100) gets whatever AMP0O (P002) is wired to drive, watch VCOUT (P110). "); printCr();
     print("C0MON now reads: "); printDec0(R_ACMPLP->COMPMDR_b.C0MON); printCr();
+    print("Vsense/Vdrain now hardware-triggered off the carrier (trig-status); scope P112 for the sample-ready marker."); printCr();
     print("`analog-test-stop` to end."); printCr();
 }
 
@@ -535,6 +708,126 @@ static void analog_test_opamp0_sweep_read(void) {
     after(msec(1), analog_test_opamp0_sweep_step);
 }
 
+// wire-sweep — ( -- ) assumes dac8-cmp is already running (carrier + ADC
+// group-scan trigger live, see Board/adc_sync.c) and a muscle wire is wired
+// into the real closed-loop path, not opamp0-sweep's bench jumper. Steps
+// DAC12 (the setpoint) from 0 to WIRE_SWEEP_MV_MAX in WIRE_SWEEP_MV_STEP
+// increments; at each setpoint, settles, then takes several hardware-
+// triggered reads of Vsense/Vdrain/R_wire, printing one row per setpoint —
+// mv, R_wire avg/min/max (the sigmoid plus its own per-setpoint stability/
+// spread), Vsense avg, Vdrain avg. Shuts the gate off (dac12=0) when done
+// or stopped, rather than leaving the wire energized at whatever the last
+// setpoint was. 1500mV upper bound is from the user's own scope captures:
+// enough to pull the full sigmoidal transition out without wasting time/
+// power above where it saturates.
+//
+// Settle time, sample count, and sample spacing are runtime-settable
+// (wsettle!/wsamples!/wsample-ms!), not fixed constants — the first
+// version used a 50ms settle sized only for the carrier's own electrical
+// cycle (a dozen or so 4.096ms periods), which ignores that the wire
+// itself has real thermal mass: changing the average duty cycle takes
+// genuine time to reach a new equilibrium temperature and resistance, far
+// slower than the electrical switching. Confirmed wrong on the bench: with
+// the old 50ms/8-sample settings every step's R_wire min was exactly 0 and
+// consecutive steps swung wildly (e.g. 278160 then 175167 mOhm) — the wire
+// was still mid-transient at every single sample, never actually reaching
+// the setpoint's real steady state before the sweep moved on. No single
+// correct settle time is known yet; these defaults (500ms settle, 16
+// samples, 20ms apart - roughly 820ms/step, ~25s for the full sweep) are a
+// starting point to tune against the bench, not a validated number.
+#define WIRE_SWEEP_MV_MAX     1500U
+#define WIRE_SWEEP_MV_STEP    50U     // 31 points, 0-1500mV
+
+static uint32_t g_wire_sweep_settle_ms  = 500U;
+static uint32_t g_wire_sweep_sample_ms  = 20U;
+static uint32_t g_wire_sweep_samples    = 16U;
+
+void analog_test_cli_wsettle_set(void) {     // ( ms -- )
+    Cell v = ret();
+    if (v >= 0 && v <= 60000) g_wire_sweep_settle_ms = (uint32_t) v;
+}
+
+void analog_test_cli_wsample_ms_set(void) {  // ( ms -- )
+    Cell v = ret();
+    if (v >= 1 && v <= 10000) g_wire_sweep_sample_ms = (uint32_t) v;
+}
+
+void analog_test_cli_wsamples_set(void) {    // ( n -- )
+    Cell v = ret();
+    if (v >= 1 && v <= 200) g_wire_sweep_samples = (uint32_t) v;
+}
+
+static uint32_t g_wire_sweep_mv;
+static uint32_t g_wire_sweep_i;
+static uint32_t g_wire_sweep_rwire_sum, g_wire_sweep_rwire_min, g_wire_sweep_rwire_max;
+static uint32_t g_wire_sweep_vsense_sum, g_wire_sweep_vdrain_sum;
+
+void analog_test_cli_wire_sweep(void) {
+    print("analog-test: wire-sweep - dac8-cmp must already be running. ");
+    printDec0(WIRE_SWEEP_MV_MAX / WIRE_SWEEP_MV_STEP + 1U); print(" steps, 0-"); printDec0(WIRE_SWEEP_MV_MAX);
+    print("mV, settle "); printDec0(g_wire_sweep_settle_ms); print("ms, ");
+    printDec0(g_wire_sweep_samples); print(" samples "); printDec0(g_wire_sweep_sample_ms);
+    print("ms apart (wsettle!/wsamples!/wsample-ms! to tune)."); printCr();
+    print("mv, rwire_avg_mohm, rwire_min, rwire_max, vsense_avg_mv, vdrain_avg_mv:"); printCr();
+
+    g_wire_sweep_mv = 0U;
+    analog_test_wire_sweep_step();
+}
+
+static void analog_test_wire_sweep_step(void) {
+    analog_test_dac12_set_mv(g_wire_sweep_mv);
+
+    g_wire_sweep_i          = 0U;
+    g_wire_sweep_rwire_sum  = 0U;
+    g_wire_sweep_rwire_min  = 0xFFFFFFFFUL;
+    g_wire_sweep_rwire_max  = 0U;
+    g_wire_sweep_vsense_sum = 0U;
+    g_wire_sweep_vdrain_sum = 0U;
+
+    after(msec(g_wire_sweep_settle_ms), analog_test_wire_sweep_sample);
+}
+
+static void analog_test_wire_sweep_sample(void) {
+    // Each channel read exactly once (not via rwire_read_mohm(), which
+    // would independently re-read vsense/vdrain a second time each) — with
+    // ADC_CLEAR_AFTER_READ_ON, a second read of the same channel moments
+    // later can land on a since-cleared register before the next ~64us
+    // trigger refills it. Same fix as power_cli_status(); see its comment.
+    // Group A channels read in hardware scan order (19 then 20) too — see
+    // power_cli_status() for why reading them backwards occasionally
+    // straddled an in-progress scan.
+    uint32_t vsense_mv = vsense_read_mv();
+    uint32_t vdrain_mv = vdrain_read_mv();
+    uint32_t vin_mv    = vin_read_mv();
+    uint32_t rwire = rwire_mohm_from(vin_mv, vdrain_mv, vsense_mv);
+    g_wire_sweep_rwire_sum  += rwire;
+    if (rwire < g_wire_sweep_rwire_min) g_wire_sweep_rwire_min = rwire;
+    if (rwire > g_wire_sweep_rwire_max) g_wire_sweep_rwire_max = rwire;
+    g_wire_sweep_vsense_sum += vsense_mv;
+    g_wire_sweep_vdrain_sum += vdrain_mv;
+
+    g_wire_sweep_i++;
+    if (g_wire_sweep_i < g_wire_sweep_samples) {
+        after(msec(g_wire_sweep_sample_ms), analog_test_wire_sweep_sample);
+        return;
+    }
+
+    printDec0(g_wire_sweep_mv); print(", ");
+    printDec0(g_wire_sweep_rwire_sum / g_wire_sweep_samples); print(", ");
+    printDec0(g_wire_sweep_rwire_min); print(", ");
+    printDec0(g_wire_sweep_rwire_max); print(", ");
+    printDec0(g_wire_sweep_vsense_sum / g_wire_sweep_samples); print(", ");
+    printDec0(g_wire_sweep_vdrain_sum / g_wire_sweep_samples); printCr();
+
+    g_wire_sweep_mv += WIRE_SWEEP_MV_STEP;
+    if (g_wire_sweep_mv > WIRE_SWEEP_MV_MAX) {
+        analog_test_dac12_set_mv(0U);   // shut the wire off, don't leave it energized at the last setpoint
+        print("analog-test: wire-sweep done, dac12 set back to 0."); printCr();
+        return;
+    }
+    analog_test_wire_sweep_step();
+}
+
 // dac-status — ( -- ) MSTP/register state for DAC12, DAC8, ACMPLP, and a
 // measured GPT1 rate (two GTCNT reads a known delay apart — settles what
 // GPT1 is actually counting at, rather than trusting the source_div math).
@@ -557,7 +850,9 @@ void analog_test_cli_status(void) {
     print("  IVCMP0="); printDec0(R_ACMPLP->COMPSEL0_b.IVCMP0);
     print("  IVREF0="); printDec0(R_ACMPLP->COMPSEL1_b.IVREF0);
     print("  C0OE="); printDec0(R_ACMPLP->COMPOCR_b.C0OE);
-    print("  C0OP="); printDec0(R_ACMPLP->COMPOCR_b.C0OP); printCr();
+    print("  C0OP="); printDec0(R_ACMPLP->COMPOCR_b.C0OP);
+    print("  C0FCK="); printDec0(R_ACMPLP->COMPFIR_b.C0FCK);
+    print(" (0 bypass, 1 PCLKB, 2 PCLKB/8, 3 PCLKB/32)"); printCr();
 
     print("OPAMP0: MSTPD31="); printDec0(R_MSTP->MSTPCRD_b.MSTPD31); print(" (0=clocked)");
     print("  AMPE0="); printDec0(R_OPAMP->AMPC_b.AMPE0);

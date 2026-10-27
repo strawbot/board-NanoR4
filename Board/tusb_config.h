@@ -49,6 +49,29 @@
 #define CFG_TUD_USBTMC              0
 #define CFG_TUD_BTH                 0
 #define CFG_TUD_ECM_RNDIS           0
-#define CFG_TUD_NCM                 0
+
+// ── IP over USB (CDC-NCM) — only in env:nano_r4_web ──────────────────────────
+//
+// Frame size = IP MTU 576 + 14-byte Ethernet header (see Board/lwip/lwipopts.h).
+// A transmit NTB holds one frame plus its headers; two of them are the
+// minimum for TCP (with one, a second segment sent while the first is still
+// on the wire is refused). The receive NTB is larger because the host may
+// pack several frames into one transfer.
+#ifdef WITH_USB_NCM
+#define CFG_TUD_NCM                         1
+#define CFG_TUD_NET_MTU                     590
+#define CFG_TUD_NCM_IN_NTB_MAX_SIZE         700
+#define CFG_TUD_NCM_OUT_NTB_MAX_SIZE        1200
+#define CFG_TUD_NCM_IN_NTB_N                2
+#define CFG_TUD_NCM_OUT_NTB_N               1
+#define CFG_TUD_NCM_IN_MAX_DATAGRAMS_PER_NTB    1
+#define CFG_TUD_NCM_OUT_MAX_DATAGRAMS_PER_NTB   2
+// Apple's workaround for macOS dropping the data interface (alt 0) right after enabling it
+// (Apple Developer Forums thread 824727): declare SetEthernetPacketFilter support. The class
+// driver does not implement it; macOS tolerates the request failing.
+#define CFG_TUD_NCM_NETWORK_CAPABILITIES    0x01
+#else
+#define CFG_TUD_NCM                         0
+#endif
 
 #endif // TUSB_CONFIG_H

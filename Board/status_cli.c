@@ -9,6 +9,7 @@
 #include "sr595.h"
 #include "sr595_hw.h"
 #include "muscle.h"
+#include "muscle_sr.h"
 #include "vin_sense.h"
 #include "cli.h"
 #include "printers.h"
@@ -24,7 +25,12 @@ void status_cli(void) {
     print("\n74HC595 control pins"); printCr();
     sr595_hw_print_pins();
 
-    print("outputs (shadow, bit0=QA .. bit7=QH)"); printCr();
+    print("frame timer: ");
+    if (muscle_sr_fault() == MUSCLE_SR_OK) print("ok");
+    else { print("STOPPED, fault "); printDec0((unsigned)muscle_sr_fault());
+           print(" (1 no frame irq, 2 no compare irq, 3 edges missed, 4 emergency stop)"); }
+    printCr();
+    print("outputs (latched, bit0=QA .. bit7=QH)"); printCr();
     for (uint8_t c = 0; c < SR595_MAX_CHIPS; c++) {
         uint8_t v = sr595_get(c);
         print("  chip "); printDec0(c);

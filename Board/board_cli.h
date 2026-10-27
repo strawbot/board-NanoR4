@@ -16,8 +16,7 @@ void do_reboot(void);       // NVIC system reset
 void print_RTC(void);       // One-line RTC time-of-day ("UTC YYYY-MM-DD HH:MM:SS")
 void cli_set_utc(void);     // CLI wrapper for set_utc(): pops Unix epoch off data stack
 
-// gpio
-void gpio_dump_all(void);   // Pin/state dump (currently a stub on Nano)
+// gpio — see Board/pins.h for pins/pin@/pindir!/pinset!
 
 // adc
 void adc_init(void);        // Open ADC0 unit 0, configure AN00, start continuous scan (call once at boot)
@@ -35,5 +34,7 @@ int      adc_init_status(void);       // First FSP error from adc_init (0 = ok)
 uint32_t adc_read_an_mv(uint8_t an); // Any scanned ANxxx (0, 1, 2, 9) in millivolts
 uint32_t adc_read_mv(void); // Read AN00 (P000) and return millivolts (0–5000), callable any time
 void cli_adc_read(void);    // CLI word: pushes AN00 reading in mV onto the data stack
+void adc_sync_start(void);  // switch to ELC-triggered group-scan (Vsense/Vdrain=group A, legacy+VIN=group B), both on GPT1's overflow — call once dac8-cmp's carrier/ELC links are live
+void adc_sync_stop(void);   // revert to the original continuous-scan config (adc_init()'s own setup) — call from dac8-stop/analog-test-stop
 
 #endif // BOARD_CLI_H

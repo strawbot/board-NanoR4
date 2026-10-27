@@ -27,7 +27,33 @@ static void ser_set(bool l)   { out(SR_SER_PIN, l); }
 static void srclk_set(bool l) { out(SR_SRCLK_PIN, l); }
 static void rclk_set(bool l)  { out(SR_RCLK_PIN, l); }
 
-static const sr595_hw_t hw = { ser_set, srclk_set, rclk_set };
+// Fast paths for the frame-timer interrupt. One 32-bit PCNTR3 write sets and
+// resets any pins of a port at once (low half sets, high half resets), so a bit
+// of the chain is three writes instead of three driver calls. SER and SRCLK are
+// both on port 1, RCLK on port 3. Each write takes a few PCLKB cycles, so a
+// 24-bit shift is about 6 microseconds and SRCLK/RCLK pulses are wide enough for
+// the 595 (it needs about 20 ns).
+#define PIN_BIT(p)  (1UL << ((p) & 0x0FU))      // BSP_IO_PORT_nn_PIN_mm: low nibble is the pin
+#define SER_BIT     PIN_BIT(SR_SER_PIN)
+#define SRCLK_BIT   PIN_BIT(SR_SRCLK_PIN)
+#define RCLK_BIT    PIN_BIT(SR_RCLK_PIN)
+
+static void fast_shift(const uint8_t *bytes, uint8_t chips) {
+    for (int c = (int)chips - 1; c >= 0; c--) {
+        for (int bit = 7; bit >= 0; bit--) {
+            R_PORT1->PCNTR3 = ((bytes[c] >> bit) & 1U) ? SER_BIT : (SER_BIT << 16);   // data
+            R_PORT1->PCNTR3 = SRCLK_BIT;                                             // clock high
+            R_PORT1->PCNTR3 = SRCLK_BIT << 16;                                       // clock low
+        }
+    }
+}
+
+static void fast_strobe(void) {
+    R_PORT3->PCNTR3 = RCLK_BIT;
+    R_PORT3->PCNTR3 = RCLK_BIT << 16;
+}
+
+static const sr595_hw_t hw = { ser_set, srclk_set, rclk_set, fast_shift, fast_strobe };
 
 bool sr595_hw_init(uint8_t chips) {
     const bsp_io_port_pin_t pins[] = { SR_SER_PIN, SR_SRCLK_PIN, SR_RCLK_PIN };
