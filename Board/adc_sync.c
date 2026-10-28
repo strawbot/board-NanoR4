@@ -5,11 +5,11 @@
 // than sharing GPT1's raw overflow — the event that already drives the
 // carrier's own DMAC step:
 //
-//   GPT1 compare-match A (ADC_GROUP_A_OFFSET_US_DEFAULT counts past the
-//     overflow, retunable via aoffset-us!) -> ADC0 group A trigger (ELC_AD00)
-//                                                          -- Vsense, Vdrain
-//   GPT1 compare-match B (half-step offset, g_at_gpt_ext.compare_match_value[1])
-//     -> ADC0 group B trigger (ELC_AD01)                  -- legacy + VIN
+//   GPT1 compare-match A (half-period offset, g_at_gpt_ext.compare_match_value[0])
+//     -> ADC0 group A trigger (ELC_AD00)                  -- Vsense, Vdrain
+//   GPT1 compare-match B (ADC_VIN_OFFSET_US_DEFAULT counts past the
+//     overflow, retunable via aoffset-us!) -> ADC0 group B trigger (ELC_AD01)
+//                                                          -- VIN, read first
 //
 // Group A used to trigger straight off the overflow, same as the carrier's
 // own DMAC step — meaning group A's sample-and-hold opened at the exact

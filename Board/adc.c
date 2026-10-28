@@ -8,11 +8,14 @@
 // unopened, effectively-dead instance; ours is named g_board_adc_* to
 // avoid colliding with it, and is the one actually driving ADC0 unit 0.
 //
-//   AN000 (P000) — gate-voltage monitor (original analog circuit sense point).
-//   AN001 (P001) — muscle-wire 1 Ω sense resistor (PWM digital circuit).
+// Exactly 3 analog pins are scanned — VIN, Vdrain, Vsense (Board/
+// vin_sense.c, Board/power_sense.c) — the closed-loop power-sense circuit
+// that is this board's only current-sense wiring. Earlier breadboard/hex-
+// board taps (AN000/AN001/AN002/AN009) and their "gate-voltage monitor"/
+// "muscle-wire 1 ohm sense resistor" sense points are gone along with that
+// hardware; nothing here reads them any more.
 //
 // Full-scale is 5000 mV / 16383 counts (14-bit, AVCC0 reference).
-// With a 1 Ω sense resistor: V_sense [mV] == I_sense [mA].
 
 #include "r_adc.h"          // defines adc_instance_ctrl_t, adc_cfg_t, adc_channel_cfg_t
 #include "hal_data.h"       // bsp_api.h, FSP_INVALID_VECTOR, BSP_IRQ_DISABLED
@@ -77,20 +80,17 @@ static const adc_cfg_t g_board_adc_cfg = {
     .p_extend       = &g_board_adc_cfg_extend,
 };
 
-// Scan AN000 (P000), AN001 (P001), AN002 (P002), AN009 (P014), AN019
-// (P103), AN020 (P102), AN021 (P101) and the internal reference together.
-// Hex-board plan (dead, hex board abandoned): A0=AN009 ISNS_A, A1=AN000
-// ISNS_B, A2=AN001 ISNS_C, A3=AN002 VIN_S.
-// AN019/020/021 are the new closed-loop power-sense inputs: P103 = raw
+// Scan AN019 (P103), AN020 (P102), AN021 (P101) and the internal reference
+// together — the whole of this board's analog input set. P103 = raw
 // sense-resistor voltage (Board/power_sense.c), P102 = FET drain through
-// a 82.5k/22k divider, P101 = VIN through a 100k/20k divider (Board/
+// a 10k/2.2k divider, P101 = VIN through a 100k/20k divider (Board/
 // vin_sense.c). R_wire = (VIN - V_drain) / (V_sense / R_sense) is computed
 // from these three in Board/power_sense.c.
 // The internal reference is scanned with the pins; the temperature sensor is
 // deliberately NOT: with both sensors in one scan the reference register
 // reads the temperature value (bench-verified with `adcexp`, with and without
 // pin channels), while reference + pins alone reads correctly.
-#define ADC_PIN_MASK    ((1U << 0) | (1U << 1) | (1U << 2) | (1U << 9) | (1U << 19) | (1U << 20) | (1U << 21))
+#define ADC_PIN_MASK    ((1U << 19) | (1U << 20) | (1U << 21))
 #define ADC_NORMAL_MASK (ADC_PIN_MASK | ADC_MASK_VOLT)
 #define ADC_ALL_MASK    (ADC_NORMAL_MASK | ADC_MASK_TEMPERATURE)   // known-bad, for adcexp
 
@@ -118,7 +118,7 @@ int adc_init_status(void) { return (int)adc_init_err; }
 // kOhm and reads such a source low. Shared between adc_init() and
 // adc_sync_start() so the two scan configs can't drift apart.
 static fsp_err_t adc_set_sample_states(void) {
-    static const uint8_t scanned[] = { 0, 1, 2, 9, 19, 20, 21 };
+    static const uint8_t scanned[] = { 19, 20, 21 };
     fsp_err_t first = FSP_SUCCESS;
     for (unsigned i = 0; i < sizeof scanned; i++) {
         adc_sample_state_t ss = { (adc_sample_state_reg_t)scanned[i], 255U };
@@ -129,12 +129,8 @@ static fsp_err_t adc_set_sample_states(void) {
 }
 
 void adc_init(void) {
-    // P000/P001 are analog from ra_gen/pin_data.c; P002 and P014 are not.
-    R_IOPORT_PinCfg(&g_ioport_ctrl, BSP_IO_PORT_00_PIN_02, (uint32_t)IOPORT_CFG_ANALOG_ENABLE);
-    R_IOPORT_PinCfg(&g_ioport_ctrl, BSP_IO_PORT_00_PIN_14, (uint32_t)IOPORT_CFG_ANALOG_ENABLE);
-    // P101/P102/P103 (AN021/020/019) — the new power-sense inputs. Not
-    // known to default to analog from RASC, so configure explicitly same
-    // as P002/P014 above rather than assume.
+    // P101/P102/P103 (AN021/020/019) — this board's only analog inputs. Not
+    // known to default to analog from RASC, so configure explicitly.
     R_IOPORT_PinCfg(&g_ioport_ctrl, BSP_IO_PORT_01_PIN_01, (uint32_t)IOPORT_CFG_ANALOG_ENABLE);  // P101 = AN021, VIN divider
     R_IOPORT_PinCfg(&g_ioport_ctrl, BSP_IO_PORT_01_PIN_02, (uint32_t)IOPORT_CFG_ANALOG_ENABLE);  // P102 = AN020, V_drain divider
     R_IOPORT_PinCfg(&g_ioport_ctrl, BSP_IO_PORT_01_PIN_03, (uint32_t)IOPORT_CFG_ANALOG_ENABLE);  // P103 = AN019, V_sense direct
@@ -161,10 +157,9 @@ void adc_init(void) {
 // no relationship to the carrier's own 64us step — exactly the skew that
 // made the first pstatus-vs-meter comparison meaningless (see conversation).
 //
-// Group-scan mode fixes that: group A (Vsense P103/AN019, Vdrain P102/AN020)
-// is triggered by ELC_AD00, group B (the original continuous-scan channels:
-// legacy 0/1/2/9, VIN AN021, internal ref) by ELC_AD01 — both wired (Board/
-// adc_sync.c) to the SAME ELC_EVENT_GPT1_COUNTER_OVERFLOW already driving
+// Group-scan mode fixes that: group A (Vsense P103/AN019, Vdrain P102/AN020,
+// read together) is triggered by ELC_AD00, group B (VIN AN021, internal ref)
+// by ELC_AD01 — both wired (Board/adc_sync.c) to the SAME ELC_EVENT_GPT1_COUNTER_OVERFLOW already driving
 // the carrier's own DMAC step, so every channel gets a fresh, hardware-timed
 // sample every 64us step, zero CPU/scheduler jitter in the trigger itself.
 // Confirmed against the manual (35.3.2, ADSTRGR.TRSA/TRSB, Table 35.7) that
@@ -177,11 +172,11 @@ void adc_init(void) {
 //
 // Deliberately gated to the carrier's own runtime, not left on permanently:
 // group B's trigger is the same GPT1 overflow event, so if this were the
-// boot-time default, VIN/status/adcexp would go stale/frozen any time the
+// boot-time default, vin@/pstatus/adcexp would go stale/frozen any time the
 // carrier isn't running, including at boot before dac8-cmp has ever been
 // called — a real regression to diagnostics that currently work standalone.
 #define ADC_GROUP_A_MASK ((1U << 19) | (1U << 20))                    // Vsense, Vdrain
-#define ADC_GROUP_B_MASK ((1U << 0) | (1U << 1) | (1U << 2) | (1U << 9) | (1U << 21) | ADC_MASK_VOLT)
+#define ADC_GROUP_B_MASK ((1U << 21) | ADC_MASK_VOLT)                 // VIN, internal reference
 
 static const adc_extended_cfg_t g_adc_sync_cfg_extend = {
     .add_average_count   = ADC_ADD_OFF,
@@ -263,18 +258,6 @@ uint32_t adc_read_an_mv(uint8_t an) {
     uint16_t raw = 0;
     R_ADC_Read(&g_board_adc_ctrl, (adc_channel_t)an, &raw);
     return (uint32_t)raw * ADC_VREF_MV / ADC_FULL_SCALE;
-}
-
-// AN000 (P000) reading in millivolts (0–5000).
-uint32_t adc_read_mv(void) {
-    uint16_t raw = 0;
-    R_ADC_Read(&g_board_adc_ctrl, ADC_CHANNEL_0, &raw);
-    return (uint32_t)raw * ADC_VREF_MV / ADC_FULL_SCALE;
-}
-
-// CLI word: push current AN000 reading in mV onto the data stack.
-void cli_adc_read(void) {
-    lit((Cell)adc_read_mv());
 }
 
 // Sanity readout that needs no external wiring: the ADC control registers and

@@ -1,47 +1,50 @@
 // Board/wirecal_hw.c — see wirecal_hw.h.
 //
-// Each wire's current is the voltage on its sense resistor's ISNS tap divided
-// by the resistor (1 ohm on the hex PCB: mV == mA). Only one wire conducts at
-// a time (the muscle scheduler never overlaps windows), so a tap reads that
-// wire's current while its window is open.
+// The wire under test reads through the same Vsense/Vdrain/VIN circuit as
+// Board/power_sense.c's bench rig (AN019/AN020/AN021) — the only current-
+// sense circuit actually built on this board. The old breadboard ISNS taps
+// (AN000/AN001/AN002/AN009, hex-board plan) are gone: there is no per-
+// channel sense wiring to pick between, so `ch` is unused — only one wire
+// is ever under test at a time (muscle_sr never overlaps windows, and
+// wirecal unfits every other limb for the run), and it is always this one
+// physical tap.
+//
+// Plain adc_read_an_mv() reads, not power_sense.c's vsense_read_mv()/
+// vin_read_mv(): those retry against adc_sync_marker_ready(), which only
+// moves while the GPT1/ELC-triggered bench carrier (dac8-cmp) is running.
+// wirecal samples from muscle_sr's own GPT7 edge instead, with no ELC link
+// of its own (yet — see the timing-chain review), so that retry would just
+// burn its ~200us budget on every single sample, from inside an interrupt.
 
 #include "wirecal.h"
-#include "muscle.h"
-#include "board_cli.h"
+#include "power_sense.h"
 #include "vin_sense.h"
+#include "board_cli.h"
 
-#define SENSE_MOHM   1000UL   // RSENSE, 1 ohm 1 %
-#define SERIES_MOHM  1050UL   // RSENSE + AO3400A Rds(on) (~30 mohm) + wiring
-
-// ADC channel of the sense tap for a muscle channel, or -1 for none.
-// BREADBOARD: shift register outputs QB, QC (bits 1, 2) share one sense
-// resistor read on A0 (AN009); QG, QH (bits 6, 7) share another on A1 (AN000).
-// HEX PCB: one tap per 8 channels, so channel / 8 -> {A0 AN009, A1 AN000,
-// A2 AN001}; replace this function with that when the PCB is used.
-static int tap_an(uint8_t ch) {
-    switch (ch) {
-    case 1: case 2: return 9;
-    case 6: case 7: return 0;
-    default:        return -1;
-    }
-}
+// power_sense.c's R_SENSE_MOHM (0.5R, the part actually installed) plus the
+// driving FET's Rds(on) and wiring — same margin the old breadboard version
+// of this file used. Update if either installed part changes; wirecal only
+// needs this close, not exact (it finds the wire's own onset/mid/full
+// activation points, not an absolute ohm figure).
+#define SERIES_MOHM  530UL
 
 static bool sample(uint8_t ch, uint32_t *ma, uint32_t *vin_mv) {
-    int an = tap_an(ch);
-    if (an < 0) return false;
-    uint32_t mv = adc_read_an_mv((uint8_t)an);
-    if (mv == 0) return false;               // no fresh conversion (register clears on read)
-    uint32_t vin = vin_read_mv();
-    if (vin == 0) return false;              // A3 has no fresh conversion either (also clears on read)
-    *ma     = mv * 1000UL / SENSE_MOHM;
-    *vin_mv = vin;
+    (void)ch;
+    uint32_t vsense_mv = adc_read_an_mv(19U);   // AN019/P103, direct, no divider
+    uint32_t vin_tap    = adc_read_an_mv(21U);  // AN021/P101, VIN divider
+    if (vsense_mv == 0U || vin_tap == 0U) return false;   // no fresh conversion (register clears on read)
+    *ma     = vsense_mv * 1000UL / 500UL;       // power_sense.c's R_SENSE_MOHM
+    *vin_mv = vin_mv_from_tap(vin_tap);
     return true;
 }
 
-// Every analog tap right now, for `scope`: A0 (AN009), A1 (AN000), A2 (AN001), A3 (AN002).
+// Every analog tap right now, for `scope`: Vsense, Vdrain, VIN (before its
+// divider), and a spare (this board has only 3 taps now, not 4).
 static void taps(uint32_t mv[4]) {
-    static const uint8_t an[4] = { 9, 0, 1, 2 };
-    for (uint8_t i = 0; i < 4U; i++) mv[i] = adc_read_an_mv(an[i]);
+    mv[0] = adc_read_an_mv(19U);   // Vsense
+    mv[1] = adc_read_an_mv(20U);   // Vdrain
+    mv[2] = adc_read_an_mv(21U);   // VIN tap
+    mv[3] = 0U;
 }
 
 static const wirecal_hw_t hw = { sample, SERIES_MOHM, taps };

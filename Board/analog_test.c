@@ -50,8 +50,6 @@ static const ioport_cfg_t g_at_ioport_cfg = {
 };
 static void analog_test_dac8_cmp_continue(void);
 static void analog_test_opamp0_continue(void);
-static void analog_test_opamp0_sweep_step(void);
-static void analog_test_opamp0_sweep_read(void);
 static void analog_test_dmac_rearm(void);
 static void analog_test_wire_sweep_step(void);
 static void analog_test_wire_sweep_sample(void);
@@ -73,13 +71,14 @@ static void analog_test_wire_sweep_sample(void);
 #define RAMP_HZ      15625U                              // 3 MHz / 192
 #define GPT1_PERIOD  (GPT1_HZ / RAMP_HZ)                  // counts per DAC step
 
-// Group A's (Vsense/Vdrain) ADC trigger offset from GPT1's overflow — see
-// the compare_match_value/compare_match_status comment below for why this
-// exists. 5us is a starting guess (same spirit as wsettle!/wsample-ms!:
-// tune against the bench, not a validated number), comfortably inside the
-// ~27us this leaves before group B's own trigger at the half-period mark.
-#define ADC_GROUP_A_OFFSET_US_DEFAULT 5U
-#define ADC_GROUP_A_OFFSET_COUNTS (3U * ADC_GROUP_A_OFFSET_US_DEFAULT)  // GPT1_HZ is 3 counts/us
+// Group B's (VIN) ADC trigger offset from GPT1's overflow — see the
+// compare_match_value/compare_match_status comment below for why this
+// exists and why VIN, not Vsense/Vdrain, sits near the edge. 5us is a
+// starting guess (same spirit as wsettle!/wsample-ms!: tune against the
+// bench, not a validated number), comfortably clear of group A's own
+// trigger at the half-period mark (96 counts, ~32us).
+#define ADC_VIN_OFFSET_US_DEFAULT 5U
+#define ADC_VIN_OFFSET_COUNTS (3U * ADC_VIN_OFFSET_US_DEFAULT)  // GPT1_HZ is 3 counts/us
 
 static gpt_instance_ctrl_t   g_at_gpt_ctrl;
 static dmac_instance_ctrl_t  g_at_dmac_ctrl;
@@ -158,28 +157,33 @@ static const gpt_extended_cfg_t g_at_gpt_ext = {
     .capture_b_ipl = BSP_IRQ_DISABLED,
     .capture_a_irq = FSP_INVALID_VECTOR,
     .capture_b_irq = FSP_INVALID_VECTOR,
-    // compare_match_value[1] (GTCCRB) gives Board/adc_sync.c's ADC group B
-    // (VIN/legacy) its own trigger, offset a half-step from GPT1's overflow
-    // (group A's trigger) rather than sharing it. Per HWM 35.3.2 ("if the
-    // conversion processes in group A and B occur at the same time, those
-    // conversions cannot be controlled separately") group B would never
-    // convert if both groups shared one event — stuck at 0 forever, not a
-    // one-off glitch. Harmless to the GTIOCB-less words that share this same
-    // cfg (gpt1-only, dmac-only, dac12-ramp): nothing reads GTCCRB or enables
-    // GTIOCB output for them.
+    // compare_match_value[0] (GTCCRA) gives Board/adc_sync.c's ADC group A
+    // (Vsense/Vdrain, read together) its trigger at the half-period mark
+    // rather than on GPT1's raw overflow. The overflow is the exact same
+    // event that steps the DAC8/DAC12 ramp table (g_at_dmac_ext below) —
+    // i.e. the real circuit's own switching edge — so a group-A conversion
+    // triggered by the overflow starts its sample-and-hold right as Vsense
+    // is transitioning/ringing. Bench-confirmed on the scope: a sharp
+    // overshoot/undershoot sits right at that edge, and occasional pstatus
+    // reads (97-222mV against a ~55mV baseline) were catching it. Sitting
+    // at the half-period mark instead keeps Vsense/Vdrain's own read as far
+    // from either edge as this carrier allows.
     //
-    // compare_match_value[0] (GTCCRA) now gives group A its OWN offset too,
-    // instead of firing right on GPT1's raw overflow. The overflow is the
-    // exact same event that steps the DAC8/DAC12 ramp table (g_at_dmac_ext
-    // below) — i.e. the real circuit's own switching edge — so a group-A
-    // conversion triggered by the overflow starts its sample-and-hold right
-    // as Vsense is transitioning/ringing. Bench-confirmed on the scope: a
-    // sharp overshoot/undershoot sits right at that edge, and occasional
-    // pstatus reads (97-222mV against a ~55mV baseline) were catching it.
-    // ADC_GROUP_A_OFFSET_US below moves group A's trigger a few us later in
-    // the cycle, past the ringing, without touching the ramp step or the
-    // marker (both still clock off the raw overflow). See aoffset-us! to
-    // retune this against the scope without reflashing.
+    // compare_match_value[1] (GTCCRB) gives group B (VIN) its own trigger,
+    // offset only a few us from GPT1's overflow — VIN is read first in
+    // time, same spirit as reading it before Vsense/Vdrain in
+    // power_sense_read_group() below, since it's a slow, edge-insensitive
+    // signal that doesn't need the settling margin group A's own offset
+    // exists for. Needs its OWN event regardless of ordering: per HWM
+    // 35.3.2 ("if the conversion processes in group A and B occur at the
+    // same time, those conversions cannot be controlled separately") group
+    // B would never convert if both groups shared one event — stuck at 0
+    // forever, not a one-off glitch. Harmless to the GTIOCB-less words that
+    // share this same cfg (gpt1-only, dmac-only, dac12-ramp): nothing reads
+    // GTCCRB or enables GTIOCB output for them.
+    // ADC_VIN_OFFSET_US below is that few-us offset; see aoffset-us! to
+    // retune it against the scope without reflashing (it now pokes GTCCRB,
+    // not GTCCRA — see that word's own comment).
     //
     // compare_match_status must have the matching bit set for a
     // compare_match_value[] entry to actually get written to hardware at
@@ -190,7 +194,7 @@ static const gpt_extended_cfg_t g_at_gpt_ext = {
     // so the compare-match event it's supposed to feed would never fire.
     // The private mask constants (GPT_PRV_COMPARE_MATCH_A_MASK=0x01,
     // _B_MASK=0x02) aren't exported by the FSP header, hence the literals.
-    .compare_match_value  = { ADC_GROUP_A_OFFSET_COUNTS + 1U, GPT1_PERIOD / 2U },
+    .compare_match_value  = { GPT1_PERIOD / 2U, ADC_VIN_OFFSET_COUNTS + 1U },
     .compare_match_status = 0x03U,   // bit0 = GTCCRA, bit1 = GTCCRB enabled
     .p_pwm_cfg = NULL,
     .gtior_setting.gtior = 0U,
@@ -306,8 +310,6 @@ static void analog_test_stop_carrier(void) {
     // NULL p_reg/p_cfg and hard-faults the MCU before anything can print.
     if (g_at_dmac_open) { R_DMAC_Disable(&g_at_dmac_ctrl); R_DMAC_Close(&g_at_dmac_ctrl); g_at_dmac_open = false; }
     if (g_at_gpt_open)  { R_GPT_Stop(&g_at_gpt_ctrl); R_GPT_Close(&g_at_gpt_ctrl); g_at_gpt_open = false; }
-    stop_te(analog_test_opamp0_sweep_step);
-    stop_te(analog_test_opamp0_sweep_read);
     stop_te(analog_test_dmac_rearm);
     stop_te(analog_test_wire_sweep_step);
     stop_te(analog_test_wire_sweep_sample);
@@ -665,68 +667,15 @@ static void analog_test_opamp0_continue(void) {
     print(" (1 = operating)."); printCr();
 }
 
-// opamp0-sweep — ( -- ) jumper DAC12 (P014) to AMP0+ (P000) first. Steps
-// DAC12 through its full range and prints the expected setpoint (DAC12's
-// own output in mV, via the ADC's tracked AVCC0 reference) against the
-// measured OPAMP0 output (AMP0O/P002, read back over the ADC's existing
-// AN002 scan channel — no extra wiring, see Board/adc.c's ADC_PIN_MASK).
-// One line per step; paste the output into a spreadsheet to plot the
-// transfer curve. Static DAC12 writes, no GPT1/DMAC ramp — that hardware
-// is explicitly freed first since the shared DMA destination pointer
-// would otherwise fight these direct writes to the same register.
-#define OPAMP0_SWEEP_STEPS 33U   // 0..4095 in 33 points, ~128 codes apart
-
-static uint32_t g_opamp0_sweep_i;
-
+// opamp0-sweep — retired. It jumpered DAC12 (P014) to AMP0+ (P000) and read
+// OPAMP0's output (AMP0O/P002) back over the ADC's AN002 scan channel; that
+// channel is gone now the board's analog inputs are consolidated to VIN/
+// Vdrain/Vsense (Board/adc.c's ADC_PIN_MASK). OPAMP0 was part of this
+// board's original analog circuit, superseded by the digital (sr595) muscle
+// drive and the closed-loop VIN/Vdrain/Vsense sensing it uses instead.
 void analog_test_cli_opamp0_sweep(void) {
-    analog_test_stop_timers();   // free GPT1/DMAC/DAC12 and clear OPAMP0 first
-
-    R_BSP_MODULE_START(FSP_IP_DAC, 0U);
-    // Load the first step (code 0) before DAOE0 goes live below, same
-    // stale-value glitch as dac12-ramp/dac12! otherwise — the first
-    // printed row would read whatever a previous test left DADR[0] at,
-    // not the 0 mV this sweep actually starts from.
-    R_DAC->DADR[0]  = 0U;
-    R_DAC->DACR     = 0x4FU;
-    R_DAC->DAVREFCR = 0x01U;
-
-    R_BSP_MODULE_START(FSP_IP_OPAMP, 0U);
-
-    R_IOPORT_Open(&g_at_ioport_ctrl, &g_at_ioport_cfg);
-    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_14, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // DAC12
-    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_00, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0+
-    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_01, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0-
-    R_IOPORT_PinCfg(&g_at_ioport_ctrl, BSP_IO_PORT_00_PIN_02, (uint32_t) IOPORT_CFG_ANALOG_ENABLE);  // AMP0O
-
-    R_OPAMP->AMPMC = 0x00U;
-    R_OPAMP->AMPC  = 0x81U;   // AMPE0=1, IREFE=1
-
-    print("analog-test: opamp0-sweep - confirm DAC12 (P014) is jumpered to AMP0+ (P000). ");
-    printDec0(OPAMP0_SWEEP_STEPS); print(" steps across 0-4095. dac12_mv vs amp0o_mv:"); printCr();
-
-    g_opamp0_sweep_i = 0U;
-    after(msec(1), analog_test_opamp0_sweep_step);   // let OPAMP0's Tstd3 (650us) elapse first
-}
-
-static void analog_test_opamp0_sweep_step(void) {
-    uint16_t dac_code = (uint16_t) ((4095UL * g_opamp0_sweep_i) / (OPAMP0_SWEEP_STEPS - 1U));
-    R_DAC->DADR[0] = dac_code;
-    after(msec(1), analog_test_opamp0_sweep_read);   // Tset1 max 750us (low-power OPAMP), covers the DAC too
-}
-
-static void analog_test_opamp0_sweep_read(void) {
-    uint16_t dac_code = (uint16_t) ((4095UL * g_opamp0_sweep_i) / (OPAMP0_SWEEP_STEPS - 1U));
-    uint32_t dac_mv  = (uint32_t) dac_code * adc_vref_get() / 4095UL;
-    uint32_t amp0_mv = adc_read_an_mv(2U);   // AN002 = AMP0O
-
-    printDec0(dac_mv); print(", "); printDec0(amp0_mv); printCr();
-
-    g_opamp0_sweep_i++;
-    if (g_opamp0_sweep_i >= OPAMP0_SWEEP_STEPS) {
-        print("analog-test: opamp0-sweep done."); printCr();
-        return;
-    }
-    after(msec(1), analog_test_opamp0_sweep_step);
+    print("opamp0-sweep: retired -- AN002 is no longer an ADC scan channel (see Board/adc.c). "); printCr();
+    print("  Scope AMP0O/P002 directly if OPAMP0's own transfer curve is still wanted."); printCr();
 }
 
 // wire-sweep — ( -- ) assumes dac8-cmp is already running (carrier + ADC
@@ -797,19 +746,19 @@ void analog_test_cli_wsamples_set(void) {    // ( n -- )
     if (v >= 1 && v <= 200) g_wire_sweep_samples = (uint32_t) v;
 }
 
-// CLI word: aoffset-us! ( us -- ) — retune group A's ADC trigger offset
-// (see the compare_match_value comment above g_at_gpt_ext) without a
-// reflash. R_GPT_Open() applies the ADC_GROUP_A_OFFSET_US_DEFAULT starting
-// guess through compare_match_value[0] at Open time, which r_gpt.c writes
-// to GTCCRA as (compare_match_value[0] - 1) — i.e. the raw register ends up
-// holding exactly the desired count (ADC_GROUP_A_OFFSET_COUNTS). This
-// writes that same raw count directly (no extra -1: that adjustment is
-// compare_match_value's own input convention, not GTCCRA's), so a value
+// CLI word: aoffset-us! ( us -- ) — retune group B's (VIN) ADC trigger
+// offset (see the compare_match_value comment above g_at_gpt_ext) without
+// a reflash. R_GPT_Open() applies the ADC_VIN_OFFSET_US_DEFAULT starting
+// guess through compare_match_value[1] at Open time, which r_gpt.c writes
+// to GTCCRB as (compare_match_value[1] - 1) — i.e. the raw register ends up
+// holding exactly the desired count (ADC_VIN_OFFSET_COUNTS). This writes
+// that same raw count directly (no extra -1: that adjustment is
+// compare_match_value's own input convention, not GTCCRB's), so a value
 // set here lands identically to one baked in at boot. Only takes effect
 // once dac8-cmp (or any GPT1-opening word) has actually opened GPT1 —
 // silently does nothing before that, same as every other register-poke CLI
 // word in this file.
-// Upper bound (31us = 93 counts) keeps it comfortably short of group B's
+// Upper bound (31us = 93 counts) keeps it comfortably short of group A's
 // own trigger at the half-period mark (96 counts); this is a ceiling on
 // what's safe to try, not a claim that values anywhere near it are good.
 void analog_test_cli_aoffset_set(void) {     // ( us -- )
@@ -818,7 +767,7 @@ void analog_test_cli_aoffset_set(void) {     // ( us -- )
         print("aoffset-us!: out of range (1-31)"); printCr();
         return;
     }
-    R_GPT1->GTCCR[0] = (uint32_t) (3 * v);   // GTCCRA; counts = 3 * us (GPT1_HZ = 3 counts/us)
+    R_GPT1->GTCCR[1] = (uint32_t) (3 * v);   // GTCCRB; counts = 3 * us (GPT1_HZ = 3 counts/us)
 }
 
 static uint32_t g_wire_sweep_mv;
