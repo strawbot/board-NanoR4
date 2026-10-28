@@ -1,23 +1,36 @@
 // Board/adc_sync.c — see adc_sync.h.
 //
-// Two independent, hardware-only (zero CPU/scheduler jitter) ELC links,
-// both riding on ELC_EVENT_GPT1_COUNTER_OVERFLOW — the same event that
-// already drives the carrier's own DMAC step (Board/analog_test.c) — fanned
-// out to a second destination, which ELC supports for free:
+// Two independent, hardware-only (zero CPU/scheduler jitter) ELC links, each
+// off its own GPT1 compare-match (Board/analog_test.c's g_at_gpt_ext) rather
+// than sharing GPT1's raw overflow — the event that already drives the
+// carrier's own DMAC step:
 //
-//   GPT1 overflow      -> ADC0 group A trigger (ELC_AD00)  -- Vsense, Vdrain
-//   GPT1 compare-match B (half-step offset, Board/analog_test.c's
-//     g_at_gpt_ext.compare_match_value[1]) -> ADC0 group B trigger (ELC_AD01)
-//                                                          -- legacy + VIN
+//   GPT1 compare-match A (ADC_GROUP_A_OFFSET_US_DEFAULT counts past the
+//     overflow, retunable via aoffset-us!) -> ADC0 group A trigger (ELC_AD00)
+//                                                          -- Vsense, Vdrain
+//   GPT1 compare-match B (half-step offset, g_at_gpt_ext.compare_match_value[1])
+//     -> ADC0 group B trigger (ELC_AD01)                  -- legacy + VIN
 //
-// Group B does NOT share group A's overflow event — confirmed wrong on the
-// bench (VIN stuck at 0 forever). Per the manual (35.3.2): "if the
-// conversion processes in group A and B occur at the same time, those
-// conversions cannot be controlled separately" — with one shared event,
-// every trigger was simultaneous, and group B lost every single time, not
-// occasionally. Giving it GPT1's own compare-match B, offset half a carrier
-// step from the overflow, gives both groups the same once-per-64us cadence
-// without ever colliding.
+// Group A used to trigger straight off the overflow, same as the carrier's
+// own DMAC step — meaning group A's sample-and-hold opened at the exact
+// instant the real circuit was switching, and would occasionally catch the
+// edge's overshoot/ringing instead of a settled value (bench-confirmed on
+// the scope: occasional pstatus reads of 97-222mV against a ~55mV baseline,
+// coincident with a sharp transient right at the marker's own edges, which
+// also ride on this same overflow). Giving group A its own small offset off
+// GTCCRA — same mechanism as group B's existing half-step offset off
+// GTCCRB, just a much smaller one — lets its sample-and-hold open a few us
+// after the edge instead of on top of it, without moving the carrier step
+// or the marker (both still clock off the raw overflow).
+//
+// Group B does NOT share group A's trigger event (whichever one that is) —
+// confirmed wrong on the bench (VIN stuck at 0 forever) when the two groups
+// shared the overflow directly. Per the manual (35.3.2): "if the conversion
+// processes in group A and B occur at the same time, those conversions
+// cannot be controlled separately" — with one shared event, every trigger
+// was simultaneous, and group B lost every single time, not occasionally.
+// Group A's new offset (a few us) and group B's half-step offset stay well
+// clear of each other, so this collision risk doesn't reopen.
 //
 // Confirmed against the manual (35.3.2, ADSTRGR.TRSA/TRSB, Table 35.7):
 // RA4M1's ADC140 has exactly two real ELC trigger slots, ELC_AD00/ELC_AD01
@@ -100,7 +113,7 @@ static elc_instance_ctrl_t g_adc_sync_elc_ctrl;
 
 static const elc_cfg_t g_adc_sync_elc_cfg = {
     .link = {
-        [ELC_PERIPHERAL_ADC0]   = ELC_EVENT_GPT1_COUNTER_OVERFLOW,
+        [ELC_PERIPHERAL_ADC0]   = ELC_EVENT_GPT1_CAPTURE_COMPARE_A,
         [ELC_PERIPHERAL_ADC0_B] = ELC_EVENT_GPT1_CAPTURE_COMPARE_B,
     },
 };
@@ -249,8 +262,32 @@ void adc_sync_marker_init(void) {
 }
 
 void adc_sync_cli_status(void) {
+    // Live GPT1 and ADC0 peek, one level below everything else this word
+    // already prints — ELC/DMAC/marker can all look perfectly healthy (and
+    // have, on the bench, moments after a bad pstatus row) while telling
+    // you nothing about whether GPT1 is actually still counting or the ADC
+    // peripheral itself still thinks a hardware trigger is armed. GTCR.CST
+    // ("Count Start") is cleared only by an explicit R_GPT_Stop() — nothing
+    // in this file's own code calls that outside analog-test-stop/dac8-stop.
+    // ADCSR.ADST is momentary (1 while a conversion is in flight, 0 the
+    // rest of the ~64us cycle) so catching 0 here proves nothing by itself;
+    // ADCSR.TRGE is the one that matters — R_ADC_ScanStart() sets it once
+    // and nothing here should ever clear it while group-scan mode is live
+    // (see adc_sync_start()'s own comment on what happens if it's never
+    // set at all).
+    uint32_t gtcr  = R_GPT1->GTCR;
+    uint32_t gtcnt = R_GPT1->GTCNT;
+    uint32_t adcsr = R_ADC0->ADCSR;
+    print("GPT1 live: CST="); printDec0(gtcr & 1U);
+    print("  GTCNT="); printDec0(gtcnt); print(" (analog_test.c's GPT1_PERIOD is 192 counts/cycle)"); printCr();
+    print("ADC0 live: ADST="); printDec0((adcsr >> 15) & 1U);
+    print("  TRGE="); printDec0((adcsr >> 9) & 1U);
+    print("  ADCS="); printDec0((adcsr >> 13) & 3U); printCr();
+
     print("ELC: open err="); printDec0((unsigned) g_adc_sync_elc_err);
-    print("  links: ADC0<-GPT1-overflow  ADC0_B<-GPT1-compare-B(half-step offset)"); printCr();
+    print("  links: ADC0<-GPT1-compare-A(offset)  ADC0_B<-GPT1-compare-B(half-step offset)"); printCr();
+    print("  group A GTCCRA (offset past overflow, aoffset-us! to retune): ");
+    printDec0(R_GPT1->GTCCR[0] / 3U); print("us ("); printDec0(R_GPT1->GTCCR[0]); print(" counts)"); printCr();
 
     print("Scope marker (P112, plain GPIO via DMAC, no GPT output):"); printCr();
     print("  DMAC1 (set on ADC0 scan-end):   open err="); printDec0((unsigned) g_adc_sync_dmac_set_err); printCr();
@@ -263,15 +300,15 @@ void adc_sync_cli_status(void) {
     // landed in hardware as configured, and that the master enable
     // (ELCR.ELCON, set by R_ELC_Enable()) is on. ELSR[n].ELS holds the
     // source event number (same numeric value as the elc_event_t enum), so
-    // these should read 0x065 (GPT1 overflow) and 0x060 (GPT1 compare-match
-    // B) respectively if the config in this file actually took.
+    // these should read 0x05F (GPT1 compare-match A) and 0x060 (GPT1
+    // compare-match B) respectively if the config in this file actually took.
     uint32_t elcr      = R_ELC->ELCR;
     uint32_t els_adc0   = R_ELC->ELSR[ELC_PERIPHERAL_ADC0].HA & 0x1FFU;
     uint32_t els_adc0b  = R_ELC->ELSR[ELC_PERIPHERAL_ADC0_B].HA & 0x1FFU;
     print("ELC live: ELCON="); printDec0((elcr >> 7) & 1U);
     print("  ADC0<-0x"); printHex2(els_adc0);
     print("  ADC0_B<-0x"); printHex2(els_adc0b);
-    print("  (want 65/60)"); printCr();
+    print("  (want 5F/60)"); printCr();
 
     // Live P112 PFS peek — confirms it's genuinely plain GPIO (PMR=0), not
     // still claimed by a GPT peripheral from an earlier build.
@@ -301,6 +338,38 @@ void adc_sync_cli_status(void) {
     print(" DTIF="); printDec0((dmsts2 >> 4) & 1U);
     print(" DMCRAL="); printDec0(dmcra2 & 0xFFFFU);
     printCr();
+}
+
+// adc_sync_marker_ready() — true when P112 is currently high, i.e. the
+// group A result registers (Vsense/Vdrain) hold the value from the most
+// recent completed scan, not one still being overwritten by the next
+// ~64us DMA cycle. A caller that samples Vsense/Vdrain on its own timer
+// (wire-sweep, any future bench loop) has no way to know where its read
+// lands relative to that cycle otherwise — the marker is the one thing
+// both sides share. Plain PIDR read, same register pins.c reads for
+// `pin@`; no peripheral call needed, it's just the pad's current level.
+bool adc_sync_marker_ready(void) {
+    return ((R_PFS->PORT[1].PIN[12].PmnPFS >> 1) & 1U) != 0U;
+}
+
+// adc_sync_wait_ready() — same gate as adc_sync_marker_ready(), but for a
+// plain synchronous reader (power_sense.c's pstatus/vsense@/vdrain@, any
+// single-shot CLI read) that returns a value directly and so can't
+// reschedule itself through TEA the way analog_test.c's wire_sweep_sample
+// does. Busy-waits up to ~200us (comfortably more than one ~64us cycle's
+// worth of margin) for the marker to go high, then returns either way —
+// bounded the same way dma-watch's own tight loop is, not an unbounded
+// spin, and short enough not to be the "long-running action" the
+// cooperative-scheduler rule (TimbreOS/CLAUDE.md) is actually about. If
+// adc_sync_start() was never called (continuous-scan mode, no dac8-cmp
+// running), the marker just never toggles and the pin reads whatever
+// adc_sync_marker_init() last set it to — the timeout keeps that case a
+// cheap no-op instead of a silent hang.
+void adc_sync_wait_ready(void) {
+    uint32_t start = (uint32_t) sysTicks();
+    while (!adc_sync_marker_ready()) {
+        if (((uint32_t) sysTicks() - start) > 48U * 200U) return;   // ~200us at 48MHz
+    }
 }
 
 // CLI word: dma-watch — tight ~300us busy-loop sample of both DMAC

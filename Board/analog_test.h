@@ -116,13 +116,15 @@ void analog_test_cli_dac12_set(void);   // CLI word: dac12! ( mv -- ) hold DAC12
 void analog_test_cli_dac8_cmp(void);    // CLI word: dac8-cmp
 void analog_test_cli_opamp0(void);      // CLI word: opamp0-test
 void analog_test_cli_opamp0_sweep(void); // CLI word: opamp0-sweep
-void analog_test_cli_wire_sweep(void);   // CLI word: wire-sweep — dac8-cmp must already be running; steps dac12 0-1500mV, prints rwire/vsense/vdrain stats per setpoint
+void analog_test_cli_wire_sweep(void);   // CLI word: wire-sweep — dac8-cmp must already be running; steps dac12 0-1000mV, prints rwire/vsense/vdrain stats per setpoint
+void analog_test_cli_wstep_set(void);      // CLI word: wstep! ( mv -- ) wire-sweep's setpoint increment, 1-1500mV (default 50)
 void analog_test_cli_wsettle_set(void);    // CLI word: wsettle! ( ms -- ) wire-sweep's per-step settle time before the first sample
 void analog_test_cli_wsample_ms_set(void); // CLI word: wsample-ms! ( ms -- ) wire-sweep's spacing between samples within a step
 void analog_test_cli_wsamples_set(void);   // CLI word: wsamples! ( n -- ) wire-sweep's sample count per step
 void analog_test_cli_stop(void);        // CLI word: analog-test-stop
 void analog_test_cli_dac8_stop(void);   // CLI word: dac8-stop — stops just the carrier/comparator, leaves OPAMP0 running
 void analog_test_cli_cmpfir_set(void);  // CLI word: cmpfir! ( n -- ) ACMPLP0 output resample: 0 bypass, 1 PCLKB, 2 PCLKB/8, 3 PCLKB/32
+void analog_test_cli_aoffset_set(void);  // CLI word: aoffset-us! ( us -- ) group A's (Vsense/Vdrain) ADC trigger offset from GPT1 overflow, 0-31
 void analog_test_cli_status(void);      // CLI word: dac-status — MSTP/register state for DAC12, DAC8, ACMPLP, OPAMP0, GPT1
 
 #endif

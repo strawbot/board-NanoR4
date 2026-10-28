@@ -109,13 +109,15 @@ Words // Analog peripheral bench tests (Board/analog_test.c): DAC12/DAC8/ACMPLP,
 	dac8-cmp analog_test_cli_dac8_cmp // same ramp into DAC8 ch0 -> ACMPLP0 IVREF0; apply a test voltage to CMPIN0 (P100), watch VCOUT (P110)
 	opamp0-test analog_test_cli_opamp0 // enable OPAMP0 as a plain 3-pin diff amp: feed AMP0+ (P000)/AMP0- (P001), scope AMP0O (P002)
 	opamp0-sweep analog_test_cli_opamp0_sweep // jumper DAC12 (P014) to AMP0+ (P000); steps DAC12 0-4095 and prints setpoint vs measured AMP0O for plotting
-	wire-sweep analog_test_cli_wire_sweep // dac8-cmp must already be running with a real wire wired in; steps dac12 0-1500mV, prints rwire/vsense/vdrain avg+spread per step (hardware-triggered reads) for the sigmoid curve and per-setpoint stability; shuts the gate off (dac12=0) when done
+	wire-sweep analog_test_cli_wire_sweep // dac8-cmp must already be running with a real wire wired in; steps dac12 0-1000mV, prints rwire/vsense/vdrain avg+spread per step from ON-phase-only reads (OFF-phase samples filtered, see wsamples!) for the sigmoid curve and per-setpoint stability; shuts the gate off (dac12=0) when done
+	wstep! analog_test_cli_wstep_set // (mv) wire-sweep's setpoint increment, 1-1500mV (default 50)
 	wsettle! analog_test_cli_wsettle_set // (ms) wire-sweep's per-step settle time before the first sample — give the wire's own thermal response time to reach a new equilibrium, not just the carrier's electrical cycle
 	wsample-ms! analog_test_cli_wsample_ms_set // (ms) wire-sweep's spacing between samples within a step
 	wsamples! analog_test_cli_wsamples_set // (n) wire-sweep's sample count per step
 	analog-test-stop analog_test_cli_stop // stop GPT1/DMAC/OPAMP0/opamp0-sweep and close the peripherals opened by any test above
 	dac8-stop analog_test_cli_dac8_stop // stop just DAC8/ACMPLP0/the carrier, leaving OPAMP0 running — for analog-mode testing
 	cmpfir! analog_test_cli_cmpfir_set // (n) ACMPLP0's VCOUT resample clock: 0 bypass, 1 PCLKB, 2 PCLKB/8, 3 PCLKB/32 (dac8-cmp's own default) — no analog hysteresis exists on this comparator, this is the only on-chip deglitch lever
+	aoffset-us! analog_test_cli_aoffset_set // (us) retune group A's (Vsense/Vdrain) ADC trigger offset past GPT1 overflow, 1-31us — lets the sample-and-hold open past the real circuit's own switching edge instead of on top of it
 	dac-status analog_test_cli_status // print MSTP/register state for DAC12, DAC8, ACMPLP, OPAMP0, and a measured GPT1 count rate
 	trig-status adc_sync_cli_status // print the ELC links and the DMA-driven P112 scope-marker state for the hardware-triggered ADC path
 	dma-watch adc_sync_cli_dma_watch // tight ~300us busy-loop sample of both DMAC channels — are ADC0-scan-end/GPT1-overflow actually triggering them?
@@ -129,8 +131,11 @@ Words // Sensing: sense taps A0-A3, the ADC reference and the supply voltage
 	vsense@ power_cli_vsense // ( - mv ) raw muscle-wire sense-resistor voltage, mV (no divider)
 	isense@ power_cli_isense // ( - ma ) sense current in mA, from vsense@ and the installed sense resistor
 	rwire@ power_cli_rwire // ( - mohm ) computed wire resistance, (VIN - V_drain) / I_sense; 0 if no current flowing
+	rwire-med power_cli_rwire_median // (n - mohm) median of n single-shot rwire@ reads (1-31) -- cuts through the VIN-Vdrain noise floor and the occasional bad pstatus row alike
+	rwire-on-med power_cli_rwire_on_median // (n - mohm) median of n rwire@ reads taken only while the wire is actually conducting (Vsense > 20mV) -- skips the switching duty cycle's OFF phase instead of letting it vote into the median
 	vdbot! power_cli_vdbot_set // (ohms) set the Vdrain divider's bottom resistor directly; the calib file runs this at boot
 	vdrain-cal power_cli_vdrain_cal // (mv) solve the Vdrain divider's bottom resistor from a metered Vdrain and save it to the calib file
+	vdrain-cal-vin power_cli_vdrain_cal_vin // no meter needed: gate must be off (checked via Vsense) so Vdrain==VIN electrically; solves R_BOT against VIN's own 0.1% reading
 	pstatus power_cli_status // dump VIN/P101, Vdrain/P102, Vsense/P103 (raw + mV) plus isense@/rwire@ — status for this digital controller's own taps
 	vin-cal vin_cli_cal // (mv) solve the divider's bottom resistor from a metered VIN and save it to the calib file
 	rbot! vin_cli_rbot_set // (ohms) set the divider's bottom resistor directly; the calib file runs this at boot

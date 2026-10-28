@@ -364,7 +364,7 @@ void adc_cli_vref_cal(void) {
     if (!ref_raw_f)            { print("vref-cal: no reference reading yet"); printCr(); return; }
     adc_vint_mv = ref_raw_f * (uint32_t)v / (ADC_FULL_SCALE * 16U);
     print("vref-cal: internal reference = "); printDec0(adc_vint_mv); print(" mV"); printCr();
-    calib_save();
+    calib_save(NULL);
 }
 
 // One-line reference status for `status`.

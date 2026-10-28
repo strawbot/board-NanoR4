@@ -27,6 +27,7 @@
 #include "board_cli.h"
 #include "power_sense.h"
 #include "vin_sense.h"
+#include "adc_sync.h"
 #include "cli.h"
 #include "printers.h"
 #include "tea.h"
@@ -71,6 +72,14 @@ static void analog_test_wire_sweep_sample(void);
 #define RAMP_STEPS   64U
 #define RAMP_HZ      15625U                              // 3 MHz / 192
 #define GPT1_PERIOD  (GPT1_HZ / RAMP_HZ)                  // counts per DAC step
+
+// Group A's (Vsense/Vdrain) ADC trigger offset from GPT1's overflow — see
+// the compare_match_value/compare_match_status comment below for why this
+// exists. 5us is a starting guess (same spirit as wsettle!/wsample-ms!:
+// tune against the bench, not a validated number), comfortably inside the
+// ~27us this leaves before group B's own trigger at the half-period mark.
+#define ADC_GROUP_A_OFFSET_US_DEFAULT 5U
+#define ADC_GROUP_A_OFFSET_COUNTS (3U * ADC_GROUP_A_OFFSET_US_DEFAULT)  // GPT1_HZ is 3 counts/us
 
 static gpt_instance_ctrl_t   g_at_gpt_ctrl;
 static dmac_instance_ctrl_t  g_at_dmac_ctrl;
@@ -159,18 +168,30 @@ static const gpt_extended_cfg_t g_at_gpt_ext = {
     // cfg (gpt1-only, dmac-only, dac12-ramp): nothing reads GTCCRB or enables
     // GTIOCB output for them.
     //
-    // compare_match_status must have bit1 (GTCCRB, "0x02") set for
-    // compare_match_value[1] to actually get written to hardware at Open —
-    // found by reading r_gpt.c's r_gpt_init_compare_match_channel(): with
-    // status left 0 (as this was before), NEITHER GTCCRA nor GTCCRB is ever
-    // written, so the register keeps its power-on-reset value (HWM register
-    // summary: GTCCRA/B reset to FFFFFFFFh) — a value GTCNT (0..GPT1_PERIOD-1
-    // here) can never reach, so the compare-match-B event this whole offset
-    // scheme depends on would never fire. The private mask constants
-    // (GPT_PRV_COMPARE_MATCH_A_MASK=0x01, _B_MASK=0x02) aren't exported by
-    // the FSP header, hence the literal here.
-    .compare_match_value  = { 0U, GPT1_PERIOD / 2U },
-    .compare_match_status = 0x02U,   // bit1 = GTCCRB enabled
+    // compare_match_value[0] (GTCCRA) now gives group A its OWN offset too,
+    // instead of firing right on GPT1's raw overflow. The overflow is the
+    // exact same event that steps the DAC8/DAC12 ramp table (g_at_dmac_ext
+    // below) — i.e. the real circuit's own switching edge — so a group-A
+    // conversion triggered by the overflow starts its sample-and-hold right
+    // as Vsense is transitioning/ringing. Bench-confirmed on the scope: a
+    // sharp overshoot/undershoot sits right at that edge, and occasional
+    // pstatus reads (97-222mV against a ~55mV baseline) were catching it.
+    // ADC_GROUP_A_OFFSET_US below moves group A's trigger a few us later in
+    // the cycle, past the ringing, without touching the ramp step or the
+    // marker (both still clock off the raw overflow). See aoffset-us! to
+    // retune this against the scope without reflashing.
+    //
+    // compare_match_status must have the matching bit set for a
+    // compare_match_value[] entry to actually get written to hardware at
+    // Open — found by reading r_gpt.c's r_gpt_init_compare_match_channel():
+    // with a status bit left 0, that GTCCR register is never written, so it
+    // keeps its power-on-reset value (HWM register summary: GTCCRA/B reset
+    // to FFFFFFFFh) — a value GTCNT (0..GPT1_PERIOD-1 here) can never reach,
+    // so the compare-match event it's supposed to feed would never fire.
+    // The private mask constants (GPT_PRV_COMPARE_MATCH_A_MASK=0x01,
+    // _B_MASK=0x02) aren't exported by the FSP header, hence the literals.
+    .compare_match_value  = { ADC_GROUP_A_OFFSET_COUNTS + 1U, GPT1_PERIOD / 2U },
+    .compare_match_status = 0x03U,   // bit0 = GTCCRA, bit1 = GTCCRB enabled
     .p_pwm_cfg = NULL,
     .gtior_setting.gtior = 0U,
     .gtioca_polarity = GPT_GTIOC_POLARITY_NORMAL,
@@ -711,36 +732,55 @@ static void analog_test_opamp0_sweep_read(void) {
 // wire-sweep — ( -- ) assumes dac8-cmp is already running (carrier + ADC
 // group-scan trigger live, see Board/adc_sync.c) and a muscle wire is wired
 // into the real closed-loop path, not opamp0-sweep's bench jumper. Steps
-// DAC12 (the setpoint) from 0 to WIRE_SWEEP_MV_MAX in WIRE_SWEEP_MV_STEP
+// DAC12 (the setpoint) from 0 to WIRE_SWEEP_MV_MAX in g_wire_sweep_step_mv
 // increments; at each setpoint, settles, then takes several hardware-
 // triggered reads of Vsense/Vdrain/R_wire, printing one row per setpoint —
 // mv, R_wire avg/min/max (the sigmoid plus its own per-setpoint stability/
 // spread), Vsense avg, Vdrain avg. Shuts the gate off (dac12=0) when done
 // or stopped, rather than leaving the wire energized at whatever the last
-// setpoint was. 1500mV upper bound is from the user's own scope captures:
+// setpoint was. 1000mV upper bound (lowered from an original 1500mV once
+// bench sweeps showed the transition fully resolved well under that):
 // enough to pull the full sigmoidal transition out without wasting time/
 // power above where it saturates.
 //
-// Settle time, sample count, and sample spacing are runtime-settable
-// (wsettle!/wsamples!/wsample-ms!), not fixed constants — the first
-// version used a 50ms settle sized only for the carrier's own electrical
-// cycle (a dozen or so 4.096ms periods), which ignores that the wire
-// itself has real thermal mass: changing the average duty cycle takes
-// genuine time to reach a new equilibrium temperature and resistance, far
-// slower than the electrical switching. Confirmed wrong on the bench: with
-// the old 50ms/8-sample settings every step's R_wire min was exactly 0 and
-// consecutive steps swung wildly (e.g. 278160 then 175167 mOhm) — the wire
-// was still mid-transient at every single sample, never actually reaching
-// the setpoint's real steady state before the sweep moved on. No single
-// correct settle time is known yet; these defaults (500ms settle, 16
-// samples, 20ms apart - roughly 820ms/step, ~25s for the full sweep) are a
-// starting point to tune against the bench, not a validated number.
-#define WIRE_SWEEP_MV_MAX     1500U
-#define WIRE_SWEEP_MV_STEP    50U     // 31 points, 0-1500mV
+// Step size, settle time, sample count, and sample spacing are all
+// runtime-settable (wstep!/wsettle!/wsamples!/wsample-ms!), not fixed
+// constants — the first version used a 50ms settle sized only for the
+// carrier's own electrical cycle (a dozen or so 4.096ms periods), which
+// ignores that the wire itself has real thermal mass: changing the average
+// duty cycle takes genuine time to reach a new equilibrium temperature and
+// resistance, far slower than the electrical switching. Confirmed wrong on
+// the bench: with the old 50ms/8-sample settings every step's R_wire min
+// was exactly 0 and consecutive steps swung wildly (e.g. 278160 then
+// 175167 mOhm) — the wire was still mid-transient at every single sample,
+// never actually reaching the setpoint's real steady state before the
+// sweep moved on. No single correct settle time is known yet; the defaults
+// (50mV step, 500ms settle, 16 samples, 20ms apart) are a starting point to
+// tune against the bench, not validated numbers. A fine step (wstep! 1)
+// with a short settle and 1 sample (wsettle! 20, wsamples! 1) reproduces
+// the user's own manual 1mV/20ms bench recipe, which resolved the SMA
+// phase-transition region far better than the coarse default — useful for
+// characterizing a narrow transition once wire-sweep has located it, though
+// a 1mV/1500mV run is 1500 steps and gets slow if settle/samples are left
+// at the coarse defaults.
+#define WIRE_SWEEP_MV_MAX     1000U
 
 static uint32_t g_wire_sweep_settle_ms  = 500U;
 static uint32_t g_wire_sweep_sample_ms  = 20U;
 static uint32_t g_wire_sweep_samples    = 16U;
+static uint32_t g_wire_sweep_step_mv    = 50U;   // 21 points, 0-1000mV at the default
+
+// wstep! — ( mv -- ) wire-sweep's setpoint increment. Runtime-settable
+// rather than the fixed 50mV it started as: a 1mV step with wsettle! at
+// 20ms and wsamples! at 1 reproduced the user's own bench recipe (manual
+// 1mV/20ms increments) that resolved the SMA phase-transition region far
+// better than the coarse 50mV sweep — at 1mV/1000mV that's 1000 steps, so
+// pair a fine step with a short settle/sample-count or the sweep gets very
+// slow. No lower bound beyond >0: 1mV is the DAC's own practical floor.
+void analog_test_cli_wstep_set(void) {       // ( mv -- )
+    Cell v = ret();
+    if (v >= 1 && v <= 1000) g_wire_sweep_step_mv = (uint32_t) v;
+}
 
 void analog_test_cli_wsettle_set(void) {     // ( ms -- )
     Cell v = ret();
@@ -757,18 +797,44 @@ void analog_test_cli_wsamples_set(void) {    // ( n -- )
     if (v >= 1 && v <= 200) g_wire_sweep_samples = (uint32_t) v;
 }
 
+// CLI word: aoffset-us! ( us -- ) — retune group A's ADC trigger offset
+// (see the compare_match_value comment above g_at_gpt_ext) without a
+// reflash. R_GPT_Open() applies the ADC_GROUP_A_OFFSET_US_DEFAULT starting
+// guess through compare_match_value[0] at Open time, which r_gpt.c writes
+// to GTCCRA as (compare_match_value[0] - 1) — i.e. the raw register ends up
+// holding exactly the desired count (ADC_GROUP_A_OFFSET_COUNTS). This
+// writes that same raw count directly (no extra -1: that adjustment is
+// compare_match_value's own input convention, not GTCCRA's), so a value
+// set here lands identically to one baked in at boot. Only takes effect
+// once dac8-cmp (or any GPT1-opening word) has actually opened GPT1 —
+// silently does nothing before that, same as every other register-poke CLI
+// word in this file.
+// Upper bound (31us = 93 counts) keeps it comfortably short of group B's
+// own trigger at the half-period mark (96 counts); this is a ceiling on
+// what's safe to try, not a claim that values anywhere near it are good.
+void analog_test_cli_aoffset_set(void) {     // ( us -- )
+    Cell v = ret();
+    if (v < 1 || v > 31) {
+        print("aoffset-us!: out of range (1-31)"); printCr();
+        return;
+    }
+    R_GPT1->GTCCR[0] = (uint32_t) (3 * v);   // GTCCRA; counts = 3 * us (GPT1_HZ = 3 counts/us)
+}
+
 static uint32_t g_wire_sweep_mv;
-static uint32_t g_wire_sweep_i;
+static uint32_t g_wire_sweep_i;          // ON-phase samples caught so far this step
+static uint32_t g_wire_sweep_attempts;   // total samples looked at this step (ON + rejected OFF-phase)
 static uint32_t g_wire_sweep_rwire_sum, g_wire_sweep_rwire_min, g_wire_sweep_rwire_max;
 static uint32_t g_wire_sweep_vsense_sum, g_wire_sweep_vdrain_sum;
 
 void analog_test_cli_wire_sweep(void) {
     print("analog-test: wire-sweep - dac8-cmp must already be running. ");
-    printDec0(WIRE_SWEEP_MV_MAX / WIRE_SWEEP_MV_STEP + 1U); print(" steps, 0-"); printDec0(WIRE_SWEEP_MV_MAX);
+    printDec0(WIRE_SWEEP_MV_MAX / g_wire_sweep_step_mv + 1U); print(" steps of "); printDec0(g_wire_sweep_step_mv);
+    print("mV, 0-"); printDec0(WIRE_SWEEP_MV_MAX);
     print("mV, settle "); printDec0(g_wire_sweep_settle_ms); print("ms, ");
-    printDec0(g_wire_sweep_samples); print(" samples "); printDec0(g_wire_sweep_sample_ms);
-    print("ms apart (wsettle!/wsamples!/wsample-ms! to tune)."); printCr();
-    print("mv, rwire_avg_mohm, rwire_min, rwire_max, vsense_avg_mv, vdrain_avg_mv:"); printCr();
+    printDec0(g_wire_sweep_samples); print(" ON-phase samples "); printDec0(g_wire_sweep_sample_ms);
+    print("ms apart (wstep!/wsettle!/wsamples!/wsample-ms! to tune)."); printCr();
+    print("mv, rwire_avg_mohm, rwire_min, rwire_max, vsense_avg_mv, vdrain_avg_mv, on_n:"); printCr();
 
     g_wire_sweep_mv = 0U;
     analog_test_wire_sweep_step();
@@ -778,6 +844,7 @@ static void analog_test_wire_sweep_step(void) {
     analog_test_dac12_set_mv(g_wire_sweep_mv);
 
     g_wire_sweep_i          = 0U;
+    g_wire_sweep_attempts   = 0U;
     g_wire_sweep_rwire_sum  = 0U;
     g_wire_sweep_rwire_min  = 0xFFFFFFFFUL;
     g_wire_sweep_rwire_max  = 0U;
@@ -787,7 +854,33 @@ static void analog_test_wire_sweep_step(void) {
     after(msec(g_wire_sweep_settle_ms), analog_test_wire_sweep_sample);
 }
 
+// Retry spacing when analog_test_wire_sweep_sample() catches P112 low
+// (mid-reacquire). The low dip is a small fraction of the ~64us cycle, so
+// this almost always succeeds on the very next look; 1ms just has to be
+// shorter than the dip is long relative to how often we'd otherwise miss,
+// not tuned to the dip's own width.
+#define WIRE_SWEEP_MARKER_RETRY_MS 1U
+
+// Per-step attempt budget for finding g_wire_sweep_samples genuinely
+// ON-phase samples (RWIRE_ON_THRESHOLD_MV, power_sense.h) — same x10
+// multiplier power_cli_rwire_on_median() uses, so a setpoint that's
+// genuinely below the wire's conduction threshold (nothing to catch, ever)
+// gives up and reports what it has (possibly zero) instead of stalling the
+// whole sweep on one step.
+#define WIRE_SWEEP_ON_ATTEMPT_MULTIPLIER 10U
+
 static void analog_test_wire_sweep_sample(void) {
+    // Gate on the P112 marker (adc_sync.c) instead of trusting
+    // g_wire_sweep_sample_ms alone: that interval is chosen for thermal/
+    // settle pacing between samples, not to dodge the ~64us hardware scan
+    // window, so a sample can still land while group A's Vsense/Vdrain
+    // registers are mid-update. Waiting for marker-high means every
+    // accepted sample reads a result that's actually settled.
+    if (!adc_sync_marker_ready()) {
+        after(msec(WIRE_SWEEP_MARKER_RETRY_MS), analog_test_wire_sweep_sample);
+        return;
+    }
+
     // Each channel read exactly once (not via rwire_read_mohm(), which
     // would independently re-read vsense/vdrain a second time each) — with
     // ADC_CLEAR_AFTER_READ_ON, a second read of the same channel moments
@@ -800,26 +893,47 @@ static void analog_test_wire_sweep_sample(void) {
     uint32_t vdrain_mv = vdrain_read_mv();
     uint32_t vin_mv    = vin_read_mv();
     uint32_t rwire = rwire_mohm_from(vin_mv, vdrain_mv, vsense_mv);
-    g_wire_sweep_rwire_sum  += rwire;
-    if (rwire < g_wire_sweep_rwire_min) g_wire_sweep_rwire_min = rwire;
-    if (rwire > g_wire_sweep_rwire_max) g_wire_sweep_rwire_max = rwire;
-    g_wire_sweep_vsense_sum += vsense_mv;
-    g_wire_sweep_vdrain_sum += vdrain_mv;
+    g_wire_sweep_attempts++;
 
-    g_wire_sweep_i++;
-    if (g_wire_sweep_i < g_wire_sweep_samples) {
+    // ON-phase gate — same floor power_cli_rwire_on_median() validated on
+    // the bench (power_sense.h's RWIRE_ON_THRESHOLD_MV). Confirmed the hard
+    // way: an un-gated 1mV-step sweep (0-1500mV, 1 sample/step) produced
+    // mostly noise — small garbage (hundreds-low-thousands of mOhm) below
+    // the wire's conduction threshold, and wild spikes past a million mOhm
+    // right at it, because dividing a single-digit-mV Vsense (the idle-
+    // phase floor) by a few mV of VIN/Vdrain noise is still just noise. A
+    // rejected sample doesn't count against g_wire_sweep_i, so OFF-phase
+    // reads never get to vote in the row's avg/min/max the way they used
+    // to — no spreadsheet smoothing needed afterward to recover the shape.
+    if (vsense_mv > RWIRE_ON_THRESHOLD_MV && rwire != 0U) {
+        g_wire_sweep_rwire_sum  += rwire;
+        if (rwire < g_wire_sweep_rwire_min) g_wire_sweep_rwire_min = rwire;
+        if (rwire > g_wire_sweep_rwire_max) g_wire_sweep_rwire_max = rwire;
+        g_wire_sweep_vsense_sum += vsense_mv;
+        g_wire_sweep_vdrain_sum += vdrain_mv;
+        g_wire_sweep_i++;
+    }
+
+    uint32_t max_attempts = g_wire_sweep_samples * WIRE_SWEEP_ON_ATTEMPT_MULTIPLIER;
+    if (g_wire_sweep_i < g_wire_sweep_samples && g_wire_sweep_attempts < max_attempts) {
         after(msec(g_wire_sweep_sample_ms), analog_test_wire_sweep_sample);
         return;
     }
 
     printDec0(g_wire_sweep_mv); print(", ");
-    printDec0(g_wire_sweep_rwire_sum / g_wire_sweep_samples); print(", ");
-    printDec0(g_wire_sweep_rwire_min); print(", ");
-    printDec0(g_wire_sweep_rwire_max); print(", ");
-    printDec0(g_wire_sweep_vsense_sum / g_wire_sweep_samples); print(", ");
-    printDec0(g_wire_sweep_vdrain_sum / g_wire_sweep_samples); printCr();
+    if (g_wire_sweep_i == 0U) {
+        print("0, 0, 0, 0, 0, 0");   // never caught an ON-phase sample — not conducting at this setpoint
+    } else {
+        printDec0(g_wire_sweep_rwire_sum / g_wire_sweep_i); print(", ");
+        printDec0(g_wire_sweep_rwire_min); print(", ");
+        printDec0(g_wire_sweep_rwire_max); print(", ");
+        printDec0(g_wire_sweep_vsense_sum / g_wire_sweep_i); print(", ");
+        printDec0(g_wire_sweep_vdrain_sum / g_wire_sweep_i); print(", ");
+        printDec0(g_wire_sweep_i);
+    }
+    printCr();
 
-    g_wire_sweep_mv += WIRE_SWEEP_MV_STEP;
+    g_wire_sweep_mv += g_wire_sweep_step_mv;
     if (g_wire_sweep_mv > WIRE_SWEEP_MV_MAX) {
         analog_test_dac12_set_mv(0U);   // shut the wire off, don't leave it energized at the last setpoint
         print("analog-test: wire-sweep done, dac12 set back to 0."); printCr();

@@ -22,6 +22,17 @@
 
 #include <stdint.h>
 
+// The ON-phase floor shared by rwire-on-med (power_sense.c) and wire-sweep
+// (analog_test.c): a sample only means anything as a wire resistance if
+// Vsense clears this, the same 20mV floor vdrain-cal-vin uses for its own
+// "is current flowing" check, comfortably above the ~8-14mV idle baseline
+// this project has seen all session. Below it, dividing a single-digit-mV
+// Vsense by a few mV of VIN/Vdrain noise produces numbers that look like
+// real resistances (both small garbage and, when Vsense is a sliver above
+// zero, wildly large garbage) but aren't — see power_cli_rwire_on_median()'s
+// own comment for the bench evidence.
+#define RWIRE_ON_THRESHOLD_MV 20U
+
 void     power_sense_init(void);    // register vdbot!'s calibration value; call once at boot
 uint32_t vdrain_tap_mv(void);       // voltage at the P102 pin, mV
 uint32_t vdrain_mv_from_tap(uint32_t tap_mv);  // pure math, no ADC access — Vdrain from an already-read tap mV
@@ -38,8 +49,11 @@ void power_cli_vdrain(void);        // ( -- mv )    vdrain@
 void power_cli_vsense(void);        // ( -- mv )    vsense@
 void power_cli_isense(void);        // ( -- ma )    isense@
 void power_cli_rwire(void);         // ( -- mohm )  rwire@
+void power_cli_rwire_median(void);  // ( n -- mohm ) rwire-med: median of n single-shot rwire@ reads, 1-31
+void power_cli_rwire_on_median(void); // ( n -- mohm ) rwire-on-med: median of n rwire@ reads taken only while the wire is actually conducting (Vsense > 20mV), skipping the switching duty cycle's OFF phase instead of letting it vote
 void power_cli_vdbot_set(void);     // ( ohms -- )  vdbot!: set the Vdrain divider's R_BOT directly (the calib file runs this)
 void power_cli_vdrain_cal(void);    // ( mv -- )    vdrain-cal: solve R_BOT from a metered Vdrain, save it
+void power_cli_vdrain_cal_vin(void); // ( -- )       vdrain-cal-vin: gate off -> Vdrain==VIN electrically; solve R_BOT against VIN's own (0.1%) reading instead of a meter
 void power_cli_status(void);        // print VIN/V_drain/V_sense (raw + mV) and I_sense/R_wire — pstatus
 
 #endif
