@@ -366,11 +366,26 @@ void adc_sync_marker_init(void) {
     g_adc_sync_dmac_clear_err = R_DMAC_Open(&g_adc_sync_dmac_clear_ctrl, &g_adc_sync_dmac_clear_cfg);
     if (g_adc_sync_dmac_clear_err == FSP_SUCCESS) g_adc_sync_dmac_clear_err = R_DMAC_Enable(&g_adc_sync_dmac_clear_ctrl);
 
-    // GPT3: open+start here, once, same as the ELC links above — harmless
-    // to leave running all the time (it only ever clears on ACMPLP0's own
-    // ELC event, which never fires before dac8-cmp configures and enables
-    // the comparator), no separate lifecycle tied to adc_sync_start/stop.
+    // GPT3: open+enable+start here, once, same as the ELC links above —
+    // harmless to leave running all the time (it only ever clears on
+    // ACMPLP0's own ELC event, which never fires before dac8-cmp configures
+    // and enables the comparator), no separate lifecycle tied to
+    // adc_sync_start/stop.
+    //
+    // R_GPT_Enable() IS required here, confirmed wrong on the bench (same
+    // class of miss as adc_sync_start()'s own R_ADC_ScanStart() comment
+    // just below): R_GPT_Open() applies period/compare-match/mode, but
+    // GTSSR/GTPSR/GTCSR (the external start/stop/clear SOURCE registers)
+    // are a separate write, done only by R_GPT_Enable() (ra/fsp/src/r_gpt/
+    // r_gpt.c, R_GPT_Enable(), ~line 363) — without it GTCSR keeps its
+    // power-on-reset value (0, no clear source enabled) regardless of what
+    // clear_source says in the extended cfg, so GPT3 just free-ran its
+    // full period every time, never actually cleared by ACMPLP0's edge.
+    // GPT1's own g_at_gpt_ext never needed this (its start/stop/clear
+    // sources are all GPT_SOURCE_NONE — it free-runs on purpose), which is
+    // exactly why copying its Open+Start pattern here missed this step.
     g_adc_sync_cmp_delay_err = R_GPT_Open(&g_adc_sync_cmp_delay_ctrl, &g_adc_sync_cmp_delay_cfg);
+    if (g_adc_sync_cmp_delay_err == FSP_SUCCESS) g_adc_sync_cmp_delay_err = R_GPT_Enable(&g_adc_sync_cmp_delay_ctrl);
     if (g_adc_sync_cmp_delay_err == FSP_SUCCESS) {
         g_adc_sync_cmp_delay_open = true;
         g_adc_sync_cmp_delay_err  = R_GPT_Start(&g_adc_sync_cmp_delay_ctrl);
