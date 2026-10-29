@@ -440,16 +440,28 @@ void adc_sync_cli_status(void) {
 
     // GPT3 live peek — same reasoning as GPT1's above, one level below the
     // ELC/scope-marker state: CST proves it's actually counting (open+start
-    // in adc_sync_marker_init() succeeded), GTCNT cycling between ~0 and
-    // ADC_CMP_DELAY_COUNTS on repeated calls proves ACMPLP0's edge is
-    // actually clearing it every carrier cycle, not just sitting parked.
+    // in adc_sync_marker_init() succeeded).
+    //
+    // What GTCNT should read: NOT bounded by ADC_CMP_DELAY_COUNTS or
+    // GPT1_PERIOD (192 counts/64us) — that 64us figure is the DAC8/DAC12
+    // ramp TABLE-STEP rate (and the Vsense/Vdrain/VIN ADC retrigger rate
+    // that tracks it), not ACMPLP0's own switching period. The full
+    // triangle is RAMP_STEPS=64 of those 64us steps, so ACMPLP0 (single-
+    // edge, rising-only) only generates one ELC event per full ~4.096ms
+    // sweep — bench-confirmed against this project's own scope capture of
+    // the carrier (4.096ms cursor delta). At 3MHz that's up to 12288
+    // counts between legitimate clears, not ~192. A reading anywhere in
+    // 0-12288 while current is flowing is healthy; something consistently
+    // well past 12288 (like the 0xFFFF free-run seen with the wire off, no
+    // setpoint in the carrier's sweep band to cross) means ACMPLP0 isn't
+    // actually generating edges right now.
     uint32_t gpt3_gtcr  = g_adc_sync_cmp_delay_open ? R_GPT3->GTCR  : 0U;
     uint32_t gpt3_gtcnt = g_adc_sync_cmp_delay_open ? R_GPT3->GTCNT : 0U;
     uint32_t gpt3_gtcsr = g_adc_sync_cmp_delay_open ? R_GPT3->GTCSR : 0U;
     print("GPT3 live: open err="); printDec0((unsigned) g_adc_sync_cmp_delay_err);
     print("  CST="); printDec0(gpt3_gtcr & 1U);
     print("  GTCNT="); printDec0(gpt3_gtcnt);
-    print(" (0 or small if ACMPLP0 isn't toggling / isn't clearing it yet)"); printCr();
+    print(" (want 0-12288 while conducting -- one ~4.096ms triangle period at 3MHz, not 0-192)"); printCr();
     print("  GTCSR="); printHex2((gpt3_gtcsr >> 16) & 0xFFU);
     print(" (bit16=CSELCA, want that bit set — 0x01 if R_GPT_Enable() actually landed clear_source, 0x00 if not)"); printCr();
 
