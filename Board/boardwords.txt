@@ -117,6 +117,7 @@ Words // Analog peripheral bench tests (Board/analog_test.c): DAC12/DAC8/ACMPLP,
 	dac8-stop analog_test_cli_dac8_stop // stop just DAC8/ACMPLP0/the carrier, leaving OPAMP0 running — for analog-mode testing
 	cmpfir! analog_test_cli_cmpfir_set // (n) ACMPLP0's VCOUT resample clock: 0 bypass, 1 PCLKB, 2 PCLKB/8, 3 PCLKB/32 (dac8-cmp's own default) — no analog hysteresis exists on this comparator, this is the only on-chip deglitch lever
 	aoffset-us! analog_test_cli_aoffset_set // (us) retune group B's (VIN) ADC trigger offset past GPT1 overflow, 1-31us — VIN is read first, close to the edge; Vsense/Vdrain sit at the half-period mark instead
+	cmpdelay-us! adc_sync_cli_cmpdelay_set // (us) retune group A's (Vsense/Vdrain) ADC trigger delay past ACMPLP0's own rising edge, 0-21us — tracks the ON-pulse itself instead of a fixed carrier phase
 	dac-status analog_test_cli_status // print MSTP/register state for DAC12, DAC8, ACMPLP, OPAMP0, and a measured GPT1 count rate
 	trig-status adc_sync_cli_status // print the ELC links and the DMA-driven P112 scope-marker state for the hardware-triggered ADC path
 	dma-watch adc_sync_cli_dma_watch // tight ~300us busy-loop sample of both DMAC channels — are ADC0-scan-end/GPT1-overflow actually triggering them?

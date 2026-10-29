@@ -10,6 +10,7 @@
 void adc_sync_marker_init(void);  // call once at boot, after adc_init()
 void adc_sync_cli_status(void);   // CLI word: trig-status
 void adc_sync_cli_dma_watch(void); // CLI word: dma-watch — ~300us tight-loop sample of both DMAC channels' ACT/DMCRAL
+void adc_sync_cli_cmpdelay_set(void); // CLI word: cmpdelay-us! — ( us -- ) retune GPT3's comparator-edge-to-ADC-trigger delay (group A), 0-21us
 
 // true once ADC0_SCAN_END has set P112 for the group now sitting in the
 // result registers (i.e. not mid-reacquire); see adc_sync_marker_ready()

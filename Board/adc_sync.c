@@ -1,27 +1,63 @@
 // Board/adc_sync.c — see adc_sync.h.
 //
-// Two independent, hardware-only (zero CPU/scheduler jitter) ELC links, each
-// off its own GPT1 compare-match (Board/analog_test.c's g_at_gpt_ext) rather
-// than sharing GPT1's raw overflow — the event that already drives the
-// carrier's own DMAC step:
+// Two independent, hardware-only (zero CPU/scheduler jitter) ELC links for
+// ADC0's two trigger slots:
 //
-//   GPT1 compare-match A (half-period offset, g_at_gpt_ext.compare_match_value[0])
-//     -> ADC0 group A trigger (ELC_AD00)                  -- Vsense, Vdrain
+//   GPT3 compare-match A (g_adc_sync_cmp_delay_ext, cleared by ACMPLP0's own
+//     rising edge via ELC_GPTA, fires ADC_CMP_DELAY_US_DEFAULT counts later,
+//     retunable via cmpdelay-us!) -> ADC0 group A trigger (ELC_AD00)
+//                                                          -- Vsense, Vdrain
 //   GPT1 compare-match B (ADC_VIN_OFFSET_US_DEFAULT counts past the
 //     overflow, retunable via aoffset-us!) -> ADC0 group B trigger (ELC_AD01)
 //                                                          -- VIN, read first
 //
-// Group A used to trigger straight off the overflow, same as the carrier's
-// own DMAC step — meaning group A's sample-and-hold opened at the exact
-// instant the real circuit was switching, and would occasionally catch the
-// edge's overshoot/ringing instead of a settled value (bench-confirmed on
+// Group A used to trigger at a fixed half-period offset off GPT1 (half of
+// GPT1_PERIOD, ~32us into the ~64us carrier cycle) — chosen, before this,
+// to dodge the switching edge's own overshoot/ringing (bench-confirmed on
 // the scope: occasional pstatus reads of 97-222mV against a ~55mV baseline,
-// coincident with a sharp transient right at the marker's own edges, which
-// also ride on this same overflow). Giving group A its own small offset off
-// GTCCRA — same mechanism as group B's existing half-step offset off
-// GTCCRB, just a much smaller one — lets its sample-and-hold open a few us
-// after the edge instead of on top of it, without moving the carrier step
-// or the marker (both still clock off the raw overflow).
+// coincident with a sharp transient right at GPT1's raw overflow, which
+// also drives the carrier's own DMAC step). That fixed point only works
+// when the ON-phase pulse is wide enough to still be open at ~32us —
+// wire-sweep's own persistence captures showed pulses as narrow as 25us at
+// low setpoints, meaning group A's trigger was firing 7us after the pulse
+// had already closed: exactly the "lots of zeroes, especially at the lower
+// settings" wire-sweep's own rejection filters were absorbing.
+//
+// Comparator-edge-referenced triggering fixes that at the root: instead of
+// a fixed phase in the carrier cycle, group A's trigger now tracks the
+// pulse itself, so it stays valid at any duty down to the wire's actual
+// conduction floor. ACMPLP0's rising edge (the pulse turning ON) clears a
+// free-running GPT3 via ELC_GPTA; GPT3's own compare-match, ADC_CMP_DELAY_
+// US_DEFAULT counts later, becomes ADC0's group-A trigger in place of
+// GPT1's old fixed offset. The delay exists to let the switching transient
+// settle before the ADC's sample-and-hold opens — scope-confirmed (this
+// project's bench capture of Vdrain through a transition) stable by ~5us
+// post-edge; ACMPLP0's own cmpfir deglitch filter (PCLKB/32 default,
+// ~1.33us) already supplies part of that from the real edge to the ELC
+// event GPT3 clears on, so GPT3's own delay only needs to make up the
+// remainder — see ADC_CMP_DELAY_US_DEFAULT's own comment below.
+//
+// GPT3 is free (Board/clocks.c claims GPT0/GPT2, Board/frame_timer.c claims
+// GPT7, Board/analog_test.c claims GPT1 for the carrier; GPT3/GPT4 were
+// used in three abandoned attempts at a *different* mechanism — see this
+// file's own history note below — none of which are live in this build).
+// This only uses GPT3's internal compare-match -> ELC path, the same kind
+// of link GPT1 already proves out for groups A and B, not the GTIOC pin-
+// output path those three attempts got stuck on.
+//
+// ACMPLP0's own register state already satisfies everything 39.6/39.7 (HWM)
+// require for it to emit an ELC event at all: COMPFIR.C0FCK must be
+// non-zero (Board/analog_test.c's dac8-cmp sets it to 3, PCLKB/32, for
+// deglitching — already satisfies this), and C0EPO/C0EDG (rising edge,
+// single-edge detection) are both left at their 0 reset default, which is
+// exactly what's wanted here. Nothing about ACMPLP0's own setup needed to
+// change for this.
+//
+// UNTESTED ON HARDWARE as of this commit — compiled, not bench-verified.
+// trig-status (adc_sync_cli_status, below) now dumps GPT3's live state and
+// the new ELC_GPTA link alongside what it already printed for GPT1; check
+// it against the scope before trusting wire-sweep data gathered through
+// this path.
 //
 // Group B does NOT share group A's trigger event (whichever one that is) —
 // confirmed wrong on the bench (VIN stuck at 0 forever) when the two groups
@@ -29,8 +65,9 @@
 // processes in group A and B occur at the same time, those conversions
 // cannot be controlled separately" — with one shared event, every trigger
 // was simultaneous, and group B lost every single time, not occasionally.
-// Group A's new offset (a few us) and group B's half-step offset stay well
-// clear of each other, so this collision risk doesn't reopen.
+// Group A's new comparator-referenced trigger and group B's half-step
+// offset off GPT1 stay well clear of each other, so this collision risk
+// doesn't reopen.
 //
 // Confirmed against the manual (35.3.2, ADSTRGR.TRSA/TRSB, Table 35.7):
 // RA4M1's ADC140 has exactly two real ELC trigger slots, ELC_AD00/ELC_AD01
@@ -102,6 +139,7 @@
 #include "hal_data.h"
 #include "r_elc.h"
 #include "r_dmac.h"
+#include "r_gpt.h"
 #include "r_ioport.h"
 #include "adc_sync.h"
 #include "board_cli.h"
@@ -109,12 +147,81 @@
 #include "printers.h"
 #include "tea.h"   // sysTicks()
 
+// GPT3: comparator-edge-referenced delay stage for group A's ADC trigger —
+// see this file's own header comment for the full picture. Cleared by
+// ACMPLP0's rising edge (fed in via ELC_PERIPHERAL_GPT_A, chosen because
+// nothing in this project uses any of the eight ELC_GPTx slots yet — the
+// letter doesn't tie to a specific physical GPT channel, HWM 18.2.3/Figure
+// 22.x: any GPT channel's own clear/start/stop source select can listen to
+// any of the eight slots, so GPT3 listening to ELC_GPTA is just a free
+// choice, not a required pairing), free-running otherwise so GTCNT keeps
+// counting between clears. GTCCRA holds the delay in counts at the same
+// 3MHz (PCLKD/16) rate GPT1/GPT7 already use successfully on this chip.
+//
+// ADC_CMP_DELAY_US_DEFAULT: target is the ADC trigger landing ~5us after
+// the REAL edge (this project's own scope capture of Vdrain settling
+// through a switching transition, confirmed clean by that point). ACMPLP0's
+// cmpfir deglitch filter (PCLKB/32, dac8-cmp's own default) already delays
+// the ELC event GPT3 clears on by ~1.33us relative to that real edge, so
+// GPT3 only needs to add the remainder: 5 - 1.33 ~= 3.7us, 11 counts at
+// 3MHz. Rounded up to 4us/12 counts here for a clean default; cmpdelay-us!
+// retunes it against the scope without a reflash, same spirit as wstep!/
+// wsettle!/aoffset-us! elsewhere in this project — a starting guess, not a
+// validated number.
+#define ADC_CMP_DELAY_HZ          3000000U   // GPT3 tick: PCLKD(48MHz)/16, matches GPT1_HZ (analog_test.c) and GPT7 (frame_timer.c)
+#define ADC_CMP_DELAY_US_DEFAULT  4U
+#define ADC_CMP_DELAY_COUNTS      ((ADC_CMP_DELAY_HZ / 1000000U) * ADC_CMP_DELAY_US_DEFAULT)
+#define ADC_CMP_DELAY_PERIOD      0xFFFFU   // far longer than any real delay; just bounds the idle case (carrier not running, GPT3 never cleared) to a harmless ~21.8ms free-run instead of relying on clears alone
+
+static gpt_instance_ctrl_t g_adc_sync_cmp_delay_ctrl;
+static bool                g_adc_sync_cmp_delay_open;
+
+static const gpt_extended_cfg_t g_adc_sync_cmp_delay_ext = {
+    .gtioca = { .output_enabled = false, .stop_level = GPT_PIN_LEVEL_LOW },
+    .gtiocb = { .output_enabled = false, .stop_level = GPT_PIN_LEVEL_LOW },
+    .start_source      = (gpt_source_t) GPT_SOURCE_NONE,
+    .stop_source       = (gpt_source_t) GPT_SOURCE_NONE,
+    .clear_source      = (gpt_source_t) GPT_SOURCE_GPT_A,   // cleared by ACMPLP0's rising edge via ELC_GPTA (see g_adc_sync_elc_cfg below)
+    .count_up_source   = (gpt_source_t) GPT_SOURCE_NONE,
+    .count_down_source = (gpt_source_t) GPT_SOURCE_NONE,
+    .capture_a_source  = (gpt_source_t) GPT_SOURCE_NONE,
+    .capture_b_source  = (gpt_source_t) GPT_SOURCE_NONE,
+    .capture_filter_gtioca = GPT_CAPTURE_FILTER_NONE,
+    .capture_filter_gtiocb = GPT_CAPTURE_FILTER_NONE,
+    .capture_a_ipl = BSP_IRQ_DISABLED,
+    .capture_b_ipl = BSP_IRQ_DISABLED,
+    .capture_a_irq = FSP_INVALID_VECTOR,
+    .capture_b_irq = FSP_INVALID_VECTOR,
+    .compare_match_value  = { ADC_CMP_DELAY_COUNTS, 0U },   // GTCCRA only — this channel drives one event, not two like GPT1
+    .compare_match_status = 0x01U,                           // bit0 = GTCCRA enabled (see GPT1's own comment on why this bit is required)
+    .p_pwm_cfg = NULL,
+    .gtior_setting.gtior = 0U,
+    .gtioca_polarity = GPT_GTIOC_POLARITY_NORMAL,
+    .gtiocb_polarity = GPT_GTIOC_POLARITY_NORMAL,
+};
+
+// No CPU interrupt: GPT3's compare-match feeds ELC_AD00 directly in
+// hardware, same as GPT1's own group-A/B triggers.
+static const timer_cfg_t g_adc_sync_cmp_delay_cfg = {
+    .mode              = TIMER_MODE_PERIODIC,
+    .period_counts     = ADC_CMP_DELAY_PERIOD,
+    .duty_cycle_counts = 0U,
+    .source_div        = TIMER_SOURCE_DIV_16,   // 48MHz/16 = 3MHz, matches ADC_CMP_DELAY_HZ above
+    .channel           = 3U,                    // GPT3 — free (GPT0/2/7 claimed, GPT1 is the carrier; see this file's own history note above for why GPT3/4's PIN-output path was abandoned, not relevant to this internal-compare-match-only use)
+    .p_callback        = NULL,
+    .p_context         = NULL,
+    .p_extend          = &g_adc_sync_cmp_delay_ext,
+    .cycle_end_ipl     = BSP_IRQ_DISABLED,
+    .cycle_end_irq     = FSP_INVALID_VECTOR,
+};
+
 static elc_instance_ctrl_t g_adc_sync_elc_ctrl;
 
 static const elc_cfg_t g_adc_sync_elc_cfg = {
     .link = {
-        [ELC_PERIPHERAL_ADC0]   = ELC_EVENT_GPT1_CAPTURE_COMPARE_A,
+        [ELC_PERIPHERAL_ADC0]   = ELC_EVENT_GPT3_CAPTURE_COMPARE_A,
         [ELC_PERIPHERAL_ADC0_B] = ELC_EVENT_GPT1_CAPTURE_COMPARE_B,
+        [ELC_PERIPHERAL_GPT_A]  = ELC_EVENT_ACMPLP0_INT,   // feeds GPT3's clear_source above
     },
 };
 
@@ -208,6 +315,7 @@ static const ioport_cfg_t g_adc_sync_ioport_cfg = {    // see Board/analog_test.
 static fsp_err_t g_adc_sync_elc_err;
 static fsp_err_t g_adc_sync_dmac_set_err;
 static fsp_err_t g_adc_sync_dmac_clear_err;
+static fsp_err_t g_adc_sync_cmp_delay_err;
 
 // TRANSFER_MODE_REPEAT's block counter (DMCRB) isn't infinite — confirmed
 // in Board/analog_test.c's own DMAC (its header comment there walks through
@@ -258,7 +366,38 @@ void adc_sync_marker_init(void) {
     g_adc_sync_dmac_clear_err = R_DMAC_Open(&g_adc_sync_dmac_clear_ctrl, &g_adc_sync_dmac_clear_cfg);
     if (g_adc_sync_dmac_clear_err == FSP_SUCCESS) g_adc_sync_dmac_clear_err = R_DMAC_Enable(&g_adc_sync_dmac_clear_ctrl);
 
+    // GPT3: open+start here, once, same as the ELC links above — harmless
+    // to leave running all the time (it only ever clears on ACMPLP0's own
+    // ELC event, which never fires before dac8-cmp configures and enables
+    // the comparator), no separate lifecycle tied to adc_sync_start/stop.
+    g_adc_sync_cmp_delay_err = R_GPT_Open(&g_adc_sync_cmp_delay_ctrl, &g_adc_sync_cmp_delay_cfg);
+    if (g_adc_sync_cmp_delay_err == FSP_SUCCESS) {
+        g_adc_sync_cmp_delay_open = true;
+        g_adc_sync_cmp_delay_err  = R_GPT_Start(&g_adc_sync_cmp_delay_ctrl);
+    }
+
     after(msec(MARKER_DMAC_REARM_MS), adc_sync_dmac_rearm);
+}
+
+// cmpdelay-us! — ( us -- ) retune GPT3's delay from ACMPLP0's ELC event to
+// group A's ADC trigger, without a reflash — see ADC_CMP_DELAY_US_DEFAULT's
+// own comment for the starting-guess math. Writes GTCCRA directly, same
+// convention aoffset-us! already uses for GTCCRB (no -1: that adjustment is
+// compare_match_value's own input convention at R_GPT_Open time, not what
+// the raw register wants). Only takes effect once adc_sync_marker_init()
+// has actually opened GPT3 — silently does nothing before that, same as
+// every other register-poke CLI word in this file/analog_test.c.
+// Upper bound (21us = 63 counts) is comfortably inside a single switching
+// cycle's worth of margin, not a claim that values anywhere near it are
+// good — tune against the scope.
+void adc_sync_cli_cmpdelay_set(void) {   // ( us -- )
+    Cell v = ret();
+    if (v < 0 || v > 21) {
+        print("cmpdelay-us!: 0-21us"); printCr();
+        return;
+    }
+    if (!g_adc_sync_cmp_delay_open) return;
+    R_GPT3->GTCCR[0] = (uint32_t) ((ADC_CMP_DELAY_HZ / 1000000U) * (uint32_t) v);
 }
 
 void adc_sync_cli_status(void) {
@@ -284,10 +423,22 @@ void adc_sync_cli_status(void) {
     print("  TRGE="); printDec0((adcsr >> 9) & 1U);
     print("  ADCS="); printDec0((adcsr >> 13) & 3U); printCr();
 
+    // GPT3 live peek — same reasoning as GPT1's above, one level below the
+    // ELC/scope-marker state: CST proves it's actually counting (open+start
+    // in adc_sync_marker_init() succeeded), GTCNT cycling between ~0 and
+    // ADC_CMP_DELAY_COUNTS on repeated calls proves ACMPLP0's edge is
+    // actually clearing it every carrier cycle, not just sitting parked.
+    uint32_t gpt3_gtcr  = g_adc_sync_cmp_delay_open ? R_GPT3->GTCR  : 0U;
+    uint32_t gpt3_gtcnt = g_adc_sync_cmp_delay_open ? R_GPT3->GTCNT : 0U;
+    print("GPT3 live: open err="); printDec0((unsigned) g_adc_sync_cmp_delay_err);
+    print("  CST="); printDec0(gpt3_gtcr & 1U);
+    print("  GTCNT="); printDec0(gpt3_gtcnt);
+    print(" (0 or small if ACMPLP0 isn't toggling / isn't clearing it yet)"); printCr();
+
     print("ELC: open err="); printDec0((unsigned) g_adc_sync_elc_err);
-    print("  links: ADC0<-GPT1-compare-A(offset)  ADC0_B<-GPT1-compare-B(half-step offset)"); printCr();
-    print("  group A GTCCRA (offset past overflow, aoffset-us! to retune): ");
-    printDec0(R_GPT1->GTCCR[0] / 3U); print("us ("); printDec0(R_GPT1->GTCCR[0]); print(" counts)"); printCr();
+    print("  links: ADC0<-GPT3-compare-A(comparator-edge+delay)  ADC0_B<-GPT1-compare-B(half-step offset)  ELC_GPTA<-ACMPLP0_INT"); printCr();
+    print("  group A delay from ACMPLP0's ELC event (cmpdelay-us! to retune): ");
+    printDec0(R_GPT3->GTCCR[0] / 3U); print("us ("); printDec0(R_GPT3->GTCCR[0]); print(" counts)"); printCr();
 
     print("Scope marker (P112, plain GPIO via DMAC, no GPT output):"); printCr();
     print("  DMAC1 (set on ADC0 scan-end):   open err="); printDec0((unsigned) g_adc_sync_dmac_set_err); printCr();
@@ -296,19 +447,21 @@ void adc_sync_cli_status(void) {
     print("next carrier cycle starts re-acquiring. Only moves once dac8-cmp's"); printCr();
     print("carrier (GPT1) is running and adc_sync_start() is active."); printCr();
 
-    // Live ELC register peek — confirms the two ADC-trigger links actually
-    // landed in hardware as configured, and that the master enable
-    // (ELCR.ELCON, set by R_ELC_Enable()) is on. ELSR[n].ELS holds the
-    // source event number (same numeric value as the elc_event_t enum), so
-    // these should read 0x05F (GPT1 compare-match A) and 0x060 (GPT1
-    // compare-match B) respectively if the config in this file actually took.
+    // Live ELC register peek — confirms the three links actually landed in
+    // hardware as configured, and that the master enable (ELCR.ELCON, set
+    // by R_ELC_Enable()) is on. ELSR[n].ELS holds the source event number
+    // (same numeric value as the elc_event_t enum): ADC0 should now read
+    // 0x06F (GPT3 compare-match A), ADC0_B still 0x060 (GPT1 compare-match
+    // B, unchanged), and the new GPT_A slot 0x02F (ACMPLP0_INT).
     uint32_t elcr      = R_ELC->ELCR;
     uint32_t els_adc0   = R_ELC->ELSR[ELC_PERIPHERAL_ADC0].HA & 0x1FFU;
     uint32_t els_adc0b  = R_ELC->ELSR[ELC_PERIPHERAL_ADC0_B].HA & 0x1FFU;
+    uint32_t els_gpta   = R_ELC->ELSR[ELC_PERIPHERAL_GPT_A].HA & 0x1FFU;
     print("ELC live: ELCON="); printDec0((elcr >> 7) & 1U);
     print("  ADC0<-0x"); printHex2(els_adc0);
     print("  ADC0_B<-0x"); printHex2(els_adc0b);
-    print("  (want 5F/60)"); printCr();
+    print("  GPTA<-0x"); printHex2(els_gpta);
+    print("  (want 6F/60/2F)"); printCr();
 
     // Live P112 PFS peek — confirms it's genuinely plain GPIO (PMR=0), not
     // still claimed by a GPT peripheral from an earlier build.
