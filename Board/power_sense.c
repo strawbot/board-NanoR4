@@ -343,6 +343,12 @@ void power_cli_rwire_median(void) {   // ( n -- mohm )
 //     noise still occasionally pushes Vdrain at-or-above VIN, tripping
 //     rwire_mohm_at()'s own sanity guard despite clearing the Vsense
 //     floor.
+//   - Vdrain <= VIN/2 — same gap rwire_mohm_at()'s own vdrain>=vin guard
+//     leaves open: a sample caught mid-transition can have Vdrain well
+//     below VIN and still not be a real ON-phase reading. wire-sweep
+//     (Board/analog_test.c) hit the same thing; chart review of a full
+//     sweep showed Vdrain-above-half-VIN rows are exactly what breaks
+//     the otherwise-clean slope into the knee.
 //
 // Capped at a fixed number of total tries so a wire that's genuinely
 // never conducting (bad setpoint, nothing wired up) can't hang the CLI
@@ -373,6 +379,7 @@ void power_cli_rwire_on_median(void) {   // ( n -- mohm )
         attempts++;
         power_sense_group_t g = power_sense_read_group();
         if (g.vsense_mv <= RWIRE_ON_THRESHOLD_MV) continue;
+        if (g.vdrain_mv > g.vin_mv / 2U) continue;
         uint32_t mo = rwire_mohm_from(g.vin_mv, g.vdrain_mv, g.vsense_mv);
         if (mo != 0U) samples[got++] = mo;
     }

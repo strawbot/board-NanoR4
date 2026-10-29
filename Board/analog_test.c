@@ -712,18 +712,18 @@ void analog_test_cli_opamp0_sweep(void) {
 // characterizing a narrow transition once wire-sweep has located it, though
 // a 1mV/1500mV run is 1500 steps and gets slow if settle/samples are left
 // at the coarse defaults.
-#define WIRE_SWEEP_MV_MAX     1000U
+#define WIRE_SWEEP_MV_MAX     500U
 
 static uint32_t g_wire_sweep_settle_ms  = 500U;
 static uint32_t g_wire_sweep_sample_ms  = 20U;
 static uint32_t g_wire_sweep_samples    = 16U;
-static uint32_t g_wire_sweep_step_mv    = 50U;   // 21 points, 0-1000mV at the default
+static uint32_t g_wire_sweep_step_mv    = 50U;   // 11 points, 0-500mV at the default
 
 // wstep! — ( mv -- ) wire-sweep's setpoint increment. Runtime-settable
 // rather than the fixed 50mV it started as: a 1mV step with wsettle! at
 // 20ms and wsamples! at 1 reproduced the user's own bench recipe (manual
 // 1mV/20ms increments) that resolved the SMA phase-transition region far
-// better than the coarse 50mV sweep — at 1mV/1000mV that's 1000 steps, so
+// better than the coarse 50mV sweep — at 1mV/500mV that's 500 steps, so
 // pair a fine step with a short settle/sample-count or the sweep gets very
 // slow. No lower bound beyond >0: 1mV is the DAC's own practical floor.
 void analog_test_cli_wstep_set(void) {       // ( mv -- )
@@ -854,7 +854,15 @@ static void analog_test_wire_sweep_sample(void) {
     // rejected sample doesn't count against g_wire_sweep_i, so OFF-phase
     // reads never get to vote in the row's avg/min/max the way they used
     // to — no spreadsheet smoothing needed afterward to recover the shape.
-    if (vsense_mv > RWIRE_ON_THRESHOLD_MV && rwire != 0U) {
+    //
+    // vdrain_mv <= vin_mv/2 catches what rwire_mohm_at()'s own vdrain>=vin
+    // guard doesn't: a sample caught mid-transition (FET turning off, or a
+    // read straddling the switching edge) can have Vdrain sitting well
+    // below VIN yet still nowhere near a real ON-phase value — chart
+    // review of a full sweep (CSV, rows with Vsense all-zero or Vdrain
+    // above half of VIN manually dropped) showed those rows are exactly
+    // what breaks the otherwise-clean monotonic slope into the knee.
+    if (vsense_mv > RWIRE_ON_THRESHOLD_MV && vdrain_mv <= vin_mv / 2U && rwire != 0U) {
         g_wire_sweep_rwire_sum  += rwire;
         if (rwire < g_wire_sweep_rwire_min) g_wire_sweep_rwire_min = rwire;
         if (rwire > g_wire_sweep_rwire_max) g_wire_sweep_rwire_max = rwire;
