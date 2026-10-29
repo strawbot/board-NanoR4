@@ -445,10 +445,13 @@ void adc_sync_cli_status(void) {
     // actually clearing it every carrier cycle, not just sitting parked.
     uint32_t gpt3_gtcr  = g_adc_sync_cmp_delay_open ? R_GPT3->GTCR  : 0U;
     uint32_t gpt3_gtcnt = g_adc_sync_cmp_delay_open ? R_GPT3->GTCNT : 0U;
+    uint32_t gpt3_gtcsr = g_adc_sync_cmp_delay_open ? R_GPT3->GTCSR : 0U;
     print("GPT3 live: open err="); printDec0((unsigned) g_adc_sync_cmp_delay_err);
     print("  CST="); printDec0(gpt3_gtcr & 1U);
     print("  GTCNT="); printDec0(gpt3_gtcnt);
     print(" (0 or small if ACMPLP0 isn't toggling / isn't clearing it yet)"); printCr();
+    print("  GTCSR="); printHex2((gpt3_gtcsr >> 16) & 0xFFU);
+    print(" (bit16=CSELCA, want that bit set — 0x01 if R_GPT_Enable() actually landed clear_source, 0x00 if not)"); printCr();
 
     print("ELC: open err="); printDec0((unsigned) g_adc_sync_elc_err);
     print("  links: ADC0<-GPT3-compare-A(comparator-edge+delay)  ADC0_B<-GPT1-compare-B(half-step offset)  ELC_GPTA<-ACMPLP0_INT"); printCr();
