@@ -539,19 +539,35 @@ bool adc_sync_marker_ready(void) {
 // plain synchronous reader (power_sense.c's pstatus/vsense@/vdrain@, any
 // single-shot CLI read) that returns a value directly and so can't
 // reschedule itself through TEA the way analog_test.c's wire_sweep_sample
-// does. Busy-waits up to ~200us (comfortably more than one ~64us cycle's
-// worth of margin) for the marker to go high, then returns either way —
-// bounded the same way dma-watch's own tight loop is, not an unbounded
-// spin, and short enough not to be the "long-running action" the
-// cooperative-scheduler rule (TimbreOS/CLAUDE.md) is actually about. If
-// adc_sync_start() was never called (continuous-scan mode, no dac8-cmp
-// running), the marker just never toggles and the pin reads whatever
-// adc_sync_marker_init() last set it to — the timeout keeps that case a
-// cheap no-op instead of a silent hang.
+// does.
+//
+// Budget WAS ~200us ("comfortably more than one ~64us cycle's worth of
+// margin") from when group A retriggered every GPT1 overflow (~64us) no
+// matter what. That's wrong now that group A is comparator-edge-gated
+// (Board/analog_test.c's dac8-cmp carrier, see trig-status's own comment
+// above for the same correction): P112 only goes HIGH once per full
+// ~4.096ms triangle (RAMP_STEPS=64 steps of 64us each), not every 64us, so
+// the old 200us budget almost always expired before the next legitimate
+// trigger — bench-caught as pstatus reading 0 on 3 of 4 calls despite the
+// wire actively conducting. 4500us comfortably clears one full triangle
+// period with margin.
+//
+// This is a longer busy-spin than the project's cooperative-multitasking
+// rule (TimbreOS/CLAUDE.md) would want in a hot path, but every caller here
+// is an interactive, user-typed CLI word (pstatus, vsense@, rwire-med, …),
+// not part of the real-time muscle frame scheduler — a few ms blocked on a
+// one-off diagnostic read the user is actively waiting on anyway is a
+// different situation than blocking inside the scheduler's own loop.
+// Bounded the same way dma-watch's own tight loop is, not an unbounded
+// spin. If adc_sync_start() was never called (continuous-scan mode, no
+// dac8-cmp running), the marker just never toggles and the pin reads
+// whatever adc_sync_marker_init() last set it to — the timeout keeps that
+// case a cheap-ish no-op instead of a silent hang.
+#define ADC_SYNC_WAIT_READY_TIMEOUT_US 4500U
 void adc_sync_wait_ready(void) {
     uint32_t start = (uint32_t) sysTicks();
     while (!adc_sync_marker_ready()) {
-        if (((uint32_t) sysTicks() - start) > 48U * 200U) return;   // ~200us at 48MHz
+        if (((uint32_t) sysTicks() - start) > 48U * ADC_SYNC_WAIT_READY_TIMEOUT_US) return;
     }
 }
 
