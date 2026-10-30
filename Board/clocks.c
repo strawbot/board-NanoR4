@@ -14,7 +14,11 @@
 //
 //   tick_timer  — GPT0, 32-bit free-running uptime counter.
 //                 PCLKD/1024 @ 48 MHz (full chip speed) → 46.875 kHz →
-//                 ~21.3 µs/tick. Period = 0x7FFFFFFF (rollover ≈ 25 hours).
+//                 ~21.3 µs/tick. Period = 0xFFFFFFFF, the full 32-bit range
+//                 (rollover ≈ 25.5 days) — show_sys()'s uptime display
+//                 divides this straight down to seconds, so the hardware
+//                 counter's own width is what bounds how long an uptime
+//                 reading stays accurate.
 //                 Feeds get_ticks() for the TEA scheduler.
 //   delta_timer — GPT2, 16-bit one-shot alarm used by set_delta_alarm().
 //                 PCLKD/1024 @ 48 MHz, same ~21.3 µs tick units.
@@ -182,8 +186,8 @@ void init_clocks(void) {
     static timer_cfg_t tick_cfg;
     tick_cfg = tick_timer_cfg;
     tick_cfg.source_div        = (timer_source_div_t)10;   /* /1024 */
-    tick_cfg.period_counts     = 0x7FFFFFFFu;
-    tick_cfg.duty_cycle_counts = 0x3FFFFFFFu;
+    tick_cfg.period_counts     = 0xFFFFFFFFu;   /* full 32-bit range */
+    tick_cfg.duty_cycle_counts = 0x7FFFFFFFu;
     R_GPT_Open  (&tick_timer_ctrl, &tick_cfg);
     R_GPT_Start (&tick_timer_ctrl);
 

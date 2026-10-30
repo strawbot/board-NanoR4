@@ -36,7 +36,11 @@ void show_sys(void) {
     print("SYSCLK:  "); printDec(CLOCK_MHZ);   print(" MHz"); printCr();
     print("ICLK:    "); printDec(CLOCK_MHZ);   print(" MHz"); printCr();
     print("PCLKD:   "); printDec(CLOCK_MHZ);   print(" MHz"); printCr();
-    print("uptime:  "); printDec(get_ticks()); print(" ticks (100 us)"); printCr();
+    // print_uptime() (TimbreOS/clocks.c) formats get_ticks()/ONE_SECOND as
+    // s/min/hr/days — board-agnostic, since GPT0's free-running counter
+    // (see clocks.c) is what every board's get_ticks() backs. Accuracy is
+    // bounded by GPT0's own period before it wraps (~25.5 days here).
+    print("uptime:  "); print_uptime(); printCr();
     show_timer();
 
     print("\nstack:   ");
