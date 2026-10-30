@@ -275,20 +275,33 @@ static void sort_u32(uint32_t *a, uint8_t n) {
 // everything else noisy, no special-case zero detection needed.
 //
 // Bench-caught the hard way: calling rwire_read_mohm() back-to-back in a
-// tight loop (no delay) runs far faster than the ~64-68us group A cycle,
-// so sample 2+ can land in the SAME window sample 1 already read-and-
-// cleared via ADC_CLEAR_AFTER_READ_ON. power_sense_read_group()'s marker
-// check only proves "this window's data hasn't been consumed yet" — it
-// has no way to know an earlier call in this same loop already consumed
-// it microseconds ago. Result: one real sample followed by several
-// zeros, often enough of them that the MEDIAN itself comes out 0 (seen
-// on the bench: three straight `7 rwire-med .` calls returning 0 while
-// pstatus, paced by human typing and so naturally landing in different
-// cycles, kept showing ~650 mOhm the whole time). Fix is a floor on the
-// gap between samples, comfortably over one cycle, so each one is
-// guaranteed to land in a cycle none of this batch has touched yet.
+// tight loop (no delay) runs far faster than group A's own retrigger
+// cycle, so sample 2+ can land in the SAME window sample 1 already read-
+// and-cleared via ADC_CLEAR_AFTER_READ_ON. power_sense_read_group()'s
+// marker check only proves "this window's data hasn't been consumed
+// yet" — it has no way to know an earlier call in this same loop already
+// consumed it microseconds ago. Result: one real sample followed by
+// several zeros, often enough of them that the MEDIAN itself comes out 0
+// (seen on the bench: three straight `7 rwire-med .` calls returning 0
+// while pstatus, paced by human typing and so naturally landing in
+// different cycles, kept showing ~650 mOhm the whole time). Fix is a
+// floor on the gap between samples, comfortably over one cycle, so each
+// one is guaranteed to land in a cycle none of this batch has touched
+// yet.
+//
+// Gap WAS 80us, sized against group A retriggering every GPT1 overflow
+// (~64-68us) no matter what. Wrong now that group A is comparator-edge-
+// gated (Board/adc_sync.c, dac8-cmp's carrier): P112 only goes HIGH once
+// per full ~4.096ms triangle (RAMP_STEPS=64 steps of 64us each), so 80us
+// between samples almost always lands back in the SAME window instead of
+// a fresh one — the exact bug this gap exists to prevent, just no longer
+// prevented by it. 4500us (same margin as adc_sync.c's own
+// ADC_SYNC_WAIT_READY_TIMEOUT_US, same correction) comfortably clears one
+// full triangle period. Worst case this stretches rwire-on-med's bounded
+// retry loop (RWIRE_ON_MEDIAN_MAX_ATTEMPTS below) to ~1.4s — still a
+// bounded, interactive CLI wait, not a hang.
 #define RWIRE_MEDIAN_MAX_N 31U
-#define RWIRE_MEDIAN_SAMPLE_GAP_US 80U
+#define RWIRE_MEDIAN_SAMPLE_GAP_US 4500U
 
 void power_cli_rwire_median(void) {   // ( n -- mohm )
     Cell v = ret();
