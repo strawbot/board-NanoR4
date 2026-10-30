@@ -89,7 +89,10 @@ arrives and the directory changes only when the last byte is in, so a dropped
 connection or a power loss leaves the old file intact; a stalled upload is
 dropped after 10-15 s. Because of that, replacing a file needs room for old and
 new together (507 otherwise: delete the old one first). While an upload is open
-the CLI's own file changes (`echo`, `rm`...) answer "busy". The routes are in
+the CLI's own file changes (`echo`, `rm`...) answer "busy". When the new file fits only after the
+log is compacted (space held by deleted or replaced files), the upload answers `503` with
+`Retry-After: 1` and the board compacts in the main loop; ask again (the page retries 5 times,
+`curl --retry 5` does the same). A file that cannot fit even compacted gets 507 at once. The routes are in
 `Robot/net/web/robot_files.c`, built on `Robot/net/http`'s stream routes and
 `fs_write_*` in `Robot/storage/fs`; host tests: `Robot/storage/fs/test/`.
 

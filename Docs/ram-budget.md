@@ -69,9 +69,11 @@ capacity), `.data` (nothing constant).
   that calls lwIP, the file system or `printf`-style output must run from the scheduler, never
   from `in()`. (`calib_step`, wirecal and the ADC trackers also use `in()`; `calib_step` does file
   system work at interrupt level and should move to `after()`.)
-- **Stack depth is dominated by one path:** `usb_action -> tud_task -> NCM receive -> lwIP -> http_recv
-  -> put_begin -> fs_write_begin -> compact -> flash erase`, with a timer interrupt on top. Doing the
-  compaction from an action instead of from inside the network callback would cut the worst case by
-  several hundred bytes.
+- **Stack depth was dominated by one path:** `usb_action -> tud_task -> NCM receive -> lwIP -> http_recv
+  -> put_begin -> fs_write_begin -> compact -> flash erase`, with a timer interrupt on top (`compact()`
+  alone keeps ~550 B of arrays). Fixed 2026-10-30: `put_begin` asks `fs_write_room()` and, when the
+  upload fits only after compaction, answers `503 Retry-After: 1` and runs `fs_compact()` from an
+  `after()` action. After 50 compacting upload/delete cycles the high-water mark was 968 B (it was
+  1,280 - 1,944 B under the earlier floods; a like-for-like flood has not been re-run).
 - A GDB data watchpoint must be disarmed before leaving the chip: it stays armed in the DWT after
   the session ends, and with no debugger attached the match raises a fault.
