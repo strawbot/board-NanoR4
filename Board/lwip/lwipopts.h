@@ -33,6 +33,7 @@
 #define LWIP_SOCKET                 0
 #define LWIP_STATS                  0
 #define LWIP_NETIF_LINK_CALLBACK    1
+#define ARP_TABLE_SIZE              4       // a point-to-point link: the host plus a spare (default 10)
 #define IP_REASSEMBLY               0
 #define IP_FRAG                     0
 #define ETH_PAD_SIZE                0

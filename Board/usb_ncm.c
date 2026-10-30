@@ -120,6 +120,8 @@ const char *usb_ncm_mac_string(void) {
 uint32_t sys_now(void) { return (uint32_t)getTime(); }
 
 // Run whatever lwIP timers are due, then sleep until the next one is.
+// lwIP is not reentrant: everything that calls it (this, tud_task via usb_action, the HTTP and
+// telnet servers) runs from the scheduler's action queue, never from an interrupt.
 static void ncm_service(void) {
     sys_check_timeouts();
     if (rx_stalled) {                                   // a pbuf may be free again
@@ -129,7 +131,8 @@ static void ncm_service(void) {
     uint32_t wait = sys_timeouts_sleeptime();
     if (wait > LWIP_TICK_MAX_MS) wait = LWIP_TICK_MAX_MS;
     if (wait < 1) wait = 1;
-    in(msec(wait), ncm_service);
+    after(msec(wait), ncm_service);   // after(), not in(): in() runs the action inside the timer interrupt,
+                                      // and lwIP's raw API must only ever be entered from the main loop
 }
 
 // ── Frames: lwIP -> USB ──────────────────────────────────────────────────────

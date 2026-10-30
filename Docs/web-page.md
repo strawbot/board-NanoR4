@@ -23,13 +23,13 @@ is also how to see tilt before an IMU is bound.
 | env | adds | flash | RAM |
 |---|---|---|---|
 | `nano_r4` | | 107 KB | 17.0 KB |
-| `nano_r4_web` | NCM function, lwIP, DHCP, HTTP, telnet, page, file transfer | 154 KB | 29.95 KB |
+| `nano_r4_web` | NCM function, lwIP, DHCP, HTTP, telnet, page, file transfer | 166 KB | 30.9 KB |
 
 Two boards on one computer need different subnets or their interfaces clash:
 build the second with `PLATFORMIO_BUILD_FLAGS="-D NCM_SUBNET=8" pio run -e nano_r4_web`
 (the board is then 192.168.8.1; `ncm` shows the address). The default stays 7.
 
-RAM is tight (about 2.8 KB free): lwIP, the NCM buffers and the HTTP
+RAM is tight (about 1.9 KB free; measured peaks and what could still be trimmed are in `Docs/ram-budget.md`): lwIP, the NCM buffers and the HTTP
 connections are all sized in `Board/lwip/lwipopts.h`, `Board/tusb_config.h`
 and `platformio.ini` (`HTTP_MAX_CONNECTIONS`, `HTTP_REQ_BUF_SIZE`).
 
