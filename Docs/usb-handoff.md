@@ -284,12 +284,34 @@ each time 78–81 ISR entries, 20–23 re-passes, 0 give-ups, `poll off`, 0
 fallbacks. This is also the case where the board never sees a VBUS-change
 interrupt (VBUS is already present at start).
 
-*Observation, not a failure:* the board's uptime at the first answer was ~9 s
-on every cold boot, i.e. the node appeared ~8 s after the app started, versus
-under ~2.5 s after a software reset (soak) or DFU handoff. Not yet explained —
-candidates: slow work in `hal_entry` before `usb_transport_init()` on a cold
-start, the host's own attach delay, or the bootloader. Worth measuring (UART
-banner time vs node-appear time) if boot-to-USB latency ever matters.
+*Observation, retracted (2026-10-30):* this test reported the board's uptime at the first
+answer as ~9 s, "i.e. the node appeared ~8 s after the app started". That was a unit
+error. `show-sys` printed its tick count labelled "(100 us)", but the tick is 1/46875 s
+(21.3 us), and the harness divided by 10,000. The real uptime was ~1.9 s, which with the
+~1.1 s the harness spent before probing puts the node ~0.8 s after app start: no delay.
+`show-sys` now prints seconds. A J-Link capture settled it (next section).
+
+**Cold power-on, measured with a J-Link (2026-10-30, 7DB board, current `nano_r4`).**
+`USBFS` registers and the firmware's USB variables were sampled ~1,500 times a second
+without halting the CPU, with the board's USB cable pulled and replugged (USB as the only
+supply). Times are seconds after the app's first instruction (`.bss` cleared):
+
+| event | cold power-on | warm J-Link reset |
+|---|---|---|
+| bootloader, from first debugger read to app start | 0.50 (before) | 0.53 (before) |
+| USB pull-up on (`DPRPU`) | +0.078 | +0.078 |
+| host bus reset done | +0.217 | +0.235 |
+| address assigned | +0.258 | +0.277 |
+| configured (`DVSQ`=3) | +0.272 | +0.287 |
+| Mac lists the device | +0.281 | n/a |
+| serial node on the Mac | +0.556 | +0.527 |
+
+So cold and warm starts are the same: about half a second of bootloader, then USB is up
+0.08 s into the app and a serial node ~0.55 s into it. `usb_init_tick` reads 0xDFF
+(76 ms after the tick timer starts) on both, so `hal_entry` is not slow before USB init.
+Nothing here depends on how the board is started. One cold cycle was captured with the
+debugger running; the earlier six cold cycles (harness above) are consistent with it
+once the uptime unit is corrected.
 
 **Still to do:** a run under the web-page/NCM streaming load (the poll is already
 gone, so any problem there is a real one).
