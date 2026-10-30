@@ -313,6 +313,18 @@ Nothing here depends on how the board is started. One cold cycle was captured wi
 debugger running; the earlier six cold cycles (harness above) are consistent with it
 once the uptime unit is corrected.
 
+**Open watch item: USB serial output lost right after the port opens (2026-10-30).** On
+the web build, a command sent within ~0.5 s of opening the serial port could lose the first
+few characters of its output (about a third of runs at 0.1 s, none at 1.5 s or more, seen
+only on the board that also has a UART), and once the output side of the port went dead
+for minutes while input still worked (the Mac logged `abortGated ... endpoint 0x82` pipe
+aborts). None of this reproduced afterwards: >250 runs across both boards with `usbtrace`
+present and removed, after UART and telnet sessions, under 60-cycle open/close stress,
+with the CDC IN data toggle (`SQMON`) read before every open (it alternates 0/1 and the
+output was intact either way, so a toggle desync is ruled out). If it recurs, read pipe 4
+(`PIPE_CTR[3]`, 0x40090076) and `_cdcd_itf`'s TX FIFO with the J-Link while it is stuck.
+Cause unknown; do not treat as fixed.
+
 **Still to do:** a run under the web-page/NCM streaming load (the poll is already
 gone, so any problem there is a real one).
 

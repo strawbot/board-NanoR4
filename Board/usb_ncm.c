@@ -43,6 +43,13 @@ void usb_ncm_cli_show(void) {
 #include "telnet_server.h"
 
 #define INIT_IP4(a, b, c, d)  { PP_HTONL(LWIP_MAKEU32(a, b, c, d)) }
+
+// Third octet of the link's 192.168.N.0/24 network. Two boards on one computer
+// need different values or their interfaces clash: build one with
+// -D NCM_SUBNET=8 (PLATFORMIO_BUILD_FLAGS works too). Default 7.
+#ifndef NCM_SUBNET
+#define NCM_SUBNET 7
+#endif
 #define LWIP_TICK_MAX_MS      250       // longest we sleep between lwIP timer checks
 
 // ── Addresses ────────────────────────────────────────────────────────────────
@@ -53,14 +60,14 @@ void usb_ncm_cli_show(void) {
 // usb_ncm_mac_string(), so that function fills it too.
 uint8_t tud_network_mac_address[6];
 
-static const ip4_addr_t ipaddr  = INIT_IP4(192, 168, 7, 1);
+static const ip4_addr_t ipaddr  = INIT_IP4(192, 168, NCM_SUBNET, 1);
 static const ip4_addr_t netmask = INIT_IP4(255, 255, 255, 0);
 static const ip4_addr_t gateway = INIT_IP4(0, 0, 0, 0);
 
 // Leases offered to the host. Needs to be RAM: the server records MACs here.
 static dhcp_entry_t dhcp_entries[] = {
-    { {0}, INIT_IP4(192, 168, 7, 2), 24 * 60 * 60 },
-    { {0}, INIT_IP4(192, 168, 7, 3), 24 * 60 * 60 },
+    { {0}, INIT_IP4(192, 168, NCM_SUBNET, 2), 24 * 60 * 60 },
+    { {0}, INIT_IP4(192, 168, NCM_SUBNET, 3), 24 * 60 * 60 },
 };
 
 // No router and no DNS: the host keeps its internet route on its other
@@ -222,7 +229,7 @@ void usb_ncm_cli_show(void) {
     http_server_stats(&active, &idle);
 
     print("ncm mac "); print(usb_ncm_mac_string());
-    print("  ip 192.168.7.1  usb "); print(tud_ready() ? "ready" : "not ready");
+    print("  ip 192.168."); printDec(NCM_SUBNET); print(".1  usb "); print(tud_ready() ? "ready" : "not ready");
     print("  link "); print(netif_is_link_up(&ncm_netif) ? "up" : "down"); printCr();
     print("rx "); printDec(rx_frames); print(" (no-buf "); printDec(rx_nobuf);
     print(")  tx "); printDec(tx_frames); print(" (refused "); printDec(tx_refused);
