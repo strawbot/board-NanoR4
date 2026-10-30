@@ -3,7 +3,7 @@
 // where usb_init.c itself provides the real implementations).
 //
 // boardwords.txt is shared between both environments, so the generated
-// wordlist.c always references usbisr/usbinit/usbcrash/usbtrace
+// wordlist.c always references usbisr/usbinit/usbcrash
 // regardless of which USB stack is actually built in. usb_init.c (and its
 // TinyUSB dependency) is excluded from this environment entirely — see
 // Docs/usb-handoff.md, "Native stack smoke test" — so these words need
@@ -20,7 +20,6 @@ static void usb_init_stub_message(void) {
 void usb_cli_isr_count(void)     { usb_init_stub_message(); }
 void usb_cli_init_status(void)   { usb_init_stub_message(); }
 void usb_cli_crash_snapshot(void) { usb_init_stub_message(); }
-void usb_cli_trace_dump(void)    { usb_init_stub_message(); }
 
 // The `dfu` CLI word (boardwords.txt) maps directly to this name, which is
 // normally TinyUSB's DFU Runtime host-triggered callback (usb_init.c). Kept

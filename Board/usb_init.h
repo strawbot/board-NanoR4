@@ -20,16 +20,4 @@ void usb_cli_init_status(void);
 // power cycle (VBATT backup registers). See Docs/usb-handoff.md.
 void usb_cli_crash_snapshot(void);
 
-// usb_trace_init/usb_trace — append-only checkpoint log for the
-// SET_ADDRESS/enumeration stall investigation, called from patched
-// checkpoints in the tinyusb submodule. usb_trace_init() resets the log
-// for a fresh boot; usb_trace() appends one entry. See Docs/usb-handoff.md.
-void usb_trace_init(void);
-void usb_trace(uint32_t checkpoint_id, uint32_t extra);
-
-// CLI word `usbtrace` — dump the checkpoint log captured by usb_trace().
-// See Docs/usb-handoff.md.
-void usb_cli_trace_dump(void);
-
-
 #endif // USB_INIT_H

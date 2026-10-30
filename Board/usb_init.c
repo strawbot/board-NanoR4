@@ -53,80 +53,6 @@
 
 #define VBT_WORD(off)     (*(volatile uint32_t *) &R_SYSTEM->VBTBKR[(off)])
 
-// ── usb_trace — append-only checkpoint log for the SET_ADDRESS/enumeration
-// stall investigation. Live debugging (J-Link and, before it, an OpenOCD/
-// ST-Link setup) consumed enormous effort without ever reliably working
-// (breakpoints reported success but never actually programmed into
-// silicon on the OpenOCD path; the J-Link path lost the session
-// entirely) -- see Docs/usb-handoff.md's "Debugging setup" section. This
-// is the same VBATT-survives-a-hang approach that already found the ICU
-// interrupt-storm bug, applied to a specific question: does execution
-// reach TinyUSB's SET_ADDRESS handling, does the synthetic setup event it
-// generates get processed cleanly, and does the host ever send anything
-// at all afterward? Called from board-patched checkpoints in
-// tinyusb/src/portable/renesas/rusb2/dcd_rusb2.c and
-// tinyusb/src/device/usbd.c (both hand-patched, same "flag it clearly"
-// precedent as the RUSB2 spin-loop and IELSR fixes already in
-// dcd_rusb2.c). Offsets: fault.c uses 4-27, usb_isr_snapshot 32-52,
-// bsp_group_irq.c's NMI fallback 56-143; this uses 144+.
-
-#define USB_TRACE_MARKER  0xACE00042UL
-#define USB_TRACE_BASE    152U
-#define USB_TRACE_SLOTS   16U
-
-void usb_trace_init(void) {
-    R_SYSTEM->PRCR   = PRCR_PRC1_UNLOCK;
-    R_SYSTEM->VBTBER = VBTBER_VBAE;
-    VBT_WORD(144) = USB_TRACE_MARKER;
-    VBT_WORD(148) = 0;
-    R_SYSTEM->PRCR = PRCR_LOCK;
-}
-
-void usb_trace(uint32_t checkpoint_id, uint32_t extra) {
-    R_SYSTEM->PRCR   = PRCR_PRC1_UNLOCK;
-    R_SYSTEM->VBTBER = VBTBER_VBAE;
-
-    uint32_t idx = VBT_WORD(148);
-    if (idx < USB_TRACE_SLOTS) {
-        VBT_WORD(USB_TRACE_BASE + idx * 8U)       = checkpoint_id;
-        VBT_WORD(USB_TRACE_BASE + idx * 8U + 4U)  = extra;
-        VBT_WORD(148) = idx + 1U;
-    }
-
-    R_SYSTEM->PRCR = PRCR_LOCK;
-}
-
-// Checkpoint IDs, referenced from the patched TinyUSB files:
-//   0 = dcd_int_handler() entered -- EVERY ISR dispatch, extra = raw
-//       INTSTS0 before any clearing (dcd_rusb2.c)
-//   1 = process_set_address() entered (dcd_rusb2.c), extra = new address
-//   2 = process_set_address()'s synthetic dcd_event_setup_received() about
-//       to fire (dcd_rusb2.c)
-//   3 = process_setup_packet() entered -- a REAL host SETUP arrived
-//       (dcd_rusb2.c), extra = 0
-//   4 = usbd.c's DCD_EVENT_SETUP_RECEIVED handling, extra =
-//       _usbd_queued_setup at that point (tests the TU_ASSERT theory in
-//       Docs/usb-handoff.md's "Open issue" section directly)
-//   5 = process_control_request()'s dispatch switch (usbd.c), extra =
-//       bRequest -- which standard requests actually get this far
-
-void usb_cli_trace_dump(void) {
-    if (VBT_WORD(144) != USB_TRACE_MARKER) {
-        print("no trace captured since last power-up"); printCr();
-        return;
-    }
-    uint32_t count = VBT_WORD(148);
-    if (count > USB_TRACE_SLOTS) count = USB_TRACE_SLOTS;
-    print("usb_trace: "); printDec((Long) count); print(" entries"); printCr();
-    for (uint32_t i = 0; i < count; i++) {
-        print("  [");   printDec((Long) i); print("] checkpoint=");
-        printDec((Long) VBT_WORD(USB_TRACE_BASE + i * 8U));
-        print(" extra=0x");
-        printHex((Long) VBT_WORD(USB_TRACE_BASE + i * 8U + 4U));
-        printCr();
-    }
-}
-
 // ── USBFS interrupt handler ───────────────────────────────────────────────────
 //
 // Declared in ra_gen/vector_data.h and registered in the g_vector_table at
@@ -596,8 +522,6 @@ void usb_transport_init(void) {
     R_SYSTEM->VBTBER = VBTBER_VBAE;
     VBT_WORD(48)     = 0;
     R_SYSTEM->PRCR   = PRCR_LOCK;
-
-    usb_trace_init();               // fresh checkpoint log for this boot
 
     usb_hw_reset();                // must precede tusb_init()
     usb_init_tick = get_ticks();   // baseline for DFU_MIN_ELAPSED guard

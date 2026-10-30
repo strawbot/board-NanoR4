@@ -744,6 +744,15 @@ it if this FSP version ever gets upgraded.
 | `usbinit` | Whether `tusb_init()` reported success, and `INTENB0` immediately after it returned (catches a silent `TU_ASSERT` bail-out before `dcd_init()`, given `CFG_TUSB_DEBUG` is 0 and nothing gets logged either way). |
 | `usbcrash` | Survives a hang + power cycle via VBATT backup registers: ISR count / `INTSTS0:INTENB0` / `emitq` depth, captured every 256th ISR entry plus once on the very first entry (separate slot — the one-shot write has no settling delay before the VBATT domain's slow clock commits it, so it can silently fail to retain; the periodic one gets many chances to stick). Was essential before a debugger was available; now mostly superseded by live breakpoints for anything the debugger can reach. |
 
+**Retired (2026-10-30): `usbtrace`.** It logged six checkpoints (ISR entry, SET_ADDRESS,
+SETUP received, request dispatch) into VBATT backup registers 144+ from patches in
+`tinyusb`'s `dcd_rusb2.c` and `usbd.c`. It existed because live debugging was
+unreliable; a J-Link now reads the `USBFS` registers and firmware state live without
+halting (see "Cold power-on, measured with a J-Link"). The VBATT writes also ran on every
+interrupt entry, so removing them is a small timing change. `usbd.c` is back to
+identical-with-upstream; `dcd_rusb2.c` keeps only the real fixes (bounded spins, the
+SET_ADDRESS handling, the IELSR re-check). VBATT words 144 and up are free again.
+
 `fault.c`'s existing diagnostics (below) are unrelated to USB but were used
 to rule out a hardware fault as the storm's cause.
 

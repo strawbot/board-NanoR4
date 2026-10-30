@@ -47,7 +47,6 @@ Words // system
 	usbisr usb_cli_isr_count // print how many times usbfs_int_isr has fired — see Docs/usb-handoff.md
 	usbinit usb_cli_init_status // print whether tusb_init() succeeded and INTENB0 right after it returned
 	usbcrash usb_cli_crash_snapshot // print ISR count/INTSTS0:INTENB0/emitq depth captured before the last hang, if any
-	usbtrace usb_cli_trace_dump // dump the SET_ADDRESS/enumeration checkpoint log
 	ncm usb_ncm_cli_show // IP-over-USB web page: link state, addresses, frame counters, HTTP connections
 	nusbisr usb_native_cli_isr_count // native-stack smoke test: how many times usbfs_interrupt_handler has fired
 	nusbevt usb_native_cli_event_count // native-stack smoke test: app-callback fire count and last usb_status_t event
