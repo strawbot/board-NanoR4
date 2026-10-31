@@ -60,8 +60,11 @@ revert the merge.
 * Parallel floods (`/model`, downloads, uploads that compact, events, UART `help`):
   3 mixes, no hang, stack peak 1,244 of 2,048 bytes; `help` identical on UART and CDC.
 * Cold unplug / replug of the USB cable: all attempts came back (final state checked).
-* Idle soak (page polled every 30 s): **in progress**; update this section with the
-  result. The two earlier idle hangs on board 82C came after many hours.
+* Idle soak (page polled every 30 s, no gap): board 7DB ran 10 h+ (02:20 - 12:25 on
+  2026-10-31) and board 82C 8 h+ (from 03:46) without a stop. 82C had hung at idle
+  three times on the patched 0.20.0 tree (<= 10 h, <= 7 h, 178 min; the last two
+  already had the accept fix), so this supports the update curing it. It is not
+  proof: treat a recurrence as a new bug and halt the board with a debugger.
 
 ## Notes
 
