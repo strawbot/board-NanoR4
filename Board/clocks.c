@@ -132,8 +132,23 @@ Long get_ticks(void) {
 static inline void led_on (void) { R_IOPORT_PinWrite(&g_ioport_ctrl, LED_PIN, BSP_IO_LEVEL_HIGH); }
 static inline void led_off(void) { R_IOPORT_PinWrite(&g_ioport_ctrl, LED_PIN, BSP_IO_LEVEL_LOW);  }
 
+// `whoami` asks for a fast flash in place of the heartbeat for a few seconds, so
+// one of several identical boards can be picked out by eye. blink_leds() stays
+// the only code that touches the LED; it counts these 100 ms steps down.
+#define IDENTIFY_STEP_MS 100
+static volatile Long identify_steps;
+
+void blink_identify(Long seconds) {
+    identify_steps = seconds * (1000 / IDENTIFY_STEP_MS);   // even, so the last step is "off"
+}
+
 void blink_leds(void) {
     Long t;
+    if (identify_steps) {
+        if (--identify_steps & 1) led_on(); else led_off();
+        in(msec(IDENTIFY_STEP_MS), blink_leds);
+        return;
+    }
     static enum { GREEN1, SPACE1, GREEN2, SPACE2 } color = SPACE2;
     switch (color) {
     case GREEN1: led_on();  color = SPACE1; t = ON_TIME;       break;

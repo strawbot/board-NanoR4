@@ -23,6 +23,7 @@ void micro_sleep(void);
 void init_clocks(void);
 void show_timer(void);
 void blink_leds(void);
+void blink_identify(Long seconds);   // flash the LED fast for a while instead of the heartbeat
 void print_build_banner(void);
 void set_utc(Long utc);
 Long tick_get_utc(void);

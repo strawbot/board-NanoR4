@@ -339,8 +339,9 @@ drops erratically again, check for NULL/unopened FSP handles first.
 The USB serial string was the constant `"ActiveRobot"`, so two boards had
 identical VID/PID/serial and macOS showed only one of them. It is now
 `"ActiveRobot"` + 3 hex digits hashed from the RA4M1's factory-unique 128-bit
-ID (`usb_serial_string()` in `Board/usb_init.c`, `R_BSP_UniqueIdGet()`), e.g.
-`ActiveRobot82C`.
+ID (`board_serial()` in `Board/board_id.c`, `R_BSP_UniqueIdGet()`), e.g.
+`ActiveRobot82C`. The CLI word `whoami` prints it and flashes the LED fast for 10 s
+(then the heartbeat resumes), to match a label to a board by sight.
 
 The **length matters** because macOS builds the CDC node name from the serial
 (`/dev/cu.usbmodem<serial><interface>`), which makes the right port easy to
