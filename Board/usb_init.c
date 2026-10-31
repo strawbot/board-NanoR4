@@ -669,8 +669,11 @@ static const uint8_t config_desc[] = {
     TUD_DFU_RT_DESCRIPTOR(0, STRID_DFU, 0x0D, 1000, 4096),
     TUD_CDC_DESCRIPTOR(1, STRID_CDC, EP_CDC_NOTIF, 8, EP_CDC_OUT, EP_CDC_IN, 64),
 #ifdef WITH_USB_NCM
+    // Last argument: Apple's workaround for macOS dropping the data interface (alt 0) right
+    // after enabling it (Apple Developer Forums thread 824727): declare SetEthernetPacketFilter
+    // support. TinyUSB handles the request (tud_network_set_packet_filter_cb, weak).
     TUD_CDC_NCM_DESCRIPTOR(3, STRID_NCM, STRID_MAC, EP_NCM_NOTIF, 64, EP_NCM_OUT, EP_NCM_IN,
-                           CFG_TUD_NET_ENDPOINT_SIZE, CFG_TUD_NET_MTU),
+                           64, CFG_TUD_NET_MTU, 50, NCM_NETWORK_CAPS_ETH_FILTER),
 #endif
 };
 

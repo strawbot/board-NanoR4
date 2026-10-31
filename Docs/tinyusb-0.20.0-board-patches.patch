@@ -1,0 +1,170 @@
+diff --git a/src/device/usbd.h b/src/device/usbd.h
+index c446638c3..e0beea56f 100644
+--- a/src/device/usbd.h
++++ b/src/device/usbd.h
+@@ -983,6 +983,13 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
+ // CDC-NCM Descriptor Templates
+ //--------------------------------------------------------------------+
+ 
++// Board patch (not upstream): bmNetworkCapabilities of the NCM functional descriptor. Bit 0 (the
++// device accepts SetEthernetPacketFilter) is Apple's workaround for a macOS bug that answers
++// SET_INTERFACE alt 1 with alt 0 about half the time, leaving the link inactive.
++#ifndef CFG_TUD_NCM_NETWORK_CAPABILITIES
++#define CFG_TUD_NCM_NETWORK_CAPABILITIES 0
++#endif
++
+ // Length of template descriptor
+ #define TUD_CDC_NCM_DESC_LEN  (8+9+5+5+13+6+7+9+9+7+7)
+ 
+@@ -1000,7 +1007,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
+   /* CDC-NCM Functional Descriptor */\
+   13, TUSB_DESC_CS_INTERFACE, CDC_FUNC_DESC_ETHERNET_NETWORKING, _mac_stridx, 0, 0, 0, 0, U16_TO_U8S_LE(_maxsegmentsize), U16_TO_U8S_LE(0), 0, \
+   /* CDC-NCM Functional Descriptor */\
+-  6, TUSB_DESC_CS_INTERFACE, CDC_FUNC_DESC_NCM, U16_TO_U8S_LE(0x0100), 0, \
++  6, TUSB_DESC_CS_INTERFACE, CDC_FUNC_DESC_NCM, U16_TO_U8S_LE(0x0100), CFG_TUD_NCM_NETWORK_CAPABILITIES, \
+   /* Endpoint Notification */\
+   7, TUSB_DESC_ENDPOINT, _ep_notif, TUSB_XFER_INTERRUPT, U16_TO_U8S_LE(_ep_notif_size), 50,\
+   /* CDC Data Interface (default inactive) */\
+diff --git a/src/portable/renesas/rusb2/dcd_rusb2.c b/src/portable/renesas/rusb2/dcd_rusb2.c
+index 2cc79aa74..c5f254bdc 100644
+--- a/src/portable/renesas/rusb2/dcd_rusb2.c
++++ b/src/portable/renesas/rusb2/dcd_rusb2.c
+@@ -155,9 +155,24 @@ static uint16_t edpt_max_packet_size(rusb2_reg_t *rusb, unsigned num) {
+   return rusb->PIPEMAXP;
+ }
+ 
++// Board patch (not upstream TinyUSB): every register-readback spin below was
++// unbounded. All of them are reachable synchronously from dcd_int_handler()
++// (ISR context) via process_bus_reset()/pipe_xfer_in()/pipe_xfer_out() on a
++// real bus reset or data-stage transfer -- exactly what happens the moment a
++// host starts enumerating. If the hardware condition being polled for ever
++// fails to assert (observed: total board freeze, no other code runs at all,
++// specifically during the DFU-bootloader-to-app handoff -- see
++// Docs/usb-handoff.md on board-NanoR4), the CPU spins forever inside the ISR
++// with everything else starved, indistinguishable from a hang. Bounded so a
++// bad transfer can't take the whole board down; on the normal/fast path this
++// changes nothing.
++#define RUSB2_SPIN_TIMEOUT 100000u
++
+ static inline void pipe_wait_for_ready(rusb2_reg_t * rusb, unsigned num) {
+-  while ( rusb->D0FIFOSEL_b.CURPIPE != num ) {}
+-  while ( !rusb->D0FIFOCTR_b.FRDY ) {}
++  uint32_t to = RUSB2_SPIN_TIMEOUT;
++  while ( rusb->D0FIFOSEL_b.CURPIPE != num && --to ) {}
++  to = RUSB2_SPIN_TIMEOUT;
++  while ( !rusb->D0FIFOCTR_b.FRDY && --to ) {}
+ }
+ 
+ //--------------------------------------------------------------------+
+@@ -341,7 +356,7 @@ static bool pipe_xfer_in(rusb2_reg_t* rusb, unsigned num)
+   }
+ 
+   rusb->D0FIFOSEL = 0;
+-  while (rusb->D0FIFOSEL_b.CURPIPE) {} /* if CURPIPE bits changes, check written value */
++  { uint32_t to = RUSB2_SPIN_TIMEOUT; while (rusb->D0FIFOSEL_b.CURPIPE && --to) {} } /* if CURPIPE bits changes, check written value */
+ 
+   pipe->remaining = rem - len;
+ 
+@@ -375,7 +390,7 @@ static bool pipe_xfer_out(rusb2_reg_t* rusb, unsigned num)
+   }
+ 
+   rusb->D0FIFOSEL = 0;
+-  while (rusb->D0FIFOSEL_b.CURPIPE) {} /* if CURPIPE bits changes, check written value */
++  { uint32_t to = RUSB2_SPIN_TIMEOUT; while (rusb->D0FIFOSEL_b.CURPIPE && --to) {} } /* if CURPIPE bits changes, check written value */
+ 
+   pipe->remaining = rem - len;
+   if ((len < mps) || (rem == len)) {
+@@ -426,11 +441,11 @@ static bool process_pipe0_xfer(rusb2_reg_t* rusb, int buffer_type, uint8_t ep_ad
+     /* IN, 2 bytes */
+     rusb->CFIFOSEL = RUSB2_CFIFOSEL_ISEL_WRITE | RUSB2_FIFOSEL_MBW_16BIT |
+                      (TU_BYTE_ORDER == TU_BIG_ENDIAN ? RUSB2_FIFOSEL_BIGEND : 0);
+-    while ( !(rusb->CFIFOSEL & RUSB2_CFIFOSEL_ISEL_WRITE) ) {}
++    { uint32_t to = RUSB2_SPIN_TIMEOUT; while ( !(rusb->CFIFOSEL & RUSB2_CFIFOSEL_ISEL_WRITE) && --to ) {} }
+   } else {
+     /* OUT, a byte */
+     rusb->CFIFOSEL = RUSB2_FIFOSEL_MBW_8BIT;
+-    while ( rusb->CFIFOSEL & RUSB2_CFIFOSEL_ISEL_WRITE ) {}
++    { uint32_t to = RUSB2_SPIN_TIMEOUT; while ( (rusb->CFIFOSEL & RUSB2_CFIFOSEL_ISEL_WRITE) && --to ) {} }
+   }
+ 
+   pipe_state_t *pipe = &_dcd.pipe[0];
+@@ -480,7 +495,7 @@ static bool process_pipe_xfer(rusb2_reg_t* rusb, int buffer_type, uint8_t ep_add
+       rusb->D0FIFOCTR = RUSB2_CFIFOCTR_BVAL_Msk;
+       rusb->D0FIFOSEL = 0;
+       /* if CURPIPE bits changes, check written value */
+-      while (rusb->D0FIFOSEL_b.CURPIPE) {}
++      { uint32_t to = RUSB2_SPIN_TIMEOUT; while (rusb->D0FIFOSEL_b.CURPIPE && --to) {} }
+     }
+   } else {
+     // OUT
+@@ -559,10 +574,10 @@ static void process_bus_reset(uint8_t rhport)
+   rusb->CFIFOCTR = RUSB2_CFIFOCTR_BCLR_Msk;
+ 
+   rusb->D0FIFOSEL = 0;
+-  while (rusb->D0FIFOSEL_b.CURPIPE) {} /* if CURPIPE bits changes, check written value */
++  { uint32_t to = RUSB2_SPIN_TIMEOUT; while (rusb->D0FIFOSEL_b.CURPIPE && --to) {} } /* if CURPIPE bits changes, check written value */
+ 
+   rusb->D1FIFOSEL = 0;
+-  while (rusb->D1FIFOSEL_b.CURPIPE) {} /* if CURPIPE bits changes, check written value */
++  { uint32_t to = RUSB2_SPIN_TIMEOUT; while (rusb->D1FIFOSEL_b.CURPIPE && --to) {} } /* if CURPIPE bits changes, check written value */
+ 
+   volatile uint16_t *ctr = (volatile uint16_t*)((uintptr_t) (&rusb->PIPE_CTR[0]));
+   volatile uint16_t *tre = (volatile uint16_t*)((uintptr_t) (&rusb->PIPE_TR[0].E));
+@@ -608,12 +623,49 @@ static void process_bus_reset(uint8_t rhport)
+   dcd_event_bus_reset(rhport, speed, true);
+ }
+ 
++// Board patch (not upstream). The hardware does complete the SET_ADDRESS
++// wire transaction itself and latches USBADDR, and it DOES set INTSTS0.DVST
++// for the Default->Address transition (RA4M1 manual R01UH0887EJ0110,
++// Fig. 27.15) -- an earlier version of this comment claimed SET_ADDRESS
++// raised no interrupt at all; the manual says otherwise. What actually
++// made this dispatch path (dcd_int_handler's DVST/DVSQ=Address case)
++// unreachable was that the USBFS interrupt stopped being delivered:
++// USBFS_USBI is the OR of every enabled INTSTS0 status bit through an
++// edge/level detector (Fig. 27.11), so one enabled bit left set when the
++// ISR returns keeps the aggregate high and hides every later event. See
++// Board/usb_init.c's usbfs_int_isr() (service, clear ICU IR, re-check,
++// loop), usb_action() (scheduler poll backstop) and Docs/usb-handoff.md.
++//
++// checkpoint 1 = entered, extra = addr. checkpoint 2 = about to dispatch
++// the synthetic SET_ADDRESS event.
+ static void process_set_address(uint8_t rhport)
+ {
+   rusb2_reg_t* rusb = RUSB2_REG(rhport);
+   const uint16_t addr = rusb->USBADDR_b.USBADDR;
++
++  // One-shot per address value: dcd_int_handler() dispatches here on every
++  // DVST interrupt where DVSQ reads Address, which without this guard
++  // would re-fire the synthetic event below on every such interrupt after
++  // the first (e.g. a later bus reset back to Default and re-addressing),
++  // flooding TinyUSB's 16-slot event queue.
++  static uint16_t last_notified_addr;
++  if (addr == last_notified_addr) return;
++
+   if (!addr) return;
+ 
++  last_notified_addr = addr;
++
++  // Belt-and-suspenders: usbd.c's own control-transfer completion should
++  // re-arm DCPCTR (PID=BUF) via its status-stage ZLP send regardless of
++  // this hardware's autonomous handling, but explicitly re-arm here too
++  // and clear the stale VALID bit left by the original SETUP packet, in
++  // case that completion path doesn't run for a request this hardware
++  // has already answered at the wire level. Matches what
++  // process_setup_packet()/pipe0_xfer_in() do for a normally-interrupted
++  // transfer.
++  rusb->INTSTS0 = ~((uint16_t) RUSB2_INTSTS0_VALID_Msk);
++  rusb->DCPCTR  = RUSB2_PIPE_CTR_PID_BUF;
++
+   const tusb_control_request_t setup_packet = {
+ #if defined(__CCRX__)
+       .bmRequestType = { 0 },  /* Note: CCRX needs the braces over this struct member */
+@@ -951,6 +1003,7 @@ void dcd_int_handler(uint8_t rhport)
+ 
+   uint16_t is0 = rusb->INTSTS0;
+ 
++
+   /* clear active bits except VALID (don't write 0 to already cleared bits according to the HW manual) */
+   rusb->INTSTS0 = ~((RUSB2_INTSTS0_CTRT_Msk | RUSB2_INTSTS0_DVST_Msk | RUSB2_INTSTS0_SOFR_Msk |
+                      RUSB2_INTSTS0_RESM_Msk | RUSB2_INTSTS0_VBINT_Msk) & is0) | RUSB2_INTSTS0_VALID_Msk;

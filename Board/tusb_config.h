@@ -66,10 +66,6 @@
 #define CFG_TUD_NCM_OUT_NTB_N               1
 #define CFG_TUD_NCM_IN_MAX_DATAGRAMS_PER_NTB    1
 #define CFG_TUD_NCM_OUT_MAX_DATAGRAMS_PER_NTB   2
-// Apple's workaround for macOS dropping the data interface (alt 0) right after enabling it
-// (Apple Developer Forums thread 824727): declare SetEthernetPacketFilter support. The class
-// driver does not implement it; macOS tolerates the request failing.
-#define CFG_TUD_NCM_NETWORK_CAPABILITIES    0x01
 #else
 #define CFG_TUD_NCM                         0
 #endif
