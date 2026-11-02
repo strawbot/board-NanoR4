@@ -8,6 +8,8 @@
 #include "printers.h"
 
 #include "cli_transport.h"
+#include "postmortem.h"
+#include "hal_data.h"   // __get_IPSR()
 
 #include <reent.h>
 #include <sys/types.h>
@@ -17,6 +19,7 @@
 // a wire left latched on burns out in seconds.
 void system_failure(Long reason) {
     muscle_sr_emergency_stop();   // stop the frame timer (it would keep latching patterns), then clear the chain
+    postmortem_failure(reason, (uint32_t) __builtin_return_address(0), __get_IPSR());   // so show-postmortem can say why after the reset
     while (true);
 }
 

@@ -777,7 +777,7 @@ to rule out a hardware fault as the storm's cause.
 All the VBATT stashes depend on `VBTBER.VBAE` being set first — without it
 the backup registers accept writes and read back correctly but retain
 nothing. `fault.c` uses byte offsets 4-27 in `VBTBKR[]`; `usb_isr_snapshot()`
-uses 32+ to stay clear of it.
+uses 32-55 to stay clear of it; `Board/postmortem_hw.c` (`show-postmortem`) uses 64-103.
 
 ---
 

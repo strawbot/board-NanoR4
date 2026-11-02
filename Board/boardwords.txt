@@ -10,6 +10,8 @@ Words // system
 	set-utc			cli_set_utc		// (utc) seed the RTC with a Unix epoch from the data stack
 	reboot			do_reboot		// reboot the device via NVIC system reset
 	show-cli		show_cli		// display cli status
+	show-postmortem		show_postmortem		// what the board was doing before its last reset: last interrupt/main-loop beat, and the system_failure reason if one was recorded
+	postmortem-test		postmortem_test		// DESTRUCTIVE TEST: calls system_failure(99) so the board stops until reset; afterwards show-postmortem should report reason 99
 	whoami			whoami			// print this board's name (USB serial) and flash the LED fast for 10 s, to tell boards apart
 	pins			pins_cli_show	// [filter] dump every known pin's live PFS state: mode, peripheral select, in/out level, alias
 	pin@			pins_cli_read	// (p - level) read a pin's input level; p = port*100+pin, e.g. 111 for P111

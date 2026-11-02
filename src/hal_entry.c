@@ -8,6 +8,8 @@
 #include "usb_init.h"
 #include "usb_native_test.h"
 #include "canary.h"
+#include "postmortem.h"
+#include "postmortem_hw.h"
 #include "board_cli.h"
 #include "fs_hw_flash.h"
 #include "muscle.h"
@@ -127,6 +129,7 @@ void hal_entry(void)
      * is for output() to kick the transport itself, after which this goes away. */
     adc_init();
     init_tea();
+    postmortem_hw_init(); // keep last run's record for show-postmortem, start this run's
     vin_sense_init();     // register the divider calibration for the calib file
     power_sense_init();   // register the Vdrain divider's calibration for the calib file
     adc_vref_start();     // track AVCC0 from the internal reference (needs the scheduler)

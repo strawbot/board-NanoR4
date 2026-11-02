@@ -47,6 +47,7 @@
 // 5. memory_regions.ld is regenerated for a bare chip at 0x0; DFU bootloader
 //    owns 0x0..0x3FFF. memory_regions_custom.ld is used instead (gitignored).
 
+#include "postmortem.h"
 #include "hal_data.h"
 #include "r_ioport.h"
 
@@ -155,7 +156,7 @@ void blink_leds(void) {
     case SPACE1: led_off(); color = GREEN2; t = 200 - ON_TIME; break;
     case GREEN2: led_on();  color = SPACE2; t = ON_TIME;       break;
     default:
-    case SPACE2: led_off(); color = GREEN1; t = 800 - ON_TIME; break;
+    case SPACE2: led_off(); color = GREEN1; t = 800 - ON_TIME; postmortem_isr_beat(); break;   // once a second
     }
     // Deliberately in(), not after(): scheduler-queue jitter is exactly
     // what this LED exists to make visible, so dispatching it through the

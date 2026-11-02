@@ -61,10 +61,14 @@ revert the merge.
   3 mixes, no hang, stack peak 1,244 of 2,048 bytes; `help` identical on UART and CDC.
 * Cold unplug / replug of the USB cable: all attempts came back (final state checked).
 * Idle soak (page polled every 30 s, no gap): board 7DB ran 10 h+ (02:20 - 12:25 on
-  2026-10-31) and board 82C 8 h+ (from 03:46) without a stop. 82C had hung at idle
-  three times on the patched 0.20.0 tree (<= 10 h, <= 7 h, 178 min; the last two
-  already had the accept fix), so this supports the update curing it. It is not
-  proof: treat a recurrence as a new bug and halt the board with a debugger.
+  2026-10-31) and was still answering the next morning. Board 82C ran 28 h
+  (03:47 on 2026-10-31 to 2026-11-01 08:09) and then **stopped answering on stock
+  TinyUSB too**: web, UART and CDC all silent while the USB device stayed enumerated.
+  82C had hung at idle three times on the patched 0.20.0 tree (<= 10 h, <= 7 h,
+  178 min). So the update did not cure 82C's idle hang (it only made it rarer, if
+  that); the cause is not TinyUSB. 82C has no debug header, so the hang has not been
+  inspected. The update is still worth having on its own merits (stock tree, upstream
+  fixes).
 
 ## Notes
 
