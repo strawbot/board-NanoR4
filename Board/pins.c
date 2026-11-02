@@ -48,7 +48,7 @@ static const pin_alias_t pin_aliases[] = {
     { 1, 3,  "Vsense (AN019, no divider) -- power_sense" },
     { 1, 9,  "SER D11 -- sr595_hw, GPIO out" },
     { 1, 10, "VCOUT (ACMPLP0 output) -- analog_test dac8-cmp" },
-    { 1, 11, "SRCLK D13 -- sr595_hw, GPIO out" },
+    { 1, 11, "SRCLK D13 -- sr595_hw, GPIO out (also the heartbeat LED on board 7DB, clocks.c)" },
     { 1, 12, "scope marker -- adc_sync, DMA-driven GPIO: high=sample valid, low=re-acquiring" },
     { 2, 4,  "LED yellow -- clocks.c blink()" },
     { 3, 3,  "RCLK D9 -- sr595_hw, GPIO out" },

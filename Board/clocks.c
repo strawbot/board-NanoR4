@@ -55,6 +55,8 @@
 #include "printers.h"
 #include "cli.h"
 #include "clocks.h"
+#include "board_id.h"
+#include <string.h>
 #include "project_defs.h"
 #include <time.h>
 #include <stdbool.h>
@@ -62,7 +64,11 @@
 extern const char build_timestamp[];
 
 // Nano R4 user LED — yellow, on port 2 pin 4 (P204), configured in RASC.
-#define LED_PIN  BSP_IO_PORT_02_PIN_04
+// The debug board (board 7DB, built as env:nano_r4_dbg) carries its heartbeat
+// LED on P111 instead; led_select() picks the pin once at start-up.
+#define LED_PIN       BSP_IO_PORT_02_PIN_04
+#define LED_PIN_DBG   BSP_IO_PORT_01_PIN_11
+#define DBG_BOARD_SERIAL  "ActiveRobot7DB"
 
 void delta_timer_cb(timer_callback_args_t * p_args);
 
@@ -119,7 +125,7 @@ Long get_ticks(void) {
 }
 
 // ── LED heartbeat ─────────────────────────────────────────────────────────
-// Yellow LED on P204. Double-blink: short-on · gap · short-on · long-gap.
+// Yellow LED on P204 (P111 on the debug board). Double-blink: short-on · gap · short-on · long-gap.
 //
 // This is a liveness signal, not decoration: it conveys timeliness to
 // whoever is looking at the board. Exactly one double-flash per second is
@@ -130,8 +136,24 @@ Long get_ticks(void) {
 // optimize away.
 
 #define ON_TIME 2
-static inline void led_on (void) { R_IOPORT_PinWrite(&g_ioport_ctrl, LED_PIN, BSP_IO_LEVEL_HIGH); }
-static inline void led_off(void) { R_IOPORT_PinWrite(&g_ioport_ctrl, LED_PIN, BSP_IO_LEVEL_LOW);  }
+static bsp_io_port_pin_t led_pin = LED_PIN;
+static inline void led_on (void) { R_IOPORT_PinWrite(&g_ioport_ctrl, led_pin, BSP_IO_LEVEL_HIGH); }
+static inline void led_off(void) { R_IOPORT_PinWrite(&g_ioport_ctrl, led_pin, BSP_IO_LEVEL_LOW);  }
+
+// Use P111 for the heartbeat on the debug board: the env:nano_r4_dbg build
+// (-DHEARTBEAT_LED_P111) or any build running on board 7DB. P111 is not
+// configured as an output by RASC, so make it one here.
+static void led_select(void) {
+#ifdef HEARTBEAT_LED_P111
+    bool dbg = true;
+#else
+    bool dbg = strcmp(board_serial(), DBG_BOARD_SERIAL) == 0;
+#endif
+    if (!dbg) return;
+    led_pin = LED_PIN_DBG;
+    R_IOPORT_PinCfg(&g_ioport_ctrl, led_pin,
+        (uint32_t)IOPORT_CFG_PORT_DIRECTION_OUTPUT | (uint32_t)IOPORT_CFG_PORT_OUTPUT_LOW);
+}
 
 // `whoami` asks for a fast flash in place of the heartbeat for a few seconds, so
 // one of several identical boards can be picked out by eye. blink_leds() stays
@@ -193,6 +215,7 @@ void blink_leds(void) {
 void init_clocks(void) {
     // DWT cycle counter enabled in hal_entry.c before init_clocks() runs.
     never(alarmEvent);
+    led_select();
 
     // ── GPT bring-up (RAM-copy cfg override) ─────────────────────────────
     // RASC picks source_div automatically; we force /1024 for both timers
