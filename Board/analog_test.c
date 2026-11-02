@@ -31,6 +31,7 @@
 #include "cli.h"
 #include "printers.h"
 #include "tea.h"
+#include "wirecal_analyze.h"
 
 static ioport_instance_ctrl_t g_at_ioport_ctrl;
 // R_IOPORT_Open(&g_at_ioport_ctrl, NULL) was passed NULL in place of a real
@@ -776,6 +777,20 @@ static uint32_t g_wire_sweep_attempts;   // total samples looked at this step (O
 static uint32_t g_wire_sweep_rwire_sum, g_wire_sweep_rwire_min, g_wire_sweep_rwire_max;
 static uint32_t g_wire_sweep_vsense_sum, g_wire_sweep_vdrain_sum;
 
+// Feed each step's (setpoint mV, R_wire avg mOhm) into wirecal_analyze() —
+// the same phase-transition finder wirecal.c uses for the muscle_sr-driven
+// ramp — so this bench sweep (dac8-cmp's analog current controller, no
+// muscle_sr/wirecal.c involved) reports onset/mid/full the same way. Capped
+// modestly (nano_r4_web's RAM is already tight) and well under
+// wirecal_analyze's uint8_t count; a sweep fine enough to exceed it (wstep!
+// well under the ~8mV/point this affords) is already past the point where
+// the CSV above, not this summary, is the useful output per wstep!'s own
+// doc comment.
+#define WIRE_SWEEP_ANALYZE_MAX_POINTS 64U
+static uint16_t g_wire_sweep_x[WIRE_SWEEP_ANALYZE_MAX_POINTS];
+static uint32_t g_wire_sweep_r[WIRE_SWEEP_ANALYZE_MAX_POINTS];
+static uint8_t  g_wire_sweep_npts;
+
 void analog_test_cli_wire_sweep(void) {
     print("analog-test: wire-sweep - dac8-cmp must already be running. ");
     printDec0(WIRE_SWEEP_MV_MAX / g_wire_sweep_step_mv + 1U); print(" steps of "); printDec0(g_wire_sweep_step_mv);
@@ -786,6 +801,7 @@ void analog_test_cli_wire_sweep(void) {
     print("mv, rwire_avg_mohm, rwire_min, rwire_max, vsense_avg_mv, vdrain_avg_mv, on_n:"); printCr();
 
     g_wire_sweep_mv = 0U;
+    g_wire_sweep_npts = 0U;
     analog_test_wire_sweep_step();
 }
 
@@ -881,12 +897,21 @@ static void analog_test_wire_sweep_sample(void) {
     if (g_wire_sweep_i == 0U) {
         print("0, 0, 0, 0, 0, 0");   // never caught an ON-phase sample — not conducting at this setpoint
     } else {
-        printDec0(g_wire_sweep_rwire_sum / g_wire_sweep_i); print(", ");
+        uint32_t rwire_avg = g_wire_sweep_rwire_sum / g_wire_sweep_i;
+        printDec0(rwire_avg); print(", ");
         printDec0(g_wire_sweep_rwire_min); print(", ");
         printDec0(g_wire_sweep_rwire_max); print(", ");
         printDec0(g_wire_sweep_vsense_sum / g_wire_sweep_i); print(", ");
         printDec0(g_wire_sweep_vdrain_sum / g_wire_sweep_i); print(", ");
         printDec0(g_wire_sweep_i);
+        // A setpoint that never conducted is not a curve point; wirecal_analyze
+        // wants an ascending-x resistance curve, not a mix of real readings and
+        // "nothing happened here".
+        if (g_wire_sweep_npts < WIRE_SWEEP_ANALYZE_MAX_POINTS) {
+            g_wire_sweep_x[g_wire_sweep_npts] = (uint16_t) g_wire_sweep_mv;
+            g_wire_sweep_r[g_wire_sweep_npts] = rwire_avg;
+            g_wire_sweep_npts++;
+        }
     }
     printCr();
 
@@ -894,6 +919,21 @@ static void analog_test_wire_sweep_sample(void) {
     if (g_wire_sweep_mv > WIRE_SWEEP_MV_MAX) {
         analog_test_dac12_set_mv(0U);   // shut the wire off, don't leave it energized at the last setpoint
         print("analog-test: wire-sweep done, dac12 set back to 0."); printCr();
+
+        wire_cal_t c; bool open = false;
+        wc_status_t st = wirecal_analyze(g_wire_sweep_x, g_wire_sweep_r, g_wire_sweep_npts, &c, &open);
+        if (st == WC_OK) {
+            print("wire-sweep: R cold "); printDec0(c.rcold); print(" mohm");
+            print("  onset "); printDec0(c.onset); print(" mV");
+            print("  mid ");   printDec0(c.mid);   print(" mV");
+            print("  full ");  printDec0(c.full);  print(" mV");
+            if (open) print("  (still moving at the last setpoint: full is a lower bound)");
+            printCr();
+        } else {
+            print(st == WC_TOO_FEW ? "wire-sweep: too few conducting points to analyze"
+                                   : "wire-sweep: no transition found (flat curve; raise WIRE_SWEEP_MV_MAX, or wrong wire?)");
+            printCr();
+        }
         return;
     }
     analog_test_wire_sweep_step();

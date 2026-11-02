@@ -110,7 +110,7 @@ Words // Analog peripheral bench tests (Board/analog_test.c): DAC12/DAC8/ACMPLP,
 	dac8-cmp analog_test_cli_dac8_cmp // same ramp into DAC8 ch0 -> ACMPLP0 IVREF0; apply a test voltage to CMPIN0 (P100), watch VCOUT (P110)
 	opamp0-test analog_test_cli_opamp0 // enable OPAMP0 as a plain 3-pin diff amp: feed AMP0+ (P000)/AMP0- (P001), scope AMP0O (P002)
 	opamp0-sweep analog_test_cli_opamp0_sweep // retired -- AN002/AMP0O is no longer an ADC scan channel; scope AMP0O/P002 directly instead
-	wire-sweep analog_test_cli_wire_sweep // dac8-cmp must already be running with a real wire wired in; steps dac12 0-1000mV, prints rwire/vsense/vdrain avg+spread per step from ON-phase-only reads (OFF-phase samples filtered, see wsamples!) for the sigmoid curve and per-setpoint stability; shuts the gate off (dac12=0) when done
+	wire-sweep analog_test_cli_wire_sweep // dac8-cmp must already be running with a real wire wired in; steps dac12 0-1000mV, prints rwire/vsense/vdrain avg+spread per step from ON-phase-only reads (OFF-phase samples filtered, see wsamples!) for the sigmoid curve and per-setpoint stability; shuts the gate off (dac12=0) when done; finishes with an onset/mid/full summary (wirecal_analyze on the conducting points, mV instead of wirecal's duty)
 	wstep! analog_test_cli_wstep_set // (mv) wire-sweep's setpoint increment, 1-1500mV (default 50)
 	wsettle! analog_test_cli_wsettle_set // (ms) wire-sweep's per-step settle time before the first sample — give the wire's own thermal response time to reach a new equilibrium, not just the carrier's electrical cycle
 	wsample-ms! analog_test_cli_wsample_ms_set // (ms) wire-sweep's spacing between samples within a step

@@ -116,7 +116,7 @@ void analog_test_cli_dac12_set(void);   // CLI word: dac12! ( mv -- ) hold DAC12
 void analog_test_cli_dac8_cmp(void);    // CLI word: dac8-cmp
 void analog_test_cli_opamp0(void);      // CLI word: opamp0-test
 void analog_test_cli_opamp0_sweep(void); // CLI word: opamp0-sweep
-void analog_test_cli_wire_sweep(void);   // CLI word: wire-sweep — dac8-cmp must already be running; steps dac12 0-1000mV, prints rwire/vsense/vdrain stats per setpoint
+void analog_test_cli_wire_sweep(void);   // CLI word: wire-sweep — dac8-cmp must already be running; steps dac12 0-1000mV, prints rwire/vsense/vdrain stats per setpoint, then an onset/mid/full summary via wirecal_analyze()
 void analog_test_cli_wstep_set(void);      // CLI word: wstep! ( mv -- ) wire-sweep's setpoint increment, 1-1500mV (default 50)
 void analog_test_cli_wsettle_set(void);    // CLI word: wsettle! ( ms -- ) wire-sweep's per-step settle time before the first sample
 void analog_test_cli_wsample_ms_set(void); // CLI word: wsample-ms! ( ms -- ) wire-sweep's spacing between samples within a step
