@@ -19,4 +19,12 @@ void limb_fw_redpath_cli(void);
 // has abandoned the session. Takes about 2.7 seconds to run.
 void limb_fw_timeout_cli(void);
 
+// limb_fw_pipeline_cli — CLI word: ( -- ) streams every Chunk back-to-
+// back, gated only on the previous Chunk physically finishing
+// transmission (not on its ack), then reports timing and how many
+// chunk acks had arrived by the time END was sent. See limb_fw_test.c's
+// own comment on why this trusts the wire during the burst rather than
+// being a hardened replacement for limb-fw-test.
+void limb_fw_pipeline_cli(void);
+
 #endif // BOARD_LIMB_FW_TEST_H

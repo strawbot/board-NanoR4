@@ -94,7 +94,16 @@ static const uart_cfg_t g_limb_cfg = {
 };
 
 // ── RX queue + drain action ──────────────────────────────────────
-static BQUEUE(32, limb_rxq);
+// 256, not 32: byteq.c's pushbq() has no overflow check (it just wraps
+// and silently overwrites unconsumed bytes), and maintenance frames can
+// now be over 1000 bytes (LIMB_MAINT_CHUNK_MAX, limb_bus.h) trickling in
+// one byte at a time between later()-scheduled drains of
+// limb_uart_rx_action() below. 32 was sized for the original 7-byte
+// bus-mode frames and happened to still work for 141-byte ones only
+// because drains keep up with arrival in practice -- not because
+// anything bounds the backlog. 256 is headroom, not a guarantee the
+// drain cadence can't ever fall behind; it has no overflow check either.
+static BQUEUE(256, limb_rxq);
 
 static void limb_uart_rx_action(void) {
     while (qbq(limb_rxq) > 0) {
@@ -103,6 +112,16 @@ static void limb_uart_rx_action(void) {
 }
 
 static uint32_t g_limb_evt_rx, g_limb_evt_txc, g_limb_evt_other;
+
+// Fires when the last R_SCI_UART_Write()'s bytes have all actually gone
+// out -- not when a reply ack arrives, just when the TX buffer is free
+// to reuse. For limb_fw_test.c's pipelined-chunk experiment: gating the
+// next send on this instead of on the previous chunk's MAINT_FW_ACK
+// removes the full round-trip (ack transmission + node-side dispatch)
+// from each chunk's critical path, while acks still arrive and get
+// counted asynchronously for a correctness check at the end. See
+// limb_board/SMA_Limb_Bus_Firmware_Update.md §9.8.
+Event limb_uart_tx_complete_event;
 
 static void limb_uart_callback(uart_callback_args_t *p_args) {
     if (p_args->event == UART_EVENT_RX_CHAR) {
@@ -114,6 +133,7 @@ static void limb_uart_callback(uart_callback_args_t *p_args) {
         }
     } else if (p_args->event == UART_EVENT_TX_COMPLETE) {
         g_limb_evt_txc++;
+        later(*limb_uart_tx_complete_event); // ISR context -- defer to the action queue
     } else {
         g_limb_evt_other++;
     }
@@ -133,6 +153,12 @@ void limb_uart_init(void) {
 
     g_limb_baud_err = R_SCI_UART_BaudCalculate(LIMB_UART_BAUD, false, 5000U, &g_limb_baud_setting);
     g_limb_open_err = R_SCI_UART_Open((uart_ctrl_t *)&g_limb_uart_ctrl, (uart_cfg_t *)&g_limb_cfg);
+
+    // never(), not left zero-initialized: limb_uart_tx_complete_event
+    // fires on every TX completion, including a plain limb-ping's --
+    // later(NULL) is a fatal error (tea.h), so this must never be an
+    // unset Event by the time the first send happens.
+    never(limb_uart_tx_complete_event);
 
     limb_bus_bind_hw(&hw);
     limb_bus_init();
