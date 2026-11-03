@@ -44,6 +44,7 @@
 
 #include "tea.h"
 #include "printers.h"
+#include "clocks.h" // get_ticks() -- for timing limb-fw-test, see its own comment
 #include "limb_bus.h"
 #include "limb_bus_update.h" // LIMB_APP_HEADER_OFFSET/MAGIC, header shape
 
@@ -105,6 +106,13 @@ typedef enum { TEST_IDLE, TEST_WAIT_BEGIN, TEST_WAIT_CHUNK, TEST_WAIT_END } test
 static test_state_t test_state;
 static uint32_t test_token;
 static uint32_t next_offset;
+static Long test_start_ticks;   // get_ticks() at the CLI call
+static Long test_begin_ticks;   // ... at BEGIN's ack (erase done, chunks about to start)
+static Long test_chunks_ticks;  // ... at the last CHUNK's ack (END about to be sent)
+// see limb_fw_test_cli()/test_ack()'s PASS case for why: splits the total
+// into "one-time BEGIN erase" vs "per-chunk transfer" vs "END's CRC32
+// readback+recompute", instead of one lump number that would hide which
+// part actually dominates.
 
 static void test_timeout(void);
 static void test_ack(void);
@@ -147,6 +155,7 @@ static void test_ack(void) {
     case TEST_WAIT_BEGIN:
         if (f->payload_len < 5U) { test_fail("BEGIN ack too short -- no token"); return; }
         test_token = ack_token(f);
+        test_begin_ticks = get_ticks();
         next_offset = 0;
         print("limb-fw-test: BEGIN ok (token=0x"); printHex(test_token); print("), sending chunks...\n");
         send_next_chunk();
@@ -159,6 +168,7 @@ static void test_ack(void) {
         if (next_offset < TEST_IMAGE_SIZE) {
             send_next_chunk();
         } else {
+            test_chunks_ticks = get_ticks();
             print("limb-fw-test: all chunks ok, sending END...\n");
             test_state = TEST_WAIT_END;
             when(limb_bus_maint_frame_event, test_ack);
@@ -168,8 +178,13 @@ static void test_ack(void) {
         break;
     }
 
-    case TEST_WAIT_END:
+    case TEST_WAIT_END: {
         test_state = TEST_IDLE;
+        Long end_ticks = get_ticks();
+        Long begin_ms = to_msec(test_begin_ticks - test_start_ticks);
+        Long chunks_ms = to_msec(test_chunks_ticks - test_begin_ticks);
+        Long end_ms = to_msec(end_ticks - test_chunks_ticks);
+        Long total_ms = to_msec(end_ticks - test_start_ticks);
         print("limb-fw-test: PASS -- node staged and committed the test image "
               "(size="); printDec0(TEST_IMAGE_SIZE);
         print(" crc32=0x"); printHex(test_image_crc32);
@@ -177,7 +192,13 @@ static void test_ack(void) {
               "purpose (this image isn't a real bootable app); clear it over\n"
               "SWD before the node's next reset, or leave it until a real\n"
               "update test replaces it.\n");
+        print("limb-fw-test: timing -- BEGIN(req+erase+ack)="); printDec0((unsigned)begin_ms);
+        print("ms  "); printDec0(TEST_IMAGE_SIZE / LIMB_MAINT_CHUNK_MAX);
+        print("x CHUNK(req+write+ack)="); printDec0((unsigned)chunks_ms);
+        print("ms  END(req+CRC32-readback+write_meta+ack)="); printDec0((unsigned)end_ms);
+        print("ms  TOTAL="); printDec0((unsigned)total_ms); print("ms\n");
         break;
+    }
 
     default:
         break;
@@ -190,6 +211,7 @@ void limb_fw_test_cli(void) {
         return;
     }
     build_test_image();
+    test_start_ticks = get_ticks();
     print("limb-fw-test: sending BEGIN (module_type=1 size=");
     printDec0(TEST_IMAGE_SIZE);
     print(" crc32=0x"); printHex(test_image_crc32);
