@@ -13,11 +13,23 @@
 // bottom on why this test never triggers that and leaves UPDATE_META
 // alone afterward rather than resetting the node.
 //
-// State machine, not a blocking loop (CLAUDE.md: nothing here may
-// busy-wait): Begin -> wait for ack -> Chunk x N (one at a time, per
-// protocol §8.4's "body holds at most one chunk in flight") -> wait for
-// ack each -> End -> wait for ack -> report. Same when()/after() timeout
-// shape as limb_bus_cli_ping(), just with more than one step.
+// Three CLI entry points, each its own small when()/after() state
+// machine (CLAUDE.md: nothing here may busy-wait):
+//   limb-fw-test     the happy path: Begin -> Chunk x N -> End.
+//   limb-fw-redpath  a controller "reboot" mid-transfer: Begin, then a
+//                     second Begin with no abort/reset message (must
+//                     recover cleanly), then confirms the pre-reboot
+//                     session's token is now stale/rejected while the
+//                     new one still works.
+//   limb-fw-timeout  Begin, then go quiet for longer than the node's
+//                     idle timeout, then confirm a Chunk with the
+//                     (still technically current) token is rejected.
+// All three built in response to the question "what if the controller
+// reboots and leaves the node hanging mid-transfer, is there a timeout
+// or reset/restart command" -- see
+// limb_board/SMA_Limb_Bus_Firmware_Update.md and
+// Robot/io/limb_bus/limb_bus_update_receiver.h's own notes on the
+// session-token/idle-timeout design this exercises.
 //
 // Compiles in every environment (same reason as limb_uart.c): the body
 // is behind LIMB_UART_DEV so this can never be what breaks the normal
@@ -77,8 +89,21 @@ static void build_test_image(void) {
     }
 }
 
+// Shared MAINT_FW_ACK helpers -- see limb_bus.h: status is always
+// payload[0]; a *successful BEGIN* ack has four more bytes, the session
+// token, at payload[1..4] little-endian.
+static bool ack_ok(const limb_bus_maint_frame_t *f) {
+    return f->payload_len >= 1U && f->payload[0] == 0x00U;
+}
+static uint32_t ack_token(const limb_bus_maint_frame_t *f) {
+    return (uint32_t)f->payload[1] | ((uint32_t)f->payload[2] << 8)
+         | ((uint32_t)f->payload[3] << 16) | ((uint32_t)f->payload[4] << 24);
+}
+
+// ── limb-fw-test: the happy path ──────────────────────────────────────
 typedef enum { TEST_IDLE, TEST_WAIT_BEGIN, TEST_WAIT_CHUNK, TEST_WAIT_END } test_state_t;
 static test_state_t test_state;
+static uint32_t test_token;
 static uint32_t next_offset;
 
 static void test_timeout(void);
@@ -99,7 +124,7 @@ static void send_next_chunk(void) {
     test_state = TEST_WAIT_CHUNK;
     when(limb_bus_maint_frame_event, test_ack);
     after(msec(200), test_timeout);
-    limb_bus_send_fw_chunk(next_offset, &test_image[next_offset], (uint16_t)len);
+    limb_bus_send_fw_chunk(test_token, next_offset, &test_image[next_offset], (uint16_t)len);
 }
 
 static void test_timeout(void) {
@@ -113,15 +138,17 @@ static void test_ack(void) {
     }
     stop_te(test_timeout);
     never(limb_bus_maint_frame_event);
-    if (f->payload_len < 1U || f->payload[0] != 0x00U) {
+    if (!ack_ok(f)) {
         test_fail("node acked failure");
         return;
     }
 
     switch (test_state) {
     case TEST_WAIT_BEGIN:
+        if (f->payload_len < 5U) { test_fail("BEGIN ack too short -- no token"); return; }
+        test_token = ack_token(f);
         next_offset = 0;
-        print("limb-fw-test: BEGIN ok, sending chunks...\n");
+        print("limb-fw-test: BEGIN ok (token=0x"); printHex(test_token); print("), sending chunks...\n");
         send_next_chunk();
         break;
 
@@ -136,7 +163,7 @@ static void test_ack(void) {
             test_state = TEST_WAIT_END;
             when(limb_bus_maint_frame_event, test_ack);
             after(msec(200), test_timeout);
-            limb_bus_send_fw_end();
+            limb_bus_send_fw_end(test_token);
         }
         break;
     }
@@ -177,12 +204,194 @@ void limb_fw_test_cli(void) {
     limb_bus_send_fw_begin(TEST_MODULE_TYPE, 1U, TEST_IMAGE_SIZE, test_image_crc32);
 }
 
+// ── limb-fw-redpath: controller reboot mid-transfer ──────────────────
+// Begin -> (simulated reboot: no abort/reset, just a second Begin) ->
+// confirm the node accepted the second Begin with a fresh token, then
+// confirm the FIRST (now stale) token is rejected while the second
+// still works. This is the live-hardware version of the scenario
+// exercised on a mock in the host-side integration test -- see
+// Robot/io/limb_bus/limb_bus_update_receiver.h's note on why a Begin
+// always wins (so a reboot-and-restart needs no special message) and
+// what the session token guards against instead (a stale frame from
+// the abandoned attempt landing in the new session).
+typedef enum { RP_IDLE, RP_WAIT_BEGIN1, RP_WAIT_BEGIN2, RP_WAIT_STALE, RP_WAIT_FRESH } rp_state_t;
+static rp_state_t rp_state;
+static uint32_t rp_token_a, rp_token_b;
+
+static void rp_timeout(void);
+static void rp_ack(void);
+
+static void rp_fail(const char *why) {
+    rp_state = RP_IDLE;
+    never(limb_bus_maint_frame_event);
+    stop_te(rp_timeout);
+    print("limb-fw-redpath: FAIL -- ");
+    print(why);
+    printCr();
+}
+
+static void rp_timeout(void) {
+    rp_fail("timeout");
+}
+
+static void rp_ack(void) {
+    const limb_bus_maint_frame_t *f = limb_bus_last_maint_frame();
+    if (f->type != LIMB_TYPE_MAINT_FW_ACK) return;
+    stop_te(rp_timeout);
+    never(limb_bus_maint_frame_event);
+    bool ok = ack_ok(f);
+
+    switch (rp_state) {
+    case RP_WAIT_BEGIN1:
+        if (!ok || f->payload_len < 5U) { rp_fail("first BEGIN refused"); return; }
+        rp_token_a = ack_token(f);
+        print("limb-fw-redpath: first BEGIN ok, token_a=0x"); printHex(rp_token_a); printCr();
+        print("limb-fw-redpath: simulating a controller reboot -- second BEGIN, no abort/reset sent...\n");
+        rp_state = RP_WAIT_BEGIN2;
+        when(limb_bus_maint_frame_event, rp_ack);
+        after(msec(3000), rp_timeout);
+        limb_bus_send_fw_begin(TEST_MODULE_TYPE, 1U, TEST_IMAGE_SIZE, test_image_crc32);
+        break;
+
+    case RP_WAIT_BEGIN2:
+        if (!ok || f->payload_len < 5U) { rp_fail("second BEGIN (post-reboot) was refused -- should recover cleanly"); return; }
+        rp_token_b = ack_token(f);
+        if (rp_token_b == rp_token_a) { rp_fail("second BEGIN returned the SAME token -- not a fresh session"); return; }
+        print("limb-fw-redpath: second BEGIN ok, token_b=0x"); printHex(rp_token_b);
+        print(" -- recovered with no abort/reset message needed\n");
+        print("limb-fw-redpath: sending a CHUNK with the STALE pre-reboot token (expect rejection)...\n");
+        rp_state = RP_WAIT_STALE;
+        when(limb_bus_maint_frame_event, rp_ack);
+        after(msec(200), rp_timeout);
+        limb_bus_send_fw_chunk(rp_token_a, 0, test_image, 16);
+        break;
+
+    case RP_WAIT_STALE:
+        if (ok) { rp_fail("stale pre-reboot token was WRONGLY accepted"); return; }
+        print("limb-fw-redpath: stale token correctly rejected\n");
+        print("limb-fw-redpath: sending a CHUNK with the CURRENT token (expect success)...\n");
+        rp_state = RP_WAIT_FRESH;
+        when(limb_bus_maint_frame_event, rp_ack);
+        after(msec(200), rp_timeout);
+        limb_bus_send_fw_chunk(rp_token_b, 0, test_image, 16);
+        break;
+
+    case RP_WAIT_FRESH:
+        rp_state = RP_IDLE;
+        if (!ok) { print("limb-fw-redpath: FAIL -- current session's token was wrongly rejected\n"); return; }
+        print("limb-fw-redpath: PASS -- reboot-and-restart recovered cleanly, "
+              "stale token rejected, current session still works\n");
+        break;
+
+    default:
+        break;
+    }
+}
+
+void limb_fw_redpath_cli(void) {
+    if (rp_state != RP_IDLE) {
+        print("limb-fw-redpath: already running\n");
+        return;
+    }
+    build_test_image();
+    print("limb-fw-redpath: sending first BEGIN...\n");
+    rp_state = RP_WAIT_BEGIN1;
+    when(limb_bus_maint_frame_event, rp_ack);
+    after(msec(3000), rp_timeout);
+    limb_bus_send_fw_begin(TEST_MODULE_TYPE, 1U, TEST_IMAGE_SIZE, test_image_crc32);
+}
+
+// ── limb-fw-timeout: idle session is abandoned ────────────────────────
+// Begin, then go quiet for longer than the node's own idle timeout
+// (Robot/io/limb_bus/limb_bus_update_receiver.h's
+// LIMB_BUS_UPDATE_IDLE_TIMEOUT_MSEC, 2000ms by default) with no Chunk/
+// End traffic at all, then confirm a Chunk carrying the still-technically-
+// current token is rejected anyway, because the node gave up on the
+// session after the idle window passed.
+typedef enum { TO_IDLE, TO_WAIT_BEGIN, TO_WAITING, TO_WAIT_CHUNK } to_state_t;
+static to_state_t to_state;
+static uint32_t to_token;
+
+static void to_timeout(void);
+static void to_ack(void);
+static void to_wait_done(void);
+
+static void to_fail(const char *why) {
+    to_state = TO_IDLE;
+    never(limb_bus_maint_frame_event);
+    stop_te(to_timeout);
+    stop_te(to_wait_done);
+    print("limb-fw-timeout: FAIL -- ");
+    print(why);
+    printCr();
+}
+
+static void to_timeout(void) {
+    to_fail("timeout waiting for ack");
+}
+
+static void to_wait_done(void) {
+    print("limb-fw-timeout: wait done -- sending a CHUNK with the original token "
+          "(expect rejection: session should have idled out)...\n");
+    to_state = TO_WAIT_CHUNK;
+    when(limb_bus_maint_frame_event, to_ack);
+    after(msec(200), to_timeout);
+    limb_bus_send_fw_chunk(to_token, 0, test_image, 16);
+}
+
+static void to_ack(void) {
+    const limb_bus_maint_frame_t *f = limb_bus_last_maint_frame();
+    if (f->type != LIMB_TYPE_MAINT_FW_ACK) return;
+    stop_te(to_timeout);
+    never(limb_bus_maint_frame_event);
+    bool ok = ack_ok(f);
+
+    switch (to_state) {
+    case TO_WAIT_BEGIN:
+        if (!ok || f->payload_len < 5U) { to_fail("BEGIN refused"); return; }
+        to_token = ack_token(f);
+        print("limb-fw-timeout: BEGIN ok (token=0x"); printHex(to_token);
+        print("), now waiting 2.5s with no further traffic (node's idle timeout is 2s)...\n");
+        to_state = TO_WAITING;
+        after(msec(2500), to_wait_done);
+        break;
+
+    case TO_WAIT_CHUNK:
+        to_state = TO_IDLE;
+        if (ok) { print("limb-fw-timeout: FAIL -- chunk accepted; session should have idled out\n"); return; }
+        print("limb-fw-timeout: PASS -- idle session was correctly abandoned by the node\n");
+        break;
+
+    default:
+        break;
+    }
+}
+
+void limb_fw_timeout_cli(void) {
+    if (to_state != TO_IDLE) {
+        print("limb-fw-timeout: already running\n");
+        return;
+    }
+    build_test_image();
+    print("limb-fw-timeout: sending BEGIN...\n");
+    to_state = TO_WAIT_BEGIN;
+    when(limb_bus_maint_frame_event, to_ack);
+    after(msec(3000), to_timeout);
+    limb_bus_send_fw_begin(TEST_MODULE_TYPE, 1U, TEST_IMAGE_SIZE, test_image_crc32);
+}
+
 #else // !LIMB_UART_DEV
 
 #include "printers.h"
 
 void limb_fw_test_cli(void) {
     print("limb-fw-test: not built in this firmware (needs env:nano_r4_limb)\n");
+}
+void limb_fw_redpath_cli(void) {
+    print("limb-fw-redpath: not built in this firmware (needs env:nano_r4_limb)\n");
+}
+void limb_fw_timeout_cli(void) {
+    print("limb-fw-timeout: not built in this firmware (needs env:nano_r4_limb)\n");
 }
 
 #endif // LIMB_UART_DEV

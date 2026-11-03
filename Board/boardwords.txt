@@ -87,6 +87,8 @@ Words // Limb bus (Robot/io/limb_bus): controller-side frame protocol over SCI9 
 	edge-rx-clr edge_test_cli_rx_clr // (- ) wire-margin test: reset the edge counter to 0 without disarming
 	edge-rx@ edge_test_cli_rx_read // (- count) wire-margin test: read the edge counter
 	limb-fw-test limb_fw_test_cli // stream a small synthetic test image to the node via MAINT_FW_BEGIN/CHUNK/END, report pass/fail; leaves UPDATE_META pending on success, see Board/limb_fw_test.c
+	limb-fw-redpath limb_fw_redpath_cli // simulate a controller reboot mid-transfer (second BEGIN, no abort/reset): confirm clean recovery and that the stale pre-reboot token is rejected
+	limb-fw-timeout limb_fw_timeout_cli // BEGIN then go quiet past the node's idle timeout; confirm the node abandons the session (~2.7s)
 End
 
 Words // Gaits

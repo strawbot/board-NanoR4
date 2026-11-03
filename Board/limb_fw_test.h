@@ -8,4 +8,15 @@
 // LIMB_UART_DEV.
 void limb_fw_test_cli(void);
 
+// limb_fw_redpath_cli — CLI word: ( -- ) simulates a controller reboot
+// mid-transfer (a second BEGIN with no abort/reset message) and
+// confirms the node recovers cleanly while rejecting the stale
+// pre-reboot session's token. See limb_fw_test.c's own comment.
+void limb_fw_redpath_cli(void);
+
+// limb_fw_timeout_cli — CLI word: ( -- ) BEGINs a session, then goes
+// quiet for longer than the node's idle timeout, then confirms the node
+// has abandoned the session. Takes about 2.7 seconds to run.
+void limb_fw_timeout_cli(void);
+
 #endif // BOARD_LIMB_FW_TEST_H
