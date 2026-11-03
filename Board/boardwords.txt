@@ -78,6 +78,16 @@ Words // Limb drive (PWM model): muscles get on-windows in a 20 ms frame, latche
 	sr@ sr595_cli_read // (chip - value) shadow byte last written to shift register chip
 End
 
+Words // Limb bus (Robot/io/limb_bus): controller-side frame protocol over SCI9 (D11/D12); only built with env:nano_r4_limb, see Board/limb_uart.c -- inert elsewhere
+	limb-ping limb_bus_cli_ping // send a PING frame to the limb-bus node, print health/fault/fw once the reply lands, or "timeout" after 100ms
+	limb-status limb_uart_cli_status // print SCI9's BaudCalculate/Open error codes (0 = success) from boot, or that this firmware wasn't built with env:nano_r4_limb
+	limb-debug limb_bus_debug_status // print frames_ok/frames_bad CRC counters, the last validated frame's type/frame_cnt, and (if frames_bad>0) the last rejected frame's raw bytes
+	edge-tx edge_test_cli_tx // (count half-us) wire-margin test: drop D11 out of SCI mode, toggle it `count` times `half-us` apart
+	edge-rx-arm edge_test_cli_rx_arm // (- ) wire-margin test: drop D12 out of SCI mode, count every edge on it via IRQ3 (reset to 0)
+	edge-rx-clr edge_test_cli_rx_clr // (- ) wire-margin test: reset the edge counter to 0 without disarming
+	edge-rx@ edge_test_cli_rx_read // (- count) wire-margin test: read the edge counter
+End
+
 Words // Gaits
 	crawl gait_cli_crawl // start (or smoothly switch to) the crawl gait: one leg lifted at a time
 	trot gait_cli_trot // start the trot gait: diagonal pairs

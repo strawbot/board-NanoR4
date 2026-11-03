@@ -17,6 +17,7 @@
 #include "frame_timer.h"
 #include "wirecal_hw.h"
 #include "sr595_hw.h"
+#include "limb_uart.h"
 #include "calib.h"
 #include "robot_model.h"
 #include "vin_sense.h"
@@ -69,8 +70,14 @@ void hal_entry(void)
     /* Outputs off before anything else: the 595 keeps whatever pattern it held
      * across a reset, so a wire that was on when the last run died stays on
      * until this clears it. Hex PCB chain of 3; one physical chip on the
-     * breadboard is chip 0. */
+     * breadboard is chip 0.
+     *
+     * env:nano_r4_limb skips this: its SER line (D11/P109) is the limb-bus
+     * TX pin instead, see Board/limb_uart.c. Pin allocation for the real
+     * board is still an open schematic question (BRINGUP_PLAN.md). */
+#ifndef LIMB_UART_DEV
     sr595_hw_init(3);
+#endif
 
     /* Visible "firmware alive" marker — three short LED pulses before we
      * touch the scheduler or transport. If you don't see this after reset,
@@ -135,6 +142,9 @@ void hal_entry(void)
     adc_vref_start();     // track AVCC0 from the internal reference (needs the scheduler)
     adc_sync_marker_init(); // ELC links + GPT3/P111 scope marker for the hardware-triggered ADC path (Board/adc_sync.c) — dormant until dac8-cmp's carrier runs
     usart_transport_init();
+
+    limb_uart_init(); // inert unless LIMB_UART_DEV; prints on an Open()/baud error -- needs the transport up
+    usart_drain();
 
     print_build_banner();
     usart_drain();

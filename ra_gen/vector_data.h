@@ -6,7 +6,7 @@
         #endif
                 /* Number of interrupts allocated */
         #ifndef VECTOR_DATA_IRQ_COUNT
-        #define VECTOR_DATA_IRQ_COUNT    (17)
+        #define VECTOR_DATA_IRQ_COUNT    (22)
         #endif
         /* ISR prototypes */
         void sci_uart_rxi_isr(void);
@@ -15,6 +15,8 @@
         void sci_uart_eri_isr(void);
         void rtc_carry_isr(void);
         void gpt_counter_overflow_isr(void);
+        /* ICU IRQ3 (P110/D12) edge counter -- added by hand, Board/edge_test.c */
+        void edge_test_irq3_isr(void);
 #ifdef USE_NATIVE_USB_STACK
         void usbfs_native_isr(void); /* env:nano_r4_usbtest only — see vector_data.c */
 #else
@@ -66,8 +68,24 @@
         #define GPT7_CAPTURE_COMPARE_B_IRQn          ((IRQn_Type) 15) /* GPT7 CAPTURE COMPARE B */
         #define VECTOR_NUMBER_GPT7_COUNTER_OVERFLOW ((IRQn_Type) 16) /* GPT7 COUNTER OVERFLOW */
         #define GPT7_COUNTER_OVERFLOW_IRQn          ((IRQn_Type) 16) /* GPT7 COUNTER OVERFLOW */
+        /* [17]-[20]: the limb-bus controller UART (SCI9), Board/limb_uart.c.
+         * Added by hand -- no RASC instance exists for SCI9 in this project;
+         * see that file's header comment and ra_gen/vector_data.c. */
+        #define VECTOR_NUMBER_SCI9_RXI ((IRQn_Type) 17) /* SCI9 RXI (Receive data full) */
+        #define SCI9_RXI_IRQn          ((IRQn_Type) 17) /* SCI9 RXI (Receive data full) */
+        #define VECTOR_NUMBER_SCI9_TXI ((IRQn_Type) 18) /* SCI9 TXI (Transmit data empty) */
+        #define SCI9_TXI_IRQn          ((IRQn_Type) 18) /* SCI9 TXI (Transmit data empty) */
+        #define VECTOR_NUMBER_SCI9_TEI ((IRQn_Type) 19) /* SCI9 TEI (Transmit end) */
+        #define SCI9_TEI_IRQn          ((IRQn_Type) 19) /* SCI9 TEI (Transmit end) */
+        #define VECTOR_NUMBER_SCI9_ERI ((IRQn_Type) 20) /* SCI9 ERI (Receive error) */
+        #define SCI9_ERI_IRQn          ((IRQn_Type) 20) /* SCI9 ERI (Receive error) */
+        /* [21]: ICU IRQ3 on P110 (D12, limb-bus RX) as a plain edge-count
+         * input, Board/edge_test.c -- bypasses SCI9 framing entirely for
+         * wire-margin testing. Added by hand, same reason as SCI9 above. */
+        #define VECTOR_NUMBER_ICU_IRQ3 ((IRQn_Type) 21) /* ICU IRQ3 (External pin interrupt 3) */
+        #define ICU_IRQ3_IRQn          ((IRQn_Type) 21) /* ICU IRQ3 (External pin interrupt 3) */
         /* The number of entries required for the ICU vector table. */
-        #define BSP_ICU_VECTOR_NUM_ENTRIES (17)
+        #define BSP_ICU_VECTOR_NUM_ENTRIES (22)
 
         #ifdef __cplusplus
         }

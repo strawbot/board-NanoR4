@@ -39,6 +39,15 @@
             [14] = frame_timer_edge_isr,   /* GPT7 CAPTURE COMPARE A: next window edge */
             [15] = frame_timer_sample_isr, /* GPT7 CAPTURE COMPARE B: sample point */
             [16] = frame_timer_frame_isr,  /* GPT7 COUNTER OVERFLOW: frame start */
+            /* [17]-[20]: limb-bus controller UART (SCI9), Board/limb_uart.c.
+             * Added by hand, same reason and same generic FSP ISRs as SCI2
+             * above (slots 0-3) -- no RASC instance exists for SCI9. */
+            [17] = sci_uart_rxi_isr, /* SCI9 RXI (Receive data full) */
+            [18] = sci_uart_txi_isr, /* SCI9 TXI (Transmit data empty) */
+            [19] = sci_uart_tei_isr, /* SCI9 TEI (Transmit end) */
+            [20] = sci_uart_eri_isr, /* SCI9 ERI (Receive error) */
+            /* [21]: ICU IRQ3 (P110/D12 edge counter), Board/edge_test.c. Added by hand. */
+            [21] = edge_test_irq3_isr, /* ICU IRQ3 (External pin interrupt 3) */
         };
         #if BSP_FEATURE_ICU_HAS_IELSR
         const bsp_interrupt_event_t g_interrupt_event_link_select[BSP_ICU_VECTOR_NUM_ENTRIES] =
@@ -57,6 +66,11 @@
             [14] = BSP_PRV_VECT_ENUM(EVENT_GPT7_CAPTURE_COMPARE_A,GROUP6), /* GPT7 CAPTURE COMPARE A */
             [15] = BSP_PRV_VECT_ENUM(EVENT_GPT7_CAPTURE_COMPARE_B,GROUP7), /* GPT7 CAPTURE COMPARE B */
             [16] = BSP_PRV_VECT_ENUM(EVENT_GPT7_COUNTER_OVERFLOW,GROUP0), /* GPT7 COUNTER OVERFLOW */
+            [17] = BSP_PRV_VECT_ENUM(EVENT_SCI9_RXI,GROUP1), /* SCI9 RXI (Receive data full) */
+            [18] = BSP_PRV_VECT_ENUM(EVENT_SCI9_TXI,GROUP2), /* SCI9 TXI (Transmit data empty) */
+            [19] = BSP_PRV_VECT_ENUM(EVENT_SCI9_TEI,GROUP3), /* SCI9 TEI (Transmit end) */
+            [20] = BSP_PRV_VECT_ENUM(EVENT_SCI9_ERI,GROUP4), /* SCI9 ERI (Receive error) */
+            [21] = BSP_PRV_VECT_ENUM(EVENT_ICU_IRQ3,GROUP5), /* ICU IRQ3 (External pin interrupt 3) */
         };
         #endif
         #endif
