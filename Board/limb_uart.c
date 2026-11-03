@@ -40,19 +40,19 @@
 #include "printers.h"
 #include "limb_bus.h"
 
-// architecture SS2/SS15.1 downstream rate. Bench-proven ceiling with
-// the node's RX on DMA (limb_uart_usart1.c): 500000 and 1000000 both
-// pass every transfer test (limb-fw-test/-pipeline/-redpath/-timeout,
-// data SWD-verified), CHUNK phase 174 -> 91 -> 50 ms for a 4 KB image;
-// 2000000 fails (small pings work, a 21-byte BEGIN doesn't, and the link
-// wedges until reset). That is *this bench's direct GPIO wiring*, not the
-// real current-sink/comparator path (still uncharacterized,
-// SMA_Limb_Bus_Protocol.md §9), so the spec rate stays the default. Both
-// ends must match -- change this and board-Nucleo446's together. Before
-// the node's RX was DMA-driven, 500000 wedged the link under a chunk
-// burst and 1000000 received nothing. Full write-up:
-// limb_board/SMA_Limb_Bus_Firmware_Update.md §9.10-9.13.
-#define LIMB_UART_BAUD 250000U
+// 1000000 -- 4x the architecture's SS2/SS15.1 downstream rate of 250000,
+// chosen as the bench default. What backs it: with the node's RX on DMA
+// (limb_uart_usart1.c) the full transfer suite passes at 500000 and
+// 1000000 (data verified), 2000000 does not (small pings work, a 21-byte
+// BEGIN doesn't, the link wedges until reset). What does NOT back it:
+// this is a direct GPIO-to-GPIO breadboard bench, not the real
+// current-sink/comparator signal path (still uncharacterized,
+// SMA_Limb_Bus_Protocol.md §9) -- a rate that works here says nothing
+// about what that path can carry, so revisit before this ships on real
+// hardware (250000 is the architecture's number). Both ends must match:
+// change this and board-Nucleo446's together. Write-up:
+// limb_board/SMA_Limb_Bus_Firmware_Update.md §9.10-9.14.
+#define LIMB_UART_BAUD 1000000U
 
 #define LIMB_TX_PIN BSP_IO_PORT_01_PIN_09 // D11, P109
 #define LIMB_RX_PIN BSP_IO_PORT_01_PIN_10 // D12, P110
@@ -125,15 +125,29 @@ static void limb_uart_rx_action(void) {
 
 static uint32_t g_limb_evt_rx, g_limb_evt_txc, g_limb_evt_other;
 
-// Fires when the last R_SCI_UART_Write()'s bytes have all actually gone
-// out -- not when a reply ack arrives, just when the TX buffer is free
-// to reuse. For limb_fw_test.c's pipelined-chunk experiment: gating the
-// next send on this instead of on the previous chunk's MAINT_FW_ACK
-// removes the full round-trip (ack transmission + node-side dispatch)
-// from each chunk's critical path, while acks still arrive and get
-// counted asynchronously for a correctness check at the end. See
-// limb_board/SMA_Limb_Bus_Firmware_Update.md §9.8.
+// Fires once per frame, when that frame's last byte has actually gone out
+// -- not when a reply ack arrives, just "a TX buffer just became free."
+// limb_fw_test.c's pipelined sender uses it as its pacing signal; with
+// the two-deep TX below, it is the cue to queue the *next-next* frame
+// while one is already on the wire and one already waiting. See
+// limb_board/SMA_Limb_Bus_Firmware_Update.md §9.8, §9.14.
 Event limb_uart_tx_complete_event;
+
+// ── TX: one frame in flight, at most one queued behind it ────────────
+// R_SCI_UART_Write() refuses a second write while one is in progress
+// (FSP_ERR_IN_USE) and the FSP driver only keeps a *pointer* to the
+// buffer, so a frame queued behind the active one is held here and
+// started from the TX-complete interrupt itself -- no scheduler hop, so
+// the line has only the ISR + Write() setup (a fraction of a byte time)
+// between frames instead of the ~2 ms a later()-driven handoff cost per
+// chunk. Depth is two on purpose, matching limb_bus.c's two alternating
+// maintenance buffers; a third send() while both slots are busy is
+// dropped and counted (g_limb_tx_drop, limb-status) rather than allowed
+// to overwrite a buffer the hardware is still reading.
+static volatile bool g_tx_busy;
+static const uint8_t *volatile g_tx_pending_buf;
+static volatile size_t g_tx_pending_len;
+static uint32_t g_limb_tx_drop, g_limb_tx_err;
 
 static void limb_uart_callback(uart_callback_args_t *p_args) {
     if (p_args->event == UART_EVENT_RX_CHAR) {
@@ -145,6 +159,19 @@ static void limb_uart_callback(uart_callback_args_t *p_args) {
         }
     } else if (p_args->event == UART_EVENT_TX_COMPLETE) {
         g_limb_evt_txc++;
+        const uint8_t *next = g_tx_pending_buf;
+        if (next != NULL) {
+            size_t n = g_tx_pending_len;
+            g_tx_pending_buf = NULL;
+            // Chain: stays busy. tx_src_bytes is already 0 at TEI, so
+            // Write() is allowed from here (checked in r_sci_uart.c).
+            if (R_SCI_UART_Write((uart_ctrl_t *)&g_limb_uart_ctrl, next, (uint32_t)n) != FSP_SUCCESS) {
+                g_limb_tx_err++;
+                g_tx_busy = false;
+            }
+        } else {
+            g_tx_busy = false;
+        }
         later(*limb_uart_tx_complete_event); // ISR context -- defer to the action queue
     } else {
         g_limb_evt_other++;
@@ -152,7 +179,24 @@ static void limb_uart_callback(uart_callback_args_t *p_args) {
 }
 
 static void limb_uart_send(const uint8_t *buf, size_t len) {
-    R_SCI_UART_Write((uart_ctrl_t *)&g_limb_uart_ctrl, (uint8_t const *)buf, (uint32_t)len);
+    bool start = false;
+    safe(
+        if (!g_tx_busy) {
+            g_tx_busy = true;
+            start = true;
+        } else if (g_tx_pending_buf == NULL) {
+            g_tx_pending_buf = buf;
+            g_tx_pending_len = len;
+        } else {
+            g_limb_tx_drop++;
+        }
+    )
+    if (start) {
+        if (R_SCI_UART_Write((uart_ctrl_t *)&g_limb_uart_ctrl, (uint8_t const *)buf, (uint32_t)len) != FSP_SUCCESS) {
+            g_limb_tx_err++;
+            g_tx_busy = false;
+        }
+    }
 }
 
 static const limb_bus_hw_t hw = { .send = limb_uart_send };
@@ -187,6 +231,10 @@ void limb_uart_cli_status(void) {
     printDec0(g_limb_evt_txc);
     print(" other=");
     printDec0(g_limb_evt_other);
+    print(" tx_drop=");
+    printDec0(g_limb_tx_drop);
+    print(" tx_err=");
+    printDec0(g_limb_tx_err);
     printCr();
 }
 

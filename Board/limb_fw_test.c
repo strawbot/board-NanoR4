@@ -13,7 +13,7 @@
 // bottom on why this test never triggers that and leaves UPDATE_META
 // alone afterward rather than resetting the node.
 //
-// Four CLI entry points, each its own small when()/after() state
+// Five CLI entry points, each its own small when()/after() state
 // machine (CLAUDE.md: nothing here may busy-wait):
 //   limb-fw-test     the happy path: Begin -> Chunk x N -> End.
 //   limb-fw-redpath  a controller "reboot" mid-transfer: Begin, then a
@@ -33,6 +33,10 @@
 //                     round-trip vs. the chunk's own transmission/flash
 //                     -program time. See
 //                     limb_board/SMA_Limb_Bus_Firmware_Update.md §9.8.
+//   limb-fw-size     ( kb -- ) the same pipelined sender, but streaming a
+//                     window of this MCU's own flash instead of the synthetic
+//                     image: a real firmware at real size, for a measured
+//                     (not modeled) full-image transfer time. §9.14.
 // The first three built in response to the question "what if the
 // controller reboots and leaves the node hanging mid-transfer, is there
 // a timeout or reset/restart command" -- see
@@ -52,6 +56,7 @@
 #include <stdbool.h>
 
 #include "tea.h"
+#include "cli.h" // ret(): popping limb-fw-size's argument
 #include "printers.h"
 #include "clocks.h" // get_ticks() -- for timing limb-fw-test, see its own comment
 #include "limb_bus.h"
@@ -422,28 +427,40 @@ void limb_fw_timeout_cli(void) {
     limb_bus_send_fw_begin(TEST_MODULE_TYPE, 1U, TEST_IMAGE_SIZE, test_image_crc32);
 }
 
-// ── limb-fw-pipeline: stream chunks without waiting for each ack ─────
+// ── limb-fw-pipeline / limb-fw-size: stream chunks, two deep ──────────
 // Deliberately trusts the wire during the burst -- see the file header.
-// This is NOT a hardened replacement for limb-fw-test's per-chunk
-// ack/retry; it is a bench-only experiment to find how much of the
-// per-chunk cost is the ack round-trip. The only pass/fail gate that
-// still matters is END's whole-image CRC32, exactly as the real
-// protocol already requires; this just skips acting on each chunk's
-// ack along the way, only counting how many showed up for a diagnostic.
+// NOT a hardened replacement for limb-fw-test's per-chunk ack/retry; a
+// bench-only measurement of how fast the mechanism can go. The one
+// pass/fail gate that still matters is END's whole-image CRC32, exactly
+// as the real protocol already requires: acks are only counted.
+//
+// Two chunks are kept queued at all times: one on the wire, one already
+// waiting behind it in the UART driver (limb_uart.c starts it from the
+// TX-complete interrupt, so the line never goes idle between chunks).
+// Each TX-complete event then frees a buffer, which gets refilled with
+// the next chunk. See limb_board/SMA_Limb_Bus_Firmware_Update.md §9.14.
+//
+// The image is a source pointer + size + CRC, so the same machine
+// streams either the small synthetic test image (limb-fw-pipeline) or a
+// window of this MCU's own flash (limb-fw-size) -- a real compiled
+// firmware, no RAM image needed.
 typedef enum { PL_IDLE, PL_WAIT_BEGIN, PL_SENDING, PL_WAIT_END } pl_state_t;
 static pl_state_t pl_state;
+static const uint8_t *pl_src;
+static uint32_t pl_size;
 static uint32_t pl_token;
 static uint32_t pl_next_offset;
-static uint32_t pl_chunks_sent;
+static uint32_t pl_queued;    // chunks handed to the driver so far
+static uint32_t pl_total;     // chunks the image needs
+static uint32_t pl_done;      // chunks whose last byte has left the wire
 static uint32_t pl_acks_seen; // counted, not waited on, while PL_SENDING
 static Long pl_start_ticks, pl_begin_ticks, pl_chunks_ticks;
 
 static void pl_timeout(void);
 static void pl_begin_ack(void);
 static void pl_ack_counter(void);
-static void pl_send_one_chunk(void);
-static void pl_next_chunk_on_txc(void);
-static void pl_all_sent_on_txc(void);
+static void pl_queue_one(void);
+static void pl_on_txc(void);
 static void pl_end_ack(void);
 
 static void pl_fail(const char *why) {
@@ -469,13 +486,18 @@ static void pl_begin_ack(void) {
     pl_token = ack_token(f);
     pl_begin_ticks = get_ticks();
     pl_next_offset = 0;
-    pl_chunks_sent = 0;
+    pl_queued = 0;
+    pl_done = 0;
     pl_acks_seen = 0;
+    pl_total = (pl_size + LIMB_MAINT_CHUNK_MAX - 1U) / LIMB_MAINT_CHUNK_MAX;
     print("limb-fw-pipeline: BEGIN ok (token=0x"); printHex(pl_token);
-    print("), streaming chunks (not waiting for each ack)...\n");
+    print("), streaming "); printDec0(pl_total);
+    print(" chunks, two deep, not waiting for acks...\n");
     when(limb_bus_maint_frame_event, pl_ack_counter); // counts, doesn't gate
+    when(limb_uart_tx_complete_event, pl_on_txc);
     pl_state = PL_SENDING;
-    pl_send_one_chunk();
+    pl_queue_one(); // first goes on the wire
+    pl_queue_one(); // second waits behind it, started by the TX-complete ISR
 }
 
 static void pl_ack_counter(void) {
@@ -483,34 +505,38 @@ static void pl_ack_counter(void) {
     if (f->type == LIMB_TYPE_MAINT_FW_ACK) pl_acks_seen++;
 }
 
-static void pl_send_one_chunk(void) {
-    uint32_t len = TEST_IMAGE_SIZE - pl_next_offset;
+// Hand the next chunk to the driver, if any remain.
+static void pl_queue_one(void) {
+    if (pl_queued >= pl_total) return;
+    uint32_t len = pl_size - pl_next_offset;
     if (len > LIMB_MAINT_CHUNK_MAX) len = LIMB_MAINT_CHUNK_MAX;
-    limb_bus_send_fw_chunk(pl_token, pl_next_offset, &test_image[pl_next_offset], (uint16_t)len);
+    limb_bus_send_fw_chunk(pl_token, pl_next_offset, &pl_src[pl_next_offset], (uint16_t)len);
     pl_next_offset += len;
-    pl_chunks_sent++;
-    after(msec(1000), pl_timeout); // re-armed each chunk: a liveness check on
-                                    // this one TX-complete, not a fixed budget
-                                    // for the whole burst
-    when(limb_uart_tx_complete_event, (pl_next_offset < TEST_IMAGE_SIZE) ? pl_next_chunk_on_txc : pl_all_sent_on_txc);
+    pl_queued++;
+    after(msec(1000), pl_timeout); // liveness: re-armed per queued chunk, not a whole-burst budget
 }
 
-static void pl_next_chunk_on_txc(void) {
-    never(limb_uart_tx_complete_event);
-    pl_send_one_chunk();
-}
-
-static void pl_all_sent_on_txc(void) {
+// One call per completed frame (a buffer just became free).
+static void pl_on_txc(void) {
+    if (pl_state != PL_SENDING) return;
+    pl_done++;
+    if (pl_done < pl_total) {
+        pl_queue_one(); // refill the freed buffer (no-op once everything is queued)
+        return;
+    }
+    // Last chunk's last byte has left the wire.
     never(limb_uart_tx_complete_event);
     stop_te(pl_timeout);
     pl_chunks_ticks = get_ticks();
     never(limb_bus_maint_frame_event); // done counting -- END needs the slot
-    print("limb-fw-pipeline: all "); printDec0(pl_chunks_sent);
+    print("limb-fw-pipeline: all "); printDec0(pl_total);
     print(" chunks sent ("); printDec0(pl_acks_seen);
     print(" acks seen so far), sending END...\n");
     pl_state = PL_WAIT_END;
     when(limb_bus_maint_frame_event, pl_end_ack);
-    after(msec(1000), pl_timeout); // trailing acks + END's work incl. a possible ~330 ms UPDATE_META erase (§9.13)
+    // 1000: END waits on a CRC32 readback of the whole staged image and,
+    // if UPDATE_META isn't pre-erased, a ~330 ms synchronous erase (§9.13).
+    after(msec(1000), pl_timeout);
     limb_bus_send_fw_end(pl_token);
 }
 
@@ -530,13 +556,26 @@ static void pl_end_ack(void) {
               "something really was lost/corrupted during the unacked burst)\n");
         return;
     }
-    print("limb-fw-pipeline: PASS -- timing -- BEGIN="); printDec0((unsigned)begin_ms);
-    print("ms  "); printDec0(pl_chunks_sent);
-    print("x CHUNK(streamed, gated on TX-complete not ack)="); printDec0((unsigned)chunks_ms);
+    print("limb-fw-pipeline: PASS -- "); printDec0(pl_size);
+    print(" B, BEGIN="); printDec0((unsigned)begin_ms);
+    print("ms  "); printDec0(pl_total);
+    print("x CHUNK="); printDec0((unsigned)chunks_ms);
     print("ms  END="); printDec0((unsigned)end_ms);
     print("ms  TOTAL="); printDec0((unsigned)total_ms);
-    print("ms  (" ); printDec0(pl_acks_seen); print("/"); printDec0(pl_chunks_sent);
-    print(" chunk acks had arrived by the time END was sent)\n");
+    print("ms  => "); printDec0(total_ms ? (unsigned)((uint64_t)pl_size * 1000U / total_ms / 1024U) : 0U);
+    print(" KiB/s overall  ("); printDec0(pl_acks_seen); print("/"); printDec0(pl_total);
+    print(" chunk acks arrived before END was sent)\n");
+}
+
+static void pl_start(const uint8_t *src, uint32_t size, uint32_t crc) {
+    pl_src = src;
+    pl_size = size;
+    pl_start_ticks = get_ticks();
+    print("limb-fw-pipeline: sending BEGIN ("); printDec0(size); print(" B)...\n");
+    pl_state = PL_WAIT_BEGIN;
+    when(limb_bus_maint_frame_event, pl_begin_ack);
+    after(msec(3000), pl_timeout);
+    limb_bus_send_fw_begin(TEST_MODULE_TYPE, 1U, size, crc);
 }
 
 void limb_fw_pipeline_cli(void) {
@@ -545,16 +584,50 @@ void limb_fw_pipeline_cli(void) {
         return;
     }
     build_test_image();
-    pl_start_ticks = get_ticks();
-    print("limb-fw-pipeline: sending BEGIN...\n");
-    pl_state = PL_WAIT_BEGIN;
-    when(limb_bus_maint_frame_event, pl_begin_ack);
-    after(msec(3000), pl_timeout);
-    limb_bus_send_fw_begin(TEST_MODULE_TYPE, 1U, TEST_IMAGE_SIZE, test_image_crc32);
+    pl_start(test_image, TEST_IMAGE_SIZE, test_image_crc32);
+}
+
+// limb-fw-size ( kb -- ): stream the first <kb> KiB of this MCU's own
+// flash, from its application base. A real compiled firmware image at
+// real size, with no RAM image buffer -- the point being a measured (not
+// modeled) full-image transfer time. The bytes need not be a bootable
+// limb app: nothing here resets the node, and END's whole-image CRC32
+// (computed below the same way the receiver does, with the header's
+// crc32 field read as zero) is what proves every byte arrived. To
+// represent a *compressed* image of a given size, send that many bytes
+// -- transfer time depends only on byte count.
+#define LIMB_FW_SRC_BASE 0x00004000U // see memory_regions_custom.ld: app region
+static void limb_fw_size_start(uint32_t kb) {
+    uint32_t size = kb * 1024U;
+    const uint8_t *src = (const uint8_t *)LIMB_FW_SRC_BASE;
+    const uint32_t f_off = LIMB_APP_HEADER_OFFSET + 8U; // receiver zeroes these 4 bytes
+    // CRC computed before the clock starts: ~130 ms for 127 KiB, not
+    // part of the transfer being timed.
+    uint32_t crc = 0xFFFFFFFFU;
+    crc = crc32_raw(crc, src, f_off);
+    static const uint8_t zeros[4] = {0, 0, 0, 0};
+    crc = crc32_raw(crc, zeros, 4U);
+    crc = crc32_raw(crc, src + f_off + 4U, size - f_off - 4U);
+    crc ^= 0xFFFFFFFFU;
+    pl_start(src, size, crc);
+}
+
+void limb_fw_size_cli(void) {
+    Cell kb = ret();
+    if (pl_state != PL_IDLE) {
+        print("limb-fw-size: another pipelined transfer is running\n");
+        return;
+    }
+    if (kb < 1 || kb > 200) {
+        print("limb-fw-size: kb must be 1..200 (node app slot is 224 KiB; this MCU's flash has ~131 KiB of image)\n");
+        return;
+    }
+    limb_fw_size_start((uint32_t)kb);
 }
 
 #else // !LIMB_UART_DEV
 
+#include "cli.h"
 #include "printers.h"
 
 void limb_fw_test_cli(void) {
@@ -568,6 +641,10 @@ void limb_fw_timeout_cli(void) {
 }
 void limb_fw_pipeline_cli(void) {
     print("limb-fw-pipeline: not built in this firmware (needs env:nano_r4_limb)\n");
+}
+void limb_fw_size_cli(void) {
+    (void)ret();
+    print("limb-fw-size: not built in this firmware (needs env:nano_r4_limb)\n");
 }
 
 #endif // LIMB_UART_DEV

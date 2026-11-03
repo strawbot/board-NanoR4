@@ -14,7 +14,7 @@
 extern Event limb_uart_tx_complete_event;
 
 // limb_uart_init — reconfigure D11/D12 (P109/P110) for SCI9, open the UART
-// at the limb-bus protocol's 250000 baud, and bind it to limb_bus. Call
+// at LIMB_UART_BAUD (limb_uart.c), and bind it to limb_bus. Call
 // from hal_entry, after g_hal_init(). D11 must not also be claimed by
 // sr595_hw in this build -- see platformio.ini's env:nano_r4_limb.
 void limb_uart_init(void);

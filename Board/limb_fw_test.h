@@ -27,4 +27,9 @@ void limb_fw_timeout_cli(void);
 // being a hardened replacement for limb-fw-test.
 void limb_fw_pipeline_cli(void);
 
+// limb_fw_size_cli — CLI word: ( kb -- ) streams the first <kb> KiB of
+// this MCU's own flash to the node, pipelined and two-deep, and reports
+// the measured transfer time. See limb_fw_test.c.
+void limb_fw_size_cli(void);
+
 #endif // BOARD_LIMB_FW_TEST_H
