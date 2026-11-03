@@ -40,7 +40,19 @@
 #include "printers.h"
 #include "limb_bus.h"
 
-#define LIMB_UART_BAUD 250000U // architecture SS2/SS15.1 downstream rate
+// architecture SS2/SS15.1 downstream rate. Tried doubling and
+// quadrupling this on the bench (limb_board/
+// SMA_Limb_Bus_Firmware_Update.md §9.10) -- reverted: 500000 survived a
+// plain limb-ping but wedged the link solid (needing a full device
+// reset, not just a dropped frame) under limb-fw-pipeline's sustained
+// chunk burst, and 1000000 didn't receive anything at all. Root cause
+// traced partway (an uncleared USART overrun on the Nucleo446 side,
+// fixed in limb_uart_usart1.c) but not fully -- the fix alone didn't
+// make 500000 reliable, pointing at a deeper gap (limb_bus.c's
+// maintenance-frame assembler has no timeout/resync if a corrupted
+// length field leaves it waiting for bytes that never arrive). Both
+// ends must still match if this is ever retried.
+#define LIMB_UART_BAUD 250000U
 
 #define LIMB_TX_PIN BSP_IO_PORT_01_PIN_09 // D11, P109
 #define LIMB_RX_PIN BSP_IO_PORT_01_PIN_10 // D12, P110
