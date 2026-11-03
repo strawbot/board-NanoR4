@@ -86,6 +86,7 @@ Words // Limb bus (Robot/io/limb_bus): controller-side frame protocol over SCI9 
 	edge-rx-arm edge_test_cli_rx_arm // (- ) wire-margin test: drop D12 out of SCI mode, count every edge on it via IRQ3 (reset to 0)
 	edge-rx-clr edge_test_cli_rx_clr // (- ) wire-margin test: reset the edge counter to 0 without disarming
 	edge-rx@ edge_test_cli_rx_read // (- count) wire-margin test: read the edge counter
+	limb-fw-test limb_fw_test_cli // stream a small synthetic test image to the node via MAINT_FW_BEGIN/CHUNK/END, report pass/fail; leaves UPDATE_META pending on success, see Board/limb_fw_test.c
 End
 
 Words // Gaits
