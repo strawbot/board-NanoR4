@@ -64,10 +64,12 @@
 extern const char build_timestamp[];
 
 // Nano R4 user LED — yellow, on port 2 pin 4 (P204), configured in RASC.
-// The debug board (board 7DB, built as env:nano_r4_dbg) carries its heartbeat
-// LED on P111 instead; led_select() picks the pin once at start-up.
+// The debug board (board 7DB, built as env:nano_r4_dbg) has no P204 LED; its
+// TX LED on P012 (R7FA4-PLUS-A schematic: LED to VCC, so inverted: low = on)
+// is the heartbeat there. That leaves P111 (the SCK LED, also on the connector)
+// free. led_select() picks the pin once at start-up.
 #define LED_PIN       BSP_IO_PORT_02_PIN_04
-#define LED_PIN_DBG   BSP_IO_PORT_01_PIN_11
+#define LED_PIN_DBG   BSP_IO_PORT_00_PIN_12
 #define DBG_BOARD_SERIAL  "ActiveRobot7DB"
 
 void delta_timer_cb(timer_callback_args_t * p_args);
@@ -125,7 +127,7 @@ Long get_ticks(void) {
 }
 
 // ── LED heartbeat ─────────────────────────────────────────────────────────
-// Yellow LED on P204 (P111 on the debug board). Double-blink: short-on · gap · short-on · long-gap.
+// Yellow LED on P204 (TX LED on P012 on the debug board). Double-blink: short-on · gap · short-on · long-gap.
 //
 // This is a liveness signal, not decoration: it conveys timeliness to
 // whoever is looking at the board. Exactly one double-flash per second is
@@ -137,22 +139,26 @@ Long get_ticks(void) {
 
 #define ON_TIME 2
 static bsp_io_port_pin_t led_pin = LED_PIN;
-static inline void led_on (void) { R_IOPORT_PinWrite(&g_ioport_ctrl, led_pin, BSP_IO_LEVEL_HIGH); }
-static inline void led_off(void) { R_IOPORT_PinWrite(&g_ioport_ctrl, led_pin, BSP_IO_LEVEL_LOW);  }
+static bsp_io_level_t    led_on_level  = BSP_IO_LEVEL_HIGH;
+static bsp_io_level_t    led_off_level = BSP_IO_LEVEL_LOW;
+static inline void led_on (void) { R_IOPORT_PinWrite(&g_ioport_ctrl, led_pin, led_on_level);  }
+static inline void led_off(void) { R_IOPORT_PinWrite(&g_ioport_ctrl, led_pin, led_off_level); }
 
-// Use P111 for the heartbeat on the debug board: the env:nano_r4_dbg build
-// (-DHEARTBEAT_LED_P111) or any build running on board 7DB. P111 is not
-// configured as an output by RASC, so make it one here.
+// Use the inverted TX LED on P012 for the heartbeat on the debug board: the
+// env:nano_r4_dbg build (-DHEARTBEAT_LED_DBG) or any build running on board
+// 7DB. RASC leaves P012 disabled, so make it a GPIO output here, off.
 static void led_select(void) {
-#ifdef HEARTBEAT_LED_P111
+#ifdef HEARTBEAT_LED_DBG
     bool dbg = true;
 #else
     bool dbg = strcmp(board_serial(), DBG_BOARD_SERIAL) == 0;
 #endif
     if (!dbg) return;
     led_pin = LED_PIN_DBG;
+    led_on_level  = BSP_IO_LEVEL_LOW;
+    led_off_level = BSP_IO_LEVEL_HIGH;
     R_IOPORT_PinCfg(&g_ioport_ctrl, led_pin,
-        (uint32_t)IOPORT_CFG_PORT_DIRECTION_OUTPUT | (uint32_t)IOPORT_CFG_PORT_OUTPUT_LOW);
+        (uint32_t)IOPORT_CFG_PORT_DIRECTION_OUTPUT | (uint32_t)IOPORT_CFG_PORT_OUTPUT_HIGH);
 }
 
 // `whoami` asks for a fast flash in place of the heartbeat for a few seconds, so
