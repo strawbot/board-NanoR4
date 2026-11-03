@@ -187,7 +187,12 @@ static void test_ack(void) {
             print("limb-fw-test: all chunks ok, sending END...\n");
             test_state = TEST_WAIT_END;
             when(limb_bus_maint_frame_event, test_ack);
-            after(msec(200), test_timeout);
+            // 1000, not 200 like a chunk's: END's ack waits on the node's CRC32
+            // readback and, when UPDATE_META isn't already pre-erased (any 2nd+
+            // transfer without a node reboot), a synchronous 16 KB sector erase
+            // (~330 ms measured) -- a 200 ms timeout reported FAIL on transfers
+            // that had actually succeeded. See SMA_Limb_Bus_Firmware_Update.md §9.13.
+            after(msec(1000), test_timeout);
             limb_bus_send_fw_end(test_token);
         }
         break;
@@ -505,7 +510,7 @@ static void pl_all_sent_on_txc(void) {
     print(" acks seen so far), sending END...\n");
     pl_state = PL_WAIT_END;
     when(limb_bus_maint_frame_event, pl_end_ack);
-    after(msec(500), pl_timeout); // give trailing acks + END's own work time to land
+    after(msec(1000), pl_timeout); // trailing acks + END's work incl. a possible ~330 ms UPDATE_META erase (§9.13)
     limb_bus_send_fw_end(pl_token);
 }
 
