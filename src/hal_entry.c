@@ -23,6 +23,7 @@
 #include "vin_sense.h"
 #include "power_sense.h"
 #include "adc_sync.h"
+#include "analog_test.h"
 #include "gait.h"
 #include "posture.h"
 #include "printers.h"
@@ -141,6 +142,7 @@ void hal_entry(void)
     power_sense_init();   // register the Vdrain divider's calibration for the calib file
     adc_vref_start();     // track AVCC0 from the internal reference (needs the scheduler)
     adc_sync_marker_init(); // ELC links + GPT3/P111 scope marker for the hardware-triggered ADC path (Board/adc_sync.c) — dormant until dac8-cmp's carrier runs
+    analog_test_init();    // name analog_test.c's self-rescheduling actions for mstats
     usart_transport_init();
 
     limb_uart_init(); // inert unless LIMB_UART_DEV; prints on an Open()/baud error -- needs the transport up

@@ -988,3 +988,8 @@ void analog_test_cli_status(void) {
     print("GPT1: "); printDec0(wraps); print(" wraps seen over 3000 GTCNT polls (period_counts=");
     printDec0(GPT1_PERIOD); print("). Zero here means GPT1 is not counting."); printCr();
 }
+
+void analog_test_init(void) {
+    namedAction(analog_test_dac8_cmp_continue);
+    namedAction(analog_test_dmac_rearm);
+}

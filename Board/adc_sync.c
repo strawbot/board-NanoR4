@@ -353,6 +353,8 @@ static void adc_sync_dmac_rearm(void) {
 }
 
 void adc_sync_marker_init(void) {
+    namedAction(adc_sync_dmac_rearm);
+
     g_adc_sync_elc_err = R_ELC_Open(&g_adc_sync_elc_ctrl, &g_adc_sync_elc_cfg);
     if (g_adc_sync_elc_err == FSP_SUCCESS) g_adc_sync_elc_err = R_ELC_Enable(&g_adc_sync_elc_ctrl);
 

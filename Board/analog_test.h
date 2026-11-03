@@ -109,6 +109,8 @@
 #ifndef BOARD_ANALOG_TEST_H
 #define BOARD_ANALOG_TEST_H
 
+void analog_test_init(void);            // names this file's self-rescheduling actions for mstats; call once from main
+
 void analog_test_cli_gpt1_only(void);   // CLI word: gpt1-only — isolation test, no DAC/DMAC/ACMPLP at all
 void analog_test_cli_dmac_only(void);   // CLI word: dmac-only — gpt1-only + active DMAC, DAC12 left unclocked
 void analog_test_cli_dac12_ramp(void);  // CLI word: dac12-ramp
