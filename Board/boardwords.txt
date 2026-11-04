@@ -86,11 +86,11 @@ Words // Limb bus (Robot/io/limb_bus): controller-side frame protocol over SCI9 
 	edge-rx-arm edge_test_cli_rx_arm // (- ) wire-margin test: drop D12 out of SCI mode, count every edge on it via IRQ3 (reset to 0)
 	edge-rx-clr edge_test_cli_rx_clr // (- ) wire-margin test: reset the edge counter to 0 without disarming
 	edge-rx@ edge_test_cli_rx_read // (- count) wire-margin test: read the edge counter
-	limb-fw-test limb_fw_test_cli // stream a small synthetic test image to the node via MAINT_FW_BEGIN/CHUNK/END, report pass/fail; leaves UPDATE_META pending on success, see Board/limb_fw_test.c
+	limb-fw-test limb_fw_test_cli // send a small synthetic image with the adaptive sender (node-advertised window, offset acks, loss recovery, STATUS repair); report pass/fail and stats; leaves UPDATE_META pending on success, see Board/limb_fw_test.c
 	limb-fw-redpath limb_fw_redpath_cli // simulate a controller reboot mid-transfer (second BEGIN, no abort/reset): confirm clean recovery and that the stale pre-reboot token is rejected
 	limb-fw-timeout limb_fw_timeout_cli // BEGIN then go quiet past the node's idle timeout; confirm the node abandons the session (~2.7s)
-	limb-fw-pipeline limb_fw_pipeline_cli // stream all chunks back-to-back gated on TX-complete (not ack), report timing and how many acks had arrived by END
-	limb-fw-size limb_fw_size_cli // ( kb - ) stream the first <kb> KiB of this MCU's own flash to the node, pipelined two-deep; report measured time and throughput (full-size transfer timing)
+	limb-fw-pipeline limb_fw_pipeline_cli // deliberately UNSAFE blast: all chunks back-to-back gated on TX-complete only, no ack gating; END is expected to expose any loss
+	limb-fw-size limb_fw_size_cli // ( kb - ) send the first <kb> KiB of this MCU's own flash with the adaptive sender; report measured time, throughput and recovery stats
 End
 
 Words // Gaits

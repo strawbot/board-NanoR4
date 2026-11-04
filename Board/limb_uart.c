@@ -173,6 +173,7 @@ static void limb_uart_callback(uart_callback_args_t *p_args) {
             g_tx_busy = false;
         }
         later(*limb_uart_tx_complete_event); // ISR context -- defer to the action queue
+        later(*limb_bus_tx_complete_event);  // the Robot sender's TX credit (limb_bus.h)
     } else {
         g_limb_evt_other++;
     }

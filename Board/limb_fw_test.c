@@ -15,7 +15,10 @@
 //
 // Five CLI entry points, each its own small when()/after() state
 // machine (CLAUDE.md: nothing here may busy-wait):
-//   limb-fw-test     the happy path: Begin -> Chunk x N -> End.
+//   limb-fw-test     the synthetic 4 KiB image through the adaptive sender
+//                     (Robot/io/limb_bus/limb_bus_update_sender.c, protocol
+//                     §8.5): window set by the node, offset-echo acks,
+//                     loss recovery, STATUS repair.
 //   limb-fw-redpath  a controller "reboot" mid-transfer: Begin, then a
 //                     second Begin with no abort/reset message (must
 //                     recover cleanly), then confirms the pre-reboot
@@ -24,7 +27,10 @@
 //   limb-fw-timeout  Begin, then go quiet for longer than the node's
 //                     idle timeout, then confirm a Chunk with the
 //                     (still technically current) token is rejected.
-//   limb-fw-pipeline Begin, then streams every Chunk back-to-back,
+//   limb-fw-pipeline the deliberately UNSAFE blast: Begin, then streams every
+//                     Chunk back-to-back, no ack gating. Kept to provoke
+//                     loss on purpose (END then fails: that is the point).
+//                     Begin, then streams every Chunk back-to-back,
 //                     gated only on the previous Chunk's bytes having
 //                     physically finished transmitting (limb_uart.c's
 //                     limb_uart_tx_complete_event) rather than waiting
@@ -33,10 +39,10 @@
 //                     round-trip vs. the chunk's own transmission/flash
 //                     -program time. See
 //                     limb_board/SMA_Limb_Bus_Firmware_Update.md §9.8.
-//   limb-fw-size     ( kb -- ) the same pipelined sender, but streaming a
+//   limb-fw-size     ( kb -- ) the adaptive sender again, streaming a
 //                     window of this MCU's own flash instead of the synthetic
 //                     image: a real firmware at real size, for a measured
-//                     (not modeled) full-image transfer time. §9.14.
+//                     (not modeled) full-image transfer time. §9.14, §9.16.
 // The first three built in response to the question "what if the
 // controller reboots and leaves the node hanging mid-transfer, is there
 // a timeout or reset/restart command" -- see
@@ -61,6 +67,7 @@
 #include "clocks.h" // get_ticks() -- for timing limb-fw-test, see its own comment
 #include "limb_bus.h"
 #include "limb_bus_update.h" // LIMB_APP_HEADER_OFFSET/MAGIC, header shape
+#include "limb_bus_update_sender.h" // the adaptive sender behind limb-fw-test / limb-fw-size
 #include "limb_uart.h" // limb_uart_tx_complete_event -- limb-fw-pipeline only
 
 // Must match board-Nucleo446/Board/limb_update_flash.c's
@@ -121,134 +128,59 @@ static uint32_t ack_token(const limb_bus_maint_frame_t *f) {
          | ((uint32_t)f->payload[3] << 16) | ((uint32_t)f->payload[4] << 24);
 }
 
-// ── limb-fw-test: the happy path ──────────────────────────────────────
-typedef enum { TEST_IDLE, TEST_WAIT_BEGIN, TEST_WAIT_CHUNK, TEST_WAIT_END } test_state_t;
-static test_state_t test_state;
-static uint32_t test_token;
-static uint32_t next_offset;
-static Long test_start_ticks;   // get_ticks() at the CLI call
-static Long test_begin_ticks;   // ... at BEGIN's ack (erase done, chunks about to start)
-static Long test_chunks_ticks;  // ... at the last CHUNK's ack (END about to be sent)
-// see limb_fw_test_cli()/test_ack()'s PASS case for why: splits the total
-// into "one-time BEGIN erase" vs "per-chunk transfer" vs "END's CRC32
-// readback+recompute", instead of one lump number that would hide which
-// part actually dominates.
+// ── limb-fw-test / limb-fw-size: the adaptive sender ───────────────────
+// Both run Robot/io/limb_bus/limb_bus_update_sender.c (protocol §8.5): the
+// node's BEGIN ack says how many chunks it can have outstanding, every ack
+// names its chunk, loss is recovered by resending just what is missing, and a
+// failed END is repaired from the node's own received-chunk bitmap. No
+// board-specific tuning lives here -- only the image source and the report.
+static const char *send_tag;
+static uint32_t send_size;
 
-static void test_timeout(void);
-static void test_ack(void);
+static const char *const send_fail_name[] = {
+    "ok", "node refused BEGIN", "node stopped answering", "node refused a chunk",
+    "END still failing after repairs",
+};
 
-static void test_fail(const char *why) {
-    test_state = TEST_IDLE;
-    never(limb_bus_maint_frame_event);
-    stop_te(test_timeout);
-    print("limb-fw-test: FAIL -- ");
-    print(why);
+static void send_done(const limb_update_send_result_t *r) {
+    print(send_tag);
+    if (r->ok) {
+        print(": PASS -- "); printDec0(send_size);
+        print(" B in "); printDec0((unsigned)r->total_ms);
+        print(" ms = "); printDec0(r->total_ms ? (unsigned)((uint64_t)send_size * 1000U / r->total_ms / 1024U) : 0U);
+        print(" KiB/s\n");
+    } else {
+        print(": FAIL -- ");
+        print(r->fail < 5U ? send_fail_name[r->fail] : "unknown");
+        print(" (node status "); printDec0(r->last_status); print(")\n");
+    }
+    print(send_tag);
+    print(": node window="); printDec0(r->window);
+    print(" chunk_us="); printDec0(r->chunk_us);
+    print("  chunks "); printDec0((unsigned)r->chunks_sent); print("/"); printDec0((unsigned)r->chunks_total);
+    print(" sent, timeouts="); printDec0((unsigned)r->timeouts);
+    print(" fast_resends="); printDec0((unsigned)r->fast_resends);
+    print(" repairs="); printDec0((unsigned)r->repairs);
     printCr();
+    if (r->ok) {
+        print(send_tag);
+        print(": UPDATE_META is now pending on the node -- left alone on purpose "
+              "(not a bootable app); clear it over SWD before the node's next reset.\n");
+    }
 }
 
-static void send_next_chunk(void) {
-    uint32_t len = TEST_IMAGE_SIZE - next_offset;
-    if (len > LIMB_MAINT_CHUNK_MAX) len = LIMB_MAINT_CHUNK_MAX;
-    test_state = TEST_WAIT_CHUNK;
-    when(limb_bus_maint_frame_event, test_ack);
-    after(msec(200), test_timeout);
-    limb_bus_send_fw_chunk(test_token, next_offset, &test_image[next_offset], (uint16_t)len);
-}
-
-static void test_timeout(void) {
-    test_fail("timeout");
-}
-
-static void test_ack(void) {
-    const limb_bus_maint_frame_t *f = limb_bus_last_maint_frame();
-    if (f->type != LIMB_TYPE_MAINT_FW_ACK) {
-        return; // not our reply -- keep waiting
-    }
-    stop_te(test_timeout);
-    never(limb_bus_maint_frame_event);
-    if (!ack_ok(f)) {
-        test_fail("node acked failure");
-        return;
-    }
-
-    switch (test_state) {
-    case TEST_WAIT_BEGIN:
-        if (f->payload_len < 5U) { test_fail("BEGIN ack too short -- no token"); return; }
-        test_token = ack_token(f);
-        test_begin_ticks = get_ticks();
-        next_offset = 0;
-        print("limb-fw-test: BEGIN ok (token=0x"); printHex(test_token); print("), sending chunks...\n");
-        send_next_chunk();
-        break;
-
-    case TEST_WAIT_CHUNK: {
-        uint32_t sent_len = TEST_IMAGE_SIZE - next_offset;
-        if (sent_len > LIMB_MAINT_CHUNK_MAX) sent_len = LIMB_MAINT_CHUNK_MAX;
-        next_offset += sent_len;
-        if (next_offset < TEST_IMAGE_SIZE) {
-            send_next_chunk();
-        } else {
-            test_chunks_ticks = get_ticks();
-            print("limb-fw-test: all chunks ok, sending END...\n");
-            test_state = TEST_WAIT_END;
-            when(limb_bus_maint_frame_event, test_ack);
-            // 1000, not 200 like a chunk's: END's ack waits on the node's CRC32
-            // readback and, when UPDATE_META isn't already pre-erased (any 2nd+
-            // transfer without a node reboot), a synchronous 16 KB sector erase
-            // (~330 ms measured) -- a 200 ms timeout reported FAIL on transfers
-            // that had actually succeeded. See SMA_Limb_Bus_Firmware_Update.md §9.13.
-            after(msec(1000), test_timeout);
-            limb_bus_send_fw_end(test_token);
-        }
-        break;
-    }
-
-    case TEST_WAIT_END: {
-        test_state = TEST_IDLE;
-        Long end_ticks = get_ticks();
-        Long begin_ms = to_msec(test_begin_ticks - test_start_ticks);
-        Long chunks_ms = to_msec(test_chunks_ticks - test_begin_ticks);
-        Long end_ms = to_msec(end_ticks - test_chunks_ticks);
-        Long total_ms = to_msec(end_ticks - test_start_ticks);
-        print("limb-fw-test: PASS -- node staged and committed the test image "
-              "(size="); printDec0(TEST_IMAGE_SIZE);
-        print(" crc32=0x"); printHex(test_image_crc32);
-        print("). UPDATE_META is now pending on the node -- left alone on\n"
-              "purpose (this image isn't a real bootable app); clear it over\n"
-              "SWD before the node's next reset, or leave it until a real\n"
-              "update test replaces it.\n");
-        print("limb-fw-test: timing -- BEGIN(req+erase+ack)="); printDec0((unsigned)begin_ms);
-        print("ms  "); printDec0(TEST_IMAGE_SIZE / LIMB_MAINT_CHUNK_MAX);
-        print("x CHUNK(req+write+ack)="); printDec0((unsigned)chunks_ms);
-        print("ms  END(req+CRC32-readback+write_meta+ack)="); printDec0((unsigned)end_ms);
-        print("ms  TOTAL="); printDec0((unsigned)total_ms); print("ms\n");
-        break;
-    }
-
-    default:
-        break;
+static void send_start(const char *tag, const uint8_t *src, uint32_t size, uint32_t crc) {
+    send_tag = tag;
+    send_size = size;
+    print(tag); print(": sending "); printDec0(size); print(" B...\n");
+    if (!limb_bus_update_send(TEST_MODULE_TYPE, 1U, src, size, crc, send_done)) {
+        print(tag); print(": a transfer is already running\n");
     }
 }
 
 void limb_fw_test_cli(void) {
-    if (test_state != TEST_IDLE) {
-        print("limb-fw-test: already running\n");
-        return;
-    }
     build_test_image();
-    test_start_ticks = get_ticks();
-    print("limb-fw-test: sending BEGIN (module_type=1 size=");
-    printDec0(TEST_IMAGE_SIZE);
-    print(" crc32=0x"); printHex(test_image_crc32);
-    print(")...\n");
-    test_state = TEST_WAIT_BEGIN;
-    when(limb_bus_maint_frame_event, test_ack);
-    // Begin's reply is gated on the node's own erase of enough of
-    // APP_UPPER to hold the image -- a real (if small, here) flash
-    // sector erase, not just a protocol ack, so this gets a longer
-    // timeout than the chunk/end steps' pure-software turnaround.
-    after(msec(3000), test_timeout);
-    limb_bus_send_fw_begin(TEST_MODULE_TYPE, 1U, TEST_IMAGE_SIZE, test_image_crc32);
+    send_start("limb-fw-test", test_image, TEST_IMAGE_SIZE, test_image_crc32);
 }
 
 // ── limb-fw-redpath: controller reboot mid-transfer ──────────────────
@@ -609,13 +541,13 @@ static void limb_fw_size_start(uint32_t kb) {
     crc = crc32_raw(crc, zeros, 4U);
     crc = crc32_raw(crc, src + f_off + 4U, size - f_off - 4U);
     crc ^= 0xFFFFFFFFU;
-    pl_start(src, size, crc);
+    send_start("limb-fw-size", src, size, crc);
 }
 
 void limb_fw_size_cli(void) {
     Cell kb = ret();
     if (pl_state != PL_IDLE) {
-        print("limb-fw-size: another pipelined transfer is running\n");
+        print("limb-fw-size: the blast test (limb-fw-pipeline) is running\n");
         return;
     }
     if (kb < 1 || kb > 200) {
