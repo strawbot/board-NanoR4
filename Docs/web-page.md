@@ -17,8 +17,8 @@ pio run -e nano_r4_web -t upload
 Then browse to <http://192.168.7.1/> once the host's new network interface
 shows "connected" (a few seconds after plug-in or reset). `ncm` on the CLI
 shows link state and frame counters. `#demo` on the URL (`/#demo=rect4`,
-`hex4`, `hex6`) runs the page on made-up data with no board involved, which
-is also how to see tilt before an IMU is bound.
+`hex4`, `hex6`, `oct6`) runs the page on made-up data with no board involved,
+which is also how to see tilt before an IMU is bound.
 
 | env | adds | flash | RAM |
 |---|---|---|---|
@@ -105,14 +105,20 @@ log is compacted (space held by deleted or replaced files), the upload answers `
 | 0 | `rect4` | rectangle | 1, 2, 5, 6 |
 | 1 | `hex4` | hexagon | 1, 2, 5, 6 |
 | 2 | `hex6` | hexagon | 1-6 |
+| 3 | `oct6` | octagon | 1-6 |
 
 Limbs are numbered as in the muscle module: rows front 1/2, middle 3/4, rear
-5/6, odd on the left (LF, RF, LM, RM, LR, RR). A limb points at +30 / -30
-(front), +90 / -90 (middle), +150 / -150 (rear) degrees from forward, positive
-to the left; the hexagon's vertices sit on those axes. Rear limbs are mounted
-mirror-image, so their forward/back muscles swing the foot the other way
-(`mirror` in `/model`, as in `gait.c`). The middle limbs are assumed to be
-mounted like the front pair.
+5/6, odd on the left (LF, RF, LM, RM, LR, RR). On the hexagon models a limb
+points at +30 / -30 (front), +90 / -90 (middle), +150 / -150 (rear) degrees
+from forward, positive to the left; the hexagon's vertices sit on those axes.
+`oct6` is the as-built `hex_ctrl` board (`board-NanoR4/PCB`), which moved
+from a hexagon to an octagon so every limb edge lands on a 0/45/90 multiple
+the autorouter can route (see `PCB/README.md`); its front/rear angles tighten
+to +45 / -45 and +135 / -135, landing on the octagon's edges instead, with
+the middle limbs still at +90 / -90. Rear limbs are mounted mirror-image, so
+their forward/back muscles swing the foot the other way (`mirror` in
+`/model`, as in `gait.c`). The middle limbs are assumed to be mounted like
+the front pair.
 
 The model only describes the body for the page. It does not change which
 muscles the muscle module treats as fitted (`MUSCLE_LIMBS_4` in `hal_entry.c`).

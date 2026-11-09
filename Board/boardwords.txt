@@ -80,6 +80,8 @@ End
 
 Words // Limb bus (Robot/io/limb_bus): controller-side frame protocol over SCI9 (D11/D12); only built with env:nano_r4_limb, see Board/limb_uart.c -- inert elsewhere
 	limb-ping limb_bus_cli_ping // send a PING frame to the limb-bus node, print health/fault/fw once the reply lands, or "timeout" after 100ms
+	limb-mode limb_bleed_cli_set // ( n -- ) Coms/Muscle switch on D10 (P112): 1 = Coms (bus bleed on), 0 = Muscle (bleed off); boots in Muscle
+	limb-mode? limb_bleed_cli_status // print the current Coms/Muscle mode, see Board/limb_bleed.c
 	limb-status limb_uart_cli_status // print SCI9's BaudCalculate/Open error codes (0 = success) from boot, or that this firmware wasn't built with env:nano_r4_limb
 	limb-debug limb_bus_debug_status // print frames_ok/frames_bad CRC counters, the last validated frame's type/frame_cnt, and (if frames_bad>0) the last rejected frame's raw bytes
 	edge-tx edge_test_cli_tx // (count half-us) wire-margin test: drop D11 out of SCI mode, toggle it `count` times `half-us` apart
@@ -105,8 +107,8 @@ Words // Gaits
 	gait-trace gait_cli_trace // toggle printing each leg lift-off, touchdown, wait and reach
 	level gait_cli_level // toggle IMU leveling of the stance legs
 	posture posture_show // show IMU roll/pitch estimate and tip-over state
-	body robot_model_cli_show // show the robot body model: rect4, hex4 or hex6
-	body! robot_model_cli_set // (code) choose the body model: 0 rect4, 1 hex4, 2 hex6; `calib-save` keeps it
+	body robot_model_cli_show // show the robot body model: rect4, hex4, hex6 or oct6
+	body! robot_model_cli_set // (code) choose the body model: 0 rect4, 1 hex4, 2 hex6, 3 oct6; `calib-save` keeps it
 End
 
 Words // Wire calibration (Robot/limbs/wirecal): each wire's resistance transition, saved in the calib file
